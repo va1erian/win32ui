@@ -43,8 +43,7 @@ use self::slider::Sliders;
 use self::swatch::Swatch;
 
 pub(crate) fn main() {
-    // Keeps the real pointer out of a screen capture and restores it on exit.
-    let _pointer = screenshot::park_pointer_if_requested();
+    let _restore_pointer = screenshot::park_pointer_if_requested();
     // `WIN32UI_DEMO_THEME` / `WIN32UI_DEMO_WIDTH` / `WIN32UI_DEMO_HEIGHT` let a
     // screenshot run pick the palette and the window size without editing code.
     let initial = std::env::var("WIN32UI_DEMO_THEME").unwrap_or_else(|_| "dark".to_string());
@@ -151,9 +150,7 @@ pub(crate) fn main() {
 
             // The window owns the layout: it re-runs this tree on every resize
             // and DPI change, so the app never handles `WM_SIZE`.
-            // An extended title bar reserves a top strip (the caption buttons
-            // and menu bar); content starts below it so nothing sits under the
-            // buttons. Zero on a standard title bar, so the layout is unchanged.
+            // An extended title bar reserves its strip and menu bar; zero otherwise.
             let title_bar = ui.title_bar_height();
             ui.set_layout(
                 column![
@@ -209,11 +206,6 @@ pub(crate) fn main() {
             } else {
                 None
             };
-            // A screen capture needs the window active (DWM draws the backdrop and
-            // the caption buttons differently otherwise), so it is raised first.
-            let foreground = std::env::var("WIN32UI_DEMO_SCREENSHOT_SCREEN")
-                .ok()
-                .and_then(|_| ui.set_timer(500).ok());
             // `WIN32UI_DEMO_CONTEXT_OPEN` shows the list's context popup so a
             // dark (owner-drawn) menu can be inspected.
             let context_open = if std::env::var("WIN32UI_DEMO_CONTEXT_OPEN").is_ok() {
@@ -221,11 +213,7 @@ pub(crate) fn main() {
             } else {
                 None
             };
-            if auto_close.is_some()
-                || combo_open.is_some()
-                || context_open.is_some()
-                || foreground.is_some()
-            {
+            if auto_close.is_some() || combo_open.is_some() || context_open.is_some() {
                 ui.on_timer(move |id| {
                     if Some(id) == auto_close {
                         Some(Msg::AutoClose)
@@ -233,8 +221,6 @@ pub(crate) fn main() {
                         Some(Msg::OpenCombo)
                     } else if Some(id) == context_open {
                         Some(Msg::ShowListMenu)
-                    } else if Some(id) == foreground {
-                        Some(Msg::Foreground)
                     } else {
                         None
                     }
@@ -247,8 +233,12 @@ pub(crate) fn main() {
                 ui.emit(Msg::SecondaryScreenshot);
             }
 
-            // `WIN32UI_DEMO_TAB` selects a tab page by index (0 = Library,
-            // 1 = Primitives, 2 = Document) before a screenshot is taken.
+            // An inactive window draws differently, so a screen capture raises it.
+            if std::env::var_os("WIN32UI_DEMO_SCREENSHOT_SCREEN").is_some() {
+                ui.emit(Msg::Foreground);
+            }
+
+            // `WIN32UI_DEMO_TAB` picks a tab (0 Library, 1 Primitives, 2 Document).
             if let Ok(value) = std::env::var("WIN32UI_DEMO_TAB")
                 && let Ok(index) = value.parse::<usize>()
             {
