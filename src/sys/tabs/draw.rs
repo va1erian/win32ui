@@ -8,6 +8,7 @@ use windows::Win32::Graphics::Gdi::{
 use windows::Win32::UI::Controls::{ODS_DISABLED, ODS_FOCUS, ODS_SELECTED};
 
 use crate::color::Color;
+use crate::d2d::{DcCanvas, RectF};
 use crate::geometry::Rect;
 
 /// The states an owner-drawn tab can be painted in.
@@ -49,6 +50,12 @@ pub(crate) struct TabPaint {
     pub text_disabled: Color,
     /// Accent indicator under the selected tab.
     pub accent: Color,
+}
+
+/// The control's client rectangle for binding a DC render target, whose origin
+/// is the control's top-left.
+fn full_rect(bounds: Rect) -> Rect {
+    Rect::new(0, 0, bounds.right.max(1), bounds.bottom.max(1))
 }
 
 /// Fills `bounds` with `color` in a raw device context (e.g. from
@@ -108,11 +115,19 @@ pub(crate) fn draw_tab(
     crate::sys::gdi::select_object(dc, previous);
 
     if visual.selected {
-        fill(
-            hdc,
-            Rect::new(bounds.left, bounds.bottom - 2, bounds.right, bounds.bottom),
-            paint.accent,
-        );
+        let underline = Rect::new(bounds.left, bounds.bottom - 2, bounds.right, bounds.bottom);
+        // The accent bar's rounded ends are anti-aliased; GDI's square fill is
+        // the fallback.
+        let drawn = DcCanvas::new(hdc, full_rect(bounds))
+            .ok()
+            .map(|mut canvas| {
+                canvas.fill_rounded_rect(RectF::from_rect(underline), 1.0, paint.accent);
+                let _ = canvas.end_draw();
+            })
+            .is_some();
+        if !drawn {
+            fill(hdc, underline, paint.accent);
+        }
     }
     if visual.focused && visual.selected {
         let focus = windows::Win32::Foundation::RECT {
