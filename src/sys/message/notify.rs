@@ -50,7 +50,10 @@ pub(crate) fn decode_notify(lparam: LPARAM) -> Notify {
         let info = read::<NMLVKEYDOWN>(lparam);
         return Notify::ListView {
             id,
-            event: ListViewEvent::KeyDown { key: info.wVKey },
+            event: ListViewEvent::KeyDown {
+                key: info.wVKey,
+                modifiers: super::keyboard_modifiers(),
+            },
         };
     }
     if code == NM_DBLCLK || code == NM_CLICK || code == NM_RCLICK {

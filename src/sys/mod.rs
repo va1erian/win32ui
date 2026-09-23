@@ -5,6 +5,7 @@
 //! Win32 APIs they wrap and document each block with a `// SAFETY:` comment.
 
 pub(crate) mod capture;
+pub(crate) mod clipboard;
 pub(crate) mod control;
 pub(crate) mod dispatch;
 pub(crate) mod dpi;

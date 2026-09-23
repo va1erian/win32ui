@@ -20,7 +20,7 @@ use crate::error::Result;
 use crate::gdi::Font;
 use crate::geometry::Rect;
 use crate::hwnd::Hwnd;
-use crate::message::{Message, Notify};
+use crate::message::{Key, Message, Modifiers, Notify};
 use crate::sys;
 use crate::theme::Theme;
 use crate::units::Dip;
@@ -161,14 +161,20 @@ pub enum ListViewEvent {
     KeyDown {
         /// The virtual-key code.
         key: u16,
+        /// The modifier keys held when the key was pressed.
+        modifiers: Modifiers,
     },
 }
+
+/// Maps a focused key press, with its modifiers, to an optional app message.
+type KeyMapper<M> = Box<dyn Fn(Key, Modifiers) -> Option<M>>;
 
 /// The app-level events a [`ListView`] maps to `Msg`.
 struct ListViewEvents<M> {
     on_select: Option<Box<dyn Fn(usize) -> Option<M>>>,
     on_activate: Option<Box<dyn Fn(usize) -> Option<M>>>,
     on_context: Option<Box<dyn Fn(usize) -> Option<M>>>,
+    on_key: Option<KeyMapper<M>>,
 }
 
 /// A virtual report list view.
@@ -257,6 +263,7 @@ impl<M: 'static> ListView<M> {
             on_select: None,
             on_activate: None,
             on_context: None,
+            on_key: None,
         }));
         let sink = ui.clone();
         let events_for_mapper = events.clone();
@@ -280,6 +287,10 @@ impl<M: 'static> ListView<M> {
                     ListViewEvent::RightClick { item } if item >= 0 => {
                         events.on_context.as_ref().and_then(|f| f(item as usize))
                     }
+                    ListViewEvent::KeyDown { key, modifiers } => events
+                        .on_key
+                        .as_ref()
+                        .and_then(|f| f(Key::from_code(key), modifiers)),
                     _ => None,
                 }
             };
@@ -314,6 +325,13 @@ impl<M: 'static> ListView<M> {
     /// Maps a right-click to a message.
     pub fn on_context(self, f: impl Fn(usize) -> Option<M> + 'static) -> ListView<M> {
         self.events.borrow_mut().on_context = Some(Box::new(f));
+        self
+    }
+
+    /// Maps a key pressed while the list has focus to a message, together with
+    /// the modifier state at that moment.
+    pub fn on_key(self, f: impl Fn(Key, Modifiers) -> Option<M> + 'static) -> ListView<M> {
+        self.events.borrow_mut().on_key = Some(Box::new(f));
         self
     }
 
