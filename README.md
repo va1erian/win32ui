@@ -114,6 +114,7 @@ already retained), and closures that capture shared mutable app state.
   `CheckBox`, `RadioGroup`, `GroupBox`) | exist (#12–#14) |
 | Menus mapped to `Msg`: menu bar, context popups, owner-drawn dark items | exist (#16) |
 | Draggable `split_row!`/`split_col!` layout nodes; themed `ScrollView` (native vertical scrollbar, wheel, `scroll_to`) | exist (#11) |
+| Custom widgets: Direct2D paint path (`CustomWidget::renderer`/`paint_d2d`) and a built-in vertical scroll host (`Custom::with_vscroll`, `scroll_to`, `Scrolled` event) | exist (#64) |
 | Tabs, tooltips | #15-#17 |
 | Direct2D shapes, clips and transforms (`d2d`, anti-aliased); `ProgressBar` draws with it (GDI fallback) | exists (#22) |
 | DirectWrite text, gradients, bitmaps, rounded clips, colour emoji | #22 follow-up |

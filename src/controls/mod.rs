@@ -30,7 +30,7 @@ pub mod toolbar;
 pub mod treeview;
 
 pub use control::{AsControl, Control, ControlExt, HasText};
-pub use custom::{Custom, CustomWidget, Input, WidgetCx};
+pub use custom::{Custom, CustomWidget, Input, Renderer, WidgetCx};
 pub use listview::ListViewTheme;
 pub use progressbar_theme::ProgressBarTheme;
 

@@ -9,6 +9,7 @@
 //! ```
 
 mod data;
+mod document;
 mod icons;
 mod primitives;
 mod screenshot;
@@ -26,6 +27,7 @@ use win32ui::prelude::*;
 use win32ui::{column, row, split_row};
 
 use self::data::{LibraryTree, TrackModel, generate_tracks};
+use self::document::DocumentWidget;
 use self::icons::dot_icon;
 use self::secondary::PrefsMsg;
 use self::swatch::Swatch;
@@ -190,6 +192,9 @@ pub(crate) fn main() {
             // corners, clips and paths).
             let primitives = primitives::PrimitivesPanel::panel(ui);
 
+            // A tall Direct2D document with its own vertical scroll host,
+            // mapping the scroll offset to `Msg::DocumentScrolled`.
+            let document = document::build(ui);
             // Options panel: a default push button, a check box, a labelled
             // group of typed radios and a disabled button. The radios report
             // values, not indices.
@@ -245,6 +250,7 @@ pub(crate) fn main() {
                     progress.height(dip(8.0)),
                     swatch.height(dip(24.0)),
                     primitives.height(dip(170.0)),
+                    document.height(dip(240.0)),
                     row![
                         // A draggable split: the tree on the left, the search
                         // box and list on the right. `on_moved` lets the app
@@ -279,6 +285,7 @@ pub(crate) fn main() {
                 _search: search,
                 _search_label: search_label,
                 swatch,
+                document,
                 context,
                 _primitives: primitives,
                 options: Options {
@@ -407,6 +414,7 @@ enum Msg {
     Search(String),
     OpenCombo,
     SwatchClicked,
+    DocumentScrolled(Dip),
     OpenPrefs,
     OpenConfirm,
     SecondaryScreenshot,
@@ -463,6 +471,10 @@ struct App {
     _search: Edit<Msg>,
     _search_label: Label,
     swatch: Custom<Swatch, Msg>,
+    /// Owns the document widget's window; it paints and scrolls through its
+    /// `HWND` and reports the offset as `Msg::DocumentScrolled`.
+    #[allow(dead_code)]
+    document: Custom<DocumentWidget, Msg>,
     /// The list's context menu, kept alive for the window's lifetime.
     context: Menu<Msg>,
     // The Direct2D primitives panel (kept alive; never read).
@@ -658,6 +670,9 @@ impl win32ui::App for App {
                 self.swatch.widget().borrow().set_color(next);
                 self.swatch.invalidate();
                 self.set_status("Swatch clicked");
+            }
+            Msg::DocumentScrolled(offset) => {
+                self.set_status(&format!("Document scrolled to {:.0} dip", offset.value()));
             }
             Msg::Copy => match self.list.selected() {
                 None => self.set_status("Nothing selected to copy"),

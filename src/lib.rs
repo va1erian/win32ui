@@ -90,7 +90,7 @@ pub use controls::button::Button;
 pub use controls::checkbox::CheckBox;
 pub use controls::combobox::ComboBox;
 pub use controls::control::{AsControl, Control, ControlExt, HasText};
-pub use controls::custom::{Custom, CustomWidget, Input, WidgetCx};
+pub use controls::custom::{Custom, CustomWidget, Input, Renderer, WidgetCx};
 pub use controls::edit::Edit;
 pub use controls::groupbox::GroupBox;
 pub use controls::label::Label;
@@ -118,12 +118,12 @@ pub mod prelude {
         IntoLayoutItem, Key, LResult, Label, Layout, LayoutExt, LayoutItem, ListModel, ListView,
         ListViewEvent, ListViewTheme, Menu, Message, MinMaxInfo, Modifiers, MouseButton, Notify,
         Placement, Point, ProgressBar, ProgressBarTheme, ProgressState, Proxy, Px, RadioGroup,
-        RadioOption, Rect, Result, RgbaImage, ScrollView, Shortcut, ShortcutParseError, ShowState,
-        SortDirection, Split, Stack, StackDirection, StackSlot, StatusBar, StatusBarTheme,
-        TaskDialog, TaskDialogIcon, Theme, Themed, TimerId, Toolbar, ToolbarItem, ToolbarTheme,
-        TreeEntry, TreeSource, TreeView, TreeViewEvent, Ui, WidgetCx, Win32Error, Window,
-        WindowClass, WindowExStyle, WindowHandle, WindowHandler, WindowSpec, WindowStyle, column,
-        dip, monitor_work_areas, row, run_app, split_col, split_row,
+        RadioOption, Rect, Renderer, Result, RgbaImage, ScrollView, Shortcut, ShortcutParseError,
+        ShowState, SortDirection, Split, Stack, StackDirection, StackSlot, StatusBar,
+        StatusBarTheme, TaskDialog, TaskDialogIcon, Theme, Themed, TimerId, Toolbar, ToolbarItem,
+        ToolbarTheme, TreeEntry, TreeSource, TreeView, TreeViewEvent, Ui, WidgetCx, Win32Error,
+        Window, WindowClass, WindowExStyle, WindowHandle, WindowHandler, WindowSpec, WindowStyle,
+        column, dip, monitor_work_areas, row, run_app, split_col, split_row,
     };
     pub use crate::{clipboard, gdi, looper, quit, run, run_modal};
 }

@@ -8,9 +8,11 @@ use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::UI::Controls::{SetScrollInfo, SetScrollPos};
 use windows::Win32::UI::Shell::DefSubclassProc;
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetScrollInfo, SB_BOTTOM, SB_ENDSCROLL, SB_LINEDOWN, SB_LINEUP, SB_PAGEDOWN, SB_PAGEUP,
-    SB_THUMBPOSITION, SB_THUMBTRACK, SB_TOP, SB_VERT, SCROLLINFO, SIF_DISABLENOSCROLL, SIF_PAGE,
-    SIF_POS, SIF_RANGE, SIF_TRACKPOS, WHEEL_DELTA, WM_MOUSEWHEEL, WM_VSCROLL,
+    GWL_STYLE, GetScrollInfo, GetWindowLongPtrW, SB_BOTTOM, SB_ENDSCROLL, SB_LINEDOWN, SB_LINEUP,
+    SB_PAGEDOWN, SB_PAGEUP, SB_THUMBPOSITION, SB_THUMBTRACK, SB_TOP, SB_VERT, SCROLLINFO,
+    SIF_DISABLENOSCROLL, SIF_PAGE, SIF_POS, SIF_RANGE, SIF_TRACKPOS, SWP_FRAMECHANGED, SWP_NOMOVE,
+    SWP_NOSIZE, SWP_NOZORDER, SetWindowLongPtrW, SetWindowPos, WHEEL_DELTA, WM_MOUSEWHEEL,
+    WM_VSCROLL, WS_VSCROLL,
 };
 
 use crate::hwnd::Hwnd;
@@ -118,6 +120,45 @@ pub(crate) fn track_position(hwnd: Hwnd) -> i32 {
         info.nTrackPos
     } else {
         0
+    }
+}
+
+/// Adds the `WS_VSCROLL` style so `hwnd` shows a standard vertical scrollbar,
+/// then asks Windows to recalculate the non-client frame. Used by the custom
+/// widget scroll host, which is created before the app decides whether it
+/// scrolls.
+pub(crate) fn enable_vertical(hwnd: Hwnd) {
+    // SAFETY: reads and writes the window's style bits and triggers a frame
+    // recalculation; a stale handle makes the calls fail harmlessly.
+    unsafe {
+        let style = GetWindowLongPtrW(raw_hwnd(hwnd), GWL_STYLE);
+        let _ = SetWindowLongPtrW(raw_hwnd(hwnd), GWL_STYLE, style | WS_VSCROLL.0 as isize);
+        let _ = SetWindowPos(
+            raw_hwnd(hwnd),
+            None,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED,
+        );
+    }
+}
+
+/// Reads the vertical scrollbar's current `(nMin, nMax, nPage, nPos)`, for
+/// tests and diagnostics.
+#[cfg(test)]
+pub(crate) fn vertical_info(hwnd: Hwnd) -> (i32, i32, u32, i32) {
+    let mut info = SCROLLINFO {
+        cbSize: size_of::<SCROLLINFO>() as u32,
+        fMask: SIF_RANGE | SIF_PAGE | SIF_POS,
+        ..Default::default()
+    };
+    // SAFETY: `info` is a valid out-parameter; the call only writes it.
+    if unsafe { GetScrollInfo(raw_hwnd(hwnd), SB_VERT, &mut info) }.is_ok() {
+        (info.nMin, info.nMax, info.nPage, info.nPos)
+    } else {
+        (0, 0, 0, 0)
     }
 }
 

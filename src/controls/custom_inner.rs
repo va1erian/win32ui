@@ -5,38 +5,35 @@
 //!
 //! `Custom` owns the child `HWND`; this handler is what that window runs. It
 //! decodes input messages into [`Input`](super::custom::Input), runs
-//! [`CustomWidget::paint`](super::custom::CustomWidget::paint) on `WM_PAINT`,
-//! and hands each input to the widget with a fresh
-//! [`WidgetCx`](super::custom::WidgetCx).
+//! [`CustomWidget::paint`](super::custom::CustomWidget::paint) (or
+//! [`CustomWidget::paint_d2d`](super::custom::CustomWidget::paint_d2d)) on
+//! `WM_PAINT`, drives the optional vertical scroll host, and hands each input
+//! to the widget with a fresh [`WidgetCx`](super::custom::WidgetCx).
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use crate::app::Ui;
-use crate::controls::custom::{CustomWidget, Input, WidgetCx};
-use crate::d2d::D2dSurface;
+use crate::controls::custom::{
+    CustomScroll, CustomWidget, Input, Renderer, RendererState, WidgetCx,
+};
+use crate::d2d::{D2dSurface, pixels_to_dips};
 use crate::gdi::Paint;
 use crate::geometry::Rect;
+use crate::hwnd::Hwnd;
 use crate::message::{LResult, Message};
 use crate::window::{Window, WindowHandler};
-
-/// How a custom widget is drawn. Direct2D is tried on the first paint; if it
-/// cannot be created, the widget stays on GDI for good.
-pub(super) enum Renderer {
-    Untried,
-    Direct2d(Box<D2dSurface>),
-    Gdi,
-}
 
 /// Maps a widget event to an optional app message.
 type EventMapper<W, M> = Box<dyn Fn(<W as CustomWidget>::Event) -> Option<M>>;
 
 /// The state shared between [`Custom`](super::custom::Custom) and its handler:
-/// the widget itself, the event mapper set by `on_event`, and the `Ui` used to
-/// enqueue mapped messages.
+/// the widget itself, the event mapper set by `on_event`, the `Ui` used to
+/// enqueue mapped messages, and the optional vertical scroll host.
 pub(super) struct CustomShared<W: CustomWidget, M> {
     pub(super) widget: Rc<RefCell<W>>,
     pub(super) mapper: RefCell<Option<EventMapper<W, M>>>,
+    pub(super) scroll: RefCell<Option<Rc<CustomScroll<M>>>>,
     pub(super) ui: Ui<M>,
 }
 
@@ -59,74 +56,87 @@ pub(super) struct CustomHandler<W: CustomWidget, M> {
     /// Emits an event by mapping it to the app's `Msg`; built once so painting
     /// and input never allocate.
     pub(super) emit: Rc<dyn Fn(W::Event)>,
-    /// The renderer, chosen on first paint (Direct2D when available).
-    pub(super) renderer: RefCell<Renderer>,
+    pub(super) renderer: RefCell<RendererState>,
 }
 
 impl<W: CustomWidget, M: 'static> CustomHandler<W, M> {
-    /// Draws with Direct2D; `false` means this paint must fall back to GDI.
-    fn paint_d2d(&self, window: &Window) -> bool {
-        let mut renderer = self.renderer.borrow_mut();
-        if matches!(*renderer, Renderer::Untried) {
-            *renderer = D2dSurface::new(window.hwnd()).map_or(Renderer::Gdi, |surface| {
-                Renderer::Direct2d(Box::new(surface))
-            });
-        }
-        let Renderer::Direct2d(surface) = &*renderer else {
-            return false;
-        };
-        let Ok(mut canvas) = surface.begin_draw() else {
-            return false;
-        };
+    fn paint(&self, hwnd: Hwnd) {
         let theme = self.shared.ui.theme();
-        let bounds = canvas.bounds();
-        self.shared
-            .widget
-            .borrow()
-            .paint_d2d(&mut canvas, bounds, &theme);
-        if canvas.end_draw().is_err() {
-            *renderer = Renderer::Gdi;
-            window.invalidate();
+        let widget = self.shared.widget.borrow();
+        let bounds = self.bounds.get();
+
+        if widget.renderer() != Renderer::Direct2D {
+            if let Some(paint) = Paint::begin(hwnd) {
+                widget.paint(paint.canvas(), bounds, &theme);
+            }
+            return;
         }
-        true
+
+        let scroll = self.shared.scroll.borrow();
+        let offset = scroll.as_ref().map_or(0, |s| s.offset());
+        let dpi = self.shared.ui.dpi();
+        let viewport_offset = pixels_to_dips(offset, dpi);
+        drop(scroll);
+
+        let mut renderer = self.renderer.borrow_mut();
+        let painted = renderer.paint(hwnd, |canvas| {
+            canvas.clear(theme.background);
+            let viewport = canvas.bounds();
+            if offset != 0 {
+                canvas.set_translation(0.0, -viewport_offset);
+            }
+            widget.paint_d2d(canvas, viewport, &theme);
+        });
+        drop(renderer);
+
+        // Direct2D could not draw this frame: fall back to the theme background.
+        if !painted && let Some(paint) = Paint::begin(hwnd) {
+            paint.canvas().fill_rect(bounds, theme.background);
+        }
     }
 }
 
 impl<W: CustomWidget, M: 'static> WindowHandler for CustomHandler<W, M> {
     fn message(&self, window: &Window, message: Message) -> Option<LResult> {
+        if D2dSurface::is_erase_background(&message) && self.renderer.borrow().is_direct2d() {
+            return Some(1);
+        }
         match message {
             Message::Paint => {
-                if self.paint_d2d(window) {
-                    return Some(0);
-                }
-                if let Some(paint) = Paint::begin(window.hwnd()) {
-                    let theme = self.shared.ui.theme();
-                    self.shared
-                        .widget
-                        .borrow()
-                        .paint(paint.canvas(), self.bounds.get(), &theme);
-                }
+                self.paint(window.hwnd());
                 Some(0)
             }
             Message::Size { width, height } => {
                 self.bounds.set(Rect::new(0, 0, width, height));
-                if let Renderer::Direct2d(surface) = &*self.renderer.borrow() {
-                    surface.resize(width, height);
+                if let Some(scroll) = self.shared.scroll.borrow().as_ref() {
+                    scroll.on_size();
+                }
+                self.renderer.borrow().resize(width, height);
+                Some(0)
+            }
+            Message::MouseWheel {
+                delta, horizontal, ..
+            } if !horizontal => {
+                if let Some(scroll) = self.shared.scroll.borrow().as_ref() {
+                    scroll.wheel(delta);
                 }
                 Some(0)
             }
-            Message::DpiChanged { dpi, .. } => {
-                if let Renderer::Direct2d(surface) = &*self.renderer.borrow() {
-                    surface.set_dpi(dpi);
+            Message::Other { code, wparam, .. } if crate::sys::scroll::is_vscroll(code) => {
+                if let Some(scroll) = self.shared.scroll.borrow().as_ref()
+                    && let Some(request) = crate::sys::scroll::decode_vscroll(wparam)
+                {
+                    scroll.scroll_request(request);
                 }
-                None
-            }
-            _ if D2dSurface::is_erase_background(&message)
-                && matches!(*self.renderer.borrow(), Renderer::Direct2d(_)) =>
-            {
-                Some(1)
+                Some(0)
             }
             message => {
+                if let Message::KeyDown { key, .. } = &message
+                    && let Some(scroll) = self.shared.scroll.borrow().as_ref()
+                    && scroll.key(*key)
+                {
+                    return Some(0);
+                }
                 let input = Input::from_message(message)?;
                 let mut cx = WidgetCx::new(
                     window.hwnd(),
