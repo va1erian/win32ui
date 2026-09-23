@@ -25,14 +25,14 @@ where
 {
     crate::init();
 
-    let core = Rc::new(Core::new());
+    let (title, width, height, theme) = spec.parts();
+    let core = Rc::new(Core::new(theme));
     let app: Rc<RefCell<Option<A>>> = Rc::new(RefCell::new(None));
     let handler = AppHandler {
         core: Rc::clone(&core),
         app: Rc::clone(&app),
     };
 
-    let (title, width, height, theme) = spec.parts();
     let dpi = sys::dpi::system_dpi();
     let class = WindowClass::register("win32ui.app", theme.background)?;
     let window = Window::create(
@@ -45,6 +45,7 @@ where
         handler,
     )?;
     core.set_hwnd(window.hwnd());
+    window.set_theme(theme);
 
     // Construct the app once the window (and thus `Ui`) exists, then store it
     // where the handler can reach it. Messages raised while `make` runs are

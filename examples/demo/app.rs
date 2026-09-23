@@ -20,13 +20,19 @@ use self::data::{LibraryTree, TrackSource, generate_tracks};
 use self::icons::dot_icon;
 
 pub(crate) fn main() {
-    let theme = Theme::dark();
+    let initial = std::env::var("WIN32UI_DEMO_THEME").unwrap_or_else(|_| "dark".to_string());
+    let theme = if initial.eq_ignore_ascii_case("light") {
+        Theme::light()
+    } else {
+        Theme::dark()
+    };
     let result = win32ui::run_app(
         WindowSpec::new("win32ui demo")
             .size(dip(1080.0), dip(680.0))
             .theme(theme),
         |ui| {
             let dpi = ui.dpi();
+            let theme = ui.theme();
 
             let toolbar = Toolbar::new(
                 ui,
@@ -36,17 +42,16 @@ pub(crate) fn main() {
                         .on_click(|| Some(Msg::Scan)),
                     ToolbarItem::new("Shuffle").on_click(|| Some(Msg::Shuffle)),
                     ToolbarItem::new("Refresh")
-                        .with_icon(dot_icon(theme.text_weak))
+                        .with_icon(dot_icon(theme.text_secondary))
                         .on_click(|| Some(Msg::Refresh)),
+                    ToolbarItem::new("Theme").on_click(|| Some(Msg::ToggleTheme)),
                 ],
-                ToolbarTheme::from_theme(&theme),
             )
             .expect("toolbar");
 
             let tree = TreeView::new(ui, Rect::default(), Box::new(LibraryTree))
                 .expect("tree")
                 .on_select(|item| Some(Msg::TreeSelect(item)));
-            tree.set_colors(theme.background, theme.text);
 
             let columns = [
                 Column::right("#", dip(44.0)),
@@ -71,7 +76,6 @@ pub(crate) fn main() {
                     order: order.clone(),
                     playing: None,
                 }),
-                ListViewTheme::from_theme(&theme),
             )
             .expect("list")
             .on_activate(|item| Some(Msg::Play(item)))
@@ -84,7 +88,7 @@ pub(crate) fn main() {
                 }
             });
 
-            let status = StatusBar::new(ui, StatusBarTheme::from_theme(&theme)).expect("status");
+            let status = StatusBar::new(ui).expect("status");
             status.set_parts(&[-1]);
             status.set_text(0, "Ready");
 
@@ -140,6 +144,7 @@ enum Msg {
     Scan,
     Shuffle,
     Refresh,
+    ToggleTheme,
     TreeSelect(Option<i64>),
     Play(usize),
     Select(usize),
@@ -214,6 +219,15 @@ impl win32ui::App for App {
             Msg::Scan => self.set_status("Scanning… (not wired in this PoC)"),
             Msg::Shuffle => self.set_status("Shuffle requested"),
             Msg::Refresh => self.set_status("Refreshed"),
+            Msg::ToggleTheme => {
+                let next = if ui.theme().is_dark {
+                    Theme::light()
+                } else {
+                    Theme::dark()
+                };
+                ui.set_theme(next);
+                self.set_status("Theme switched");
+            }
             Msg::TreeSelect(item) => {
                 let label = item
                     .map(|id| format!("node {id}"))

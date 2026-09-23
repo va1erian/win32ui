@@ -93,7 +93,6 @@ fn unicode_cell_text_round_trips() {
                 Column::new("Artist", dip(200.0)),
             ],
             Box::new(UnicodeSource { long: long.clone() }),
-            ListViewTheme::from_theme(&Theme::dark()),
         )
         .ok();
         if let Some(list) = &list {
@@ -158,12 +157,12 @@ fn background_colour_is_applied() {
     let matches_for_make = Rc::clone(&matches);
     let created_for_make = Rc::clone(&created);
     let Some(run) = run_app_with_watchdog("win32ui.listbg", move |ui| {
+        ui.set_theme(Theme::dark());
         let list = ListView::new(
             ui,
             Rect::new(0, 0, 200, 200),
             &[Column::new("A", dip(80.0))],
             Box::new(Empty),
-            ListViewTheme::from_theme(&Theme::dark()),
         )
         .ok();
         if list.is_none() {

@@ -73,7 +73,7 @@ pub use message::{
     Command, CommandNotification, HitTest, Key, LResult, Message, MinMaxInfo, Modifiers,
     MouseButton, Notify, TimerId,
 };
-pub use theme::Theme;
+pub use theme::{Theme, Themed};
 pub use units::{Dip, Px, dip};
 pub use window::{
     CursorShape, Icon, Placement, ShowState, Window, WindowClass, WindowExStyle, WindowHandler,
@@ -98,10 +98,10 @@ pub mod prelude {
         CursorShape, Dip, Dock, DockLayout, Error, HasText, HitTest, Hwnd, Icon, Insets, Key,
         LResult, Label, ListSource, ListView, ListViewEvent, ListViewTheme, Message, MinMaxInfo,
         Modifiers, MouseButton, Notify, Placement, Point, Px, Rect, Result, RgbaImage, ShowState,
-        SortDirection, Stack, StackDirection, StackSlot, StatusBar, StatusBarTheme, Theme, TimerId,
-        Toolbar, ToolbarItem, ToolbarTheme, TreeEntry, TreeSource, TreeView, TreeViewEvent, Ui,
-        Win32Error, Window, WindowClass, WindowExStyle, WindowHandler, WindowSpec, WindowStyle,
-        dip, monitor_work_areas, run_app,
+        SortDirection, Stack, StackDirection, StackSlot, StatusBar, StatusBarTheme, Theme, Themed,
+        TimerId, Toolbar, ToolbarItem, ToolbarTheme, TreeEntry, TreeSource, TreeView,
+        TreeViewEvent, Ui, Win32Error, Window, WindowClass, WindowExStyle, WindowHandler,
+        WindowSpec, WindowStyle, dip, monitor_work_areas, run_app,
     };
     pub use crate::{clipboard, gdi, looper, quit, run, run_modal};
 }

@@ -14,6 +14,7 @@ use std::collections::VecDeque;
 use crate::hwnd::Hwnd;
 use crate::message::TimerId;
 use crate::sys;
+use crate::theme::Theme;
 
 /// Maps a close request to an optional app message.
 type CloseMapper<M> = Box<dyn Fn() -> Option<M>>;
@@ -27,16 +28,18 @@ pub(crate) struct Core<M> {
     drain: u32,
     on_close: RefCell<Option<CloseMapper<M>>>,
     on_timer: RefCell<Option<TimerMapper<M>>>,
+    theme: Cell<Theme>,
 }
 
 impl<M> Core<M> {
-    pub(crate) fn new() -> Core<M> {
+    pub(crate) fn new(theme: Theme) -> Core<M> {
         Core {
             hwnd: Cell::new(Hwnd::NULL),
             queue: RefCell::new(VecDeque::new()),
             drain: sys::message::drain_message(),
             on_close: RefCell::new(None),
             on_timer: RefCell::new(None),
+            theme: Cell::new(theme),
         }
     }
 
@@ -98,5 +101,15 @@ impl<M> Core<M> {
     /// Maps a timer tick: `Some(msg)` is enqueued by the caller.
     pub(crate) fn map_timer(&self, id: TimerId) -> Option<M> {
         self.on_timer.borrow().as_ref().and_then(|f| f(id))
+    }
+
+    /// The window's current theme.
+    pub(crate) fn theme(&self) -> Theme {
+        self.theme.get()
+    }
+
+    /// Records a new theme for the window.
+    pub(crate) fn set_theme_value(&self, theme: Theme) {
+        self.theme.set(theme);
     }
 }
