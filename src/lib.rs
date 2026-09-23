@@ -97,6 +97,7 @@ pub use controls::label::Label;
 pub use controls::listview::{
     Column, ColumnWidth, Fill, ListModel, ListView, ListViewEvent, ListViewTheme, SortDirection,
 };
+pub use controls::menu::Menu;
 pub use controls::progressbar::{ProgressBar, ProgressState};
 pub use controls::progressbar_theme::ProgressBarTheme;
 pub use controls::radio::{RadioGroup, RadioOption};
@@ -114,7 +115,7 @@ pub mod prelude {
         CommandNotification, Control, ControlExt, CursorShape, Custom, CustomWidget, Dip, Dock,
         DockLayout, Edit, Error, Fill, GroupBox, HasText, HitTest, Hwnd, Icon, Input, Insets,
         IntoLayoutItem, Key, LResult, Label, Layout, LayoutExt, LayoutItem, ListModel, ListView,
-        ListViewEvent, ListViewTheme, Message, MinMaxInfo, Modifiers, MouseButton, Notify,
+        ListViewEvent, ListViewTheme, Menu, Message, MinMaxInfo, Modifiers, MouseButton, Notify,
         Placement, Point, ProgressBar, ProgressBarTheme, ProgressState, Proxy, Px, RadioGroup,
         RadioOption, Rect, Result, RgbaImage, Shortcut, ShortcutParseError, ShowState,
         SortDirection, Stack, StackDirection, StackSlot, StatusBar, StatusBarTheme, TaskDialog,

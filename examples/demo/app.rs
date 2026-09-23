@@ -94,7 +94,8 @@ pub(crate) fn main() {
                     } else {
                         None
                     }
-                });
+                })
+                .on_context(|_item| Some(Msg::ShowListMenu));
             list.set_model(TrackModel {
                 tracks: Rc::clone(&tracks),
                 order: order.clone(),
@@ -106,6 +107,54 @@ pub(crate) fn main() {
             let status = StatusBar::new(ui).expect("status");
             status.set_parts(&[-1]);
             status.set_text(0, "Ready");
+
+            // A menu bar mapped to `Msg`; enabled items with a shortcut also
+            // register that shortcut as an accelerator, so they fire while any
+            // widget has focus. A submenu, a radio item, a checked item and a
+            // disabled item are all exercised here.
+            let file_menu = Menu::new()
+                .item("&Scan", Shortcut::ctrl(Key::S), || Msg::Scan)
+                .item("&Refresh", Shortcut::ctrl(Key::R), || Msg::Refresh)
+                .separator()
+                .item("&Clear", Shortcut::key(Key::DELETE), || Msg::Clear)
+                .separator()
+                .item("E&xit", Shortcut::ctrl(Key::Q), || Msg::Quit);
+            let view_menu = Menu::new()
+                .radio_item("&Light", None, !theme.is_dark, || {
+                    Msg::SetTheme(ThemeChoice::Light)
+                })
+                .radio_item("&Dark", None, theme.is_dark, || {
+                    Msg::SetTheme(ThemeChoice::Dark)
+                })
+                .separator()
+                .checked_item("Load &remote images", None, false, || {
+                    Msg::RemoteImages(true)
+                })
+                .disabled_item("Always disabled", None, || Msg::Refresh);
+            let theme_switch =
+                Menu::new().item("&Toggle", Shortcut::ctrl(Key::T), || Msg::ToggleTheme);
+            let menubar = Menu::new()
+                .submenu("&File", file_menu)
+                .submenu("&View", view_menu)
+                .submenu("&Theme", theme_switch);
+            ui.set_menu_bar(menubar);
+
+            // A context menu for the list, shown by `Msg::ShowListMenu` at the
+            // cursor. `ui.popup` runs `TrackPopupMenuEx(TPM_RETURNCMD)` and
+            // queues the chosen item's message.
+            let context = Menu::new()
+                .item("&Play", None, || Msg::ContextPlay)
+                .checked_item("&Loop", None, true, || Msg::ContextPlay)
+                .disabled_item("&Transcode", None, || Msg::Refresh)
+                .separator()
+                .submenu(
+                    "&Copy to",
+                    Menu::new()
+                        .item("&Clipboard", Shortcut::ctrl(Key::C), || Msg::Copy)
+                        .item("&File…", None, || Msg::Clear),
+                )
+                .separator()
+                .item("&Delete", Shortcut::key(Key::DELETE), || Msg::ContextDelete);
 
             let sort_label = Label::new(ui, Rect::default(), "Sort by").expect("label");
             let sort = ComboBox::new(
@@ -166,8 +215,10 @@ pub(crate) fn main() {
             let disabled = Button::new(ui, "Disabled").expect("disabled");
             disabled.set_enabled(false);
 
-            // Shortcuts are data and fire whichever widget has focus. `Ctrl+Q`
-            // quits; `Ctrl+T` toggles the theme.
+            // Shortcuts are data and fire whichever widget has focus. The menu
+            // bar already auto-registers its items' shortcuts; these explicit
+            // ones show the `accelerator` API and would be added by hand for
+            // actions that have no menu item.
             ui.accelerator(Shortcut::ctrl(Key::Q), || Some(Msg::Quit));
             ui.accelerator(Shortcut::ctrl(Key::T), || Some(Msg::ToggleTheme));
 
@@ -213,6 +264,7 @@ pub(crate) fn main() {
                 _search: search,
                 _search_label: search_label,
                 swatch,
+                context,
                 options: Options {
                     send,
                     remote,
@@ -254,12 +306,21 @@ pub(crate) fn main() {
             } else {
                 None
             };
-            if auto_close.is_some() || combo_open.is_some() {
+            // `WIN32UI_DEMO_CONTEXT_OPEN` shows the list's context popup so a
+            // dark (owner-drawn) menu can be inspected.
+            let context_open = if std::env::var("WIN32UI_DEMO_CONTEXT_OPEN").is_ok() {
+                ui.set_timer(1000).ok()
+            } else {
+                None
+            };
+            if auto_close.is_some() || combo_open.is_some() || context_open.is_some() {
                 ui.on_timer(move |id| {
                     if Some(id) == auto_close {
                         Some(Msg::AutoClose)
                     } else if Some(id) == combo_open {
                         Some(Msg::OpenCombo)
+                    } else if Some(id) == context_open {
+                        Some(Msg::ShowListMenu)
                     } else {
                         None
                     }
@@ -331,6 +392,9 @@ enum Msg {
     OpenPrefs,
     OpenConfirm,
     SecondaryScreenshot,
+    ShowListMenu,
+    ContextPlay,
+    ContextDelete,
     Quit,
     AutoClose,
 }
@@ -381,6 +445,8 @@ struct App {
     _search: Edit<Msg>,
     _search_label: Label,
     swatch: Custom<Swatch, Msg>,
+    /// The list's context menu, kept alive for the window's lifetime.
+    context: Menu<Msg>,
     // Owns the options panel's windows; read through their `HWND`s.
     #[allow(dead_code)]
     options: Options,
@@ -604,6 +670,9 @@ impl win32ui::App for App {
             }
             Msg::Search(query) => search::apply(self, &query),
             Msg::OpenCombo => self.sort_combo.show_drop_down(true),
+            Msg::ShowListMenu => ui.popup(&self.context, ui.cursor_position()),
+            Msg::ContextPlay => self.set_status("Context: play"),
+            Msg::ContextDelete => self.set_status("Context: delete"),
             Msg::AutoClose => {
                 screenshot::capture_if_requested(ui);
                 ui.quit();

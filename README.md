@@ -112,7 +112,8 @@ already retained), and closures that capture shared mutable app state.
 | Owner-drawn `ProgressBar` (range/value/state/marquee), typed `TaskDialog` | exist (#18) |
 | `Edit` (single/multi-line, password), `ComboBox`, and buttons (`Button`,
   `CheckBox`, `RadioGroup`, `GroupBox`) | exist (#12–#14) |
-| Tabs, menus, tooltips, split/scroll | #11, #15–#17 |
+| Menus mapped to `Msg`: menu bar, context popups, owner-drawn dark items | exist (#16) |
+| Tabs, tooltips, split/scroll | #11, #15, #17 |
 | Direct2D shapes, clips and transforms (`d2d`, anti-aliased); `ProgressBar` draws with it (GDI fallback) | exists (#22) |
 | DirectWrite text, gradients, bitmaps, rounded clips, colour emoji | #22 follow-up |
 
@@ -137,7 +138,7 @@ src/
   d2d/            anti-aliased Direct2D `D2dSurface` / `D2dCanvas` for any `HWND`
   controls/       `ListView`, `TreeView`, `Toolbar`, `StatusBar`, `Label`,
                   `Edit`, `ProgressBar`, `TaskDialog`, `Button`, `CheckBox`,
-                  `RadioGroup`, `GroupBox`
+                  `RadioGroup`, `GroupBox`, `Menu`
   controls/control.rs   `Control`, `AsControl`, `ControlExt`, `HasText`
   controls/registry.rs  routes a control's own notifications back to it
   sys/            ALL `unsafe` lives here; every block has a `// SAFETY:` note
@@ -238,6 +239,29 @@ Controls theme themselves; the app never handles `NM_CUSTOMDRAW`,
 - **New controls opt in** by implementing `Themed`, painting only from tokens,
   registering with `theme::register_themed`, and adding a demo toggle state plus
   light/dark screenshots to the PR.
+
+## Menus
+
+Menus are data mapped to the app's `Msg`, like every other widget:
+
+```rust
+let menu = Menu::new()
+    .item("&Reply", Shortcut::ctrl(Key::R), || Msg::Reply)
+    .separator()
+    .checked_item("&Wrap", None, true, || Msg::ToggleWrap)
+    .disabled_item("&Archive", None, || Msg::Archive);
+ui.set_menu_bar(menu);
+// then, from a widget event: `ui.popup(&context, ui.cursor_position())`
+```
+
+`Ui::set_menu_bar` installs the bar and registers each enabled item's
+`Shortcut` as an accelerator, so the menu and the keyboard always agree.
+`Ui::popup` runs `TrackPopupMenuEx(TPM_RETURNCMD)` and queues the chosen
+item's message; as with every widget event, `App::update` is never re-entered.
+On a dark theme the items are owner-drawn (`MF_OWNERDRAW`, painted from theme
+tokens on `WM_MEASUREITEM`/`WM_DRAWITEM`); on the light theme the native menu
+is used, and switching the theme rebuilds the bar in place. Only documented
+APIs are used — no `uxtheme` ordinals.
 
 ## Dark theming notes
 

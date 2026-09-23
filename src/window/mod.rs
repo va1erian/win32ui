@@ -21,7 +21,7 @@ use windows::Win32::UI::WindowsAndMessaging as wam;
 use crate::color::Color;
 use crate::error::Result;
 use crate::gdi::Brush;
-use crate::geometry::Rect;
+use crate::geometry::{Rect, Size};
 use crate::hwnd::Hwnd;
 use crate::message::{LResult, Message, MinMaxInfo, TimerId};
 use crate::sys;
@@ -347,6 +347,13 @@ impl Window {
     /// being handled. A no-op outside that message.
     pub fn set_min_max_info(&self, info: MinMaxInfo) {
         sys::message::write_min_max_info(info);
+    }
+
+    /// Records the size an owner-drawn item should report while handling the
+    /// [`Message::MeasureItem`] currently being dispatched. A no-op outside
+    /// that message.
+    pub fn set_measured_size(&self, size: Size) {
+        sys::message::set_measured_size(size);
     }
 }
 

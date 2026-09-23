@@ -83,6 +83,13 @@ pub enum Message {
         control: Hwnd,
         /// The control's id.
         id: usize,
+        /// `itemID`: the menu command id, or the control's item index.
+        item: usize,
+        /// `itemData`: the application value set when the item was added. For
+        /// owner-drawn menus this is win32ui's own render id.
+        data: usize,
+        /// Whether this is an owner-drawn *menu* item (`CtlType == ODT_MENU`).
+        menu: bool,
         /// `itemAction` (`ODA_*` from `Winuser.h`): why painting was requested.
         /// Owner-drawn widgets usually repaint unconditionally.
         action: u32,
@@ -94,6 +101,19 @@ pub enum Message {
         dc: isize,
         /// The rectangle to paint, in the control's client coordinates.
         area: Rect,
+    },
+    /// `WM_MEASUREITEM`: an owner-drawn control (or menu) is asked how large one
+    /// item should be. Only meaningful while handling it; write the size back
+    /// with [`Window::set_measured_size`](crate::Window::set_measured_size).
+    MeasureItem {
+        /// The control id, or `0` for a menu.
+        id: usize,
+        /// `itemID`: the menu command id, or the control's item index.
+        item: usize,
+        /// `itemData`: the application value set when the item was added.
+        data: usize,
+        /// Whether this is an owner-drawn *menu* item (`CtlType == ODT_MENU`).
+        menu: bool,
     },
     /// `WM_KEYDOWN` / `WM_SYSKEYDOWN`.
     KeyDown {

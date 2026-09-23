@@ -18,6 +18,7 @@ pub(crate) mod edit_text;
 pub mod groupbox;
 pub mod label;
 pub mod listview;
+pub mod menu;
 pub mod progressbar;
 pub mod progressbar_theme;
 pub mod radio;

@@ -40,6 +40,12 @@ pub(crate) fn draw_focused(state: u32) -> bool {
 pub(crate) struct DrawRequest {
     /// The owner-drawn control.
     pub hwnd: HWND,
+    /// `CtlType` (`ODT_*` from `Winuser.h`): menu, button, combo box, …
+    pub control_type: u32,
+    /// `itemID`: the menu command id, or the control's item index.
+    pub item_id: usize,
+    /// `itemData`: the application-defined value set when the item was added.
+    pub item_data: usize,
     /// `itemState` (`ODS_*`).
     pub state: u32,
     /// A raw `HDC` value, valid while handling the message.
@@ -59,6 +65,9 @@ pub(crate) fn draw_request(lparam: isize) -> Option<DrawRequest> {
     let info = unsafe { &*(lparam as *const DRAWITEMSTRUCT) };
     Some(DrawRequest {
         hwnd: info.hwndItem,
+        control_type: info.CtlType.0,
+        item_id: info.itemID as usize,
+        item_data: info.itemData,
         state: info.itemState.0,
         hdc: info.hDC.0 as isize,
         rect: Rect::new(

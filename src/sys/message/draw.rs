@@ -27,6 +27,9 @@ pub(crate) fn decode_draw(wparam: WPARAM, lparam: LPARAM) -> Option<Message> {
     Some(Message::DrawItem {
         control: hwnd_from(request.hwnd),
         id: wparam.0,
+        item: request.item_id,
+        data: request.item_data,
+        menu: request.control_type == windows::Win32::UI::Controls::ODT_MENU.0,
         action,
         state: request.state,
         dc: request.hdc,
