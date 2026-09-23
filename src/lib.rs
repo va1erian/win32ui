@@ -37,7 +37,7 @@
 //! }
 //! ```
 //!
-//! The full working program lives in `examples/demo.rs`.
+//! The full working program lives in `examples/demo/`.
 
 // The crate is Win32-only. On other targets it compiles to an empty crate so
 // that dependants (e.g. a cross-platform workspace) can still `cargo check`.

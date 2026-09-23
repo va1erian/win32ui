@@ -1,7 +1,7 @@
 //! Window classes, creation, the shared window procedure, and per-window
 //! operations.
 
-use core::cell::RefCell;
+use core::cell::{Cell, RefCell};
 use core::ffi::c_void;
 use std::collections::HashSet;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -177,6 +177,9 @@ thread_local! {
     /// `HWND`s (as `isize`) currently inside [`dispatch`], to detect and
     /// break reentrant calls into the same handler.
     static ACTIVE_HANDLERS: RefCell<HashSet<isize>> = RefCell::new(HashSet::new());
+
+    /// Source of unique, non-zero `SetTimer` ids for this thread.
+    static NEXT_TIMER_ID: Cell<usize> = const { Cell::new(0) };
 }
 
 /// The window procedure shared by every class registered by this crate.
@@ -371,11 +374,21 @@ pub(crate) fn show(hwnd: Hwnd, kind: ShowKind) {
     }
 }
 
-/// Starts a timer, returning its id.
+/// Starts a timer and returns the id it was given.
+///
+/// With a non-null window handle, `SetTimer` uses `nIDEvent` itself as the
+/// timer id; its return value is only documented as nonzero on success, so it
+/// is not the id. This passes a fresh nonzero id and returns that id, which is
+/// what `WM_TIMER` reports back in `wparam`.
 pub(crate) fn set_timer(hwnd: Hwnd, millis: u32) -> Result<usize> {
+    let id = NEXT_TIMER_ID.with(|next| {
+        let id = next.get().wrapping_add(1).max(1);
+        next.set(id);
+        id
+    });
     // SAFETY: `None` installs a WM_TIMER message rather than a callback.
-    let id = unsafe { SetTimer(Some(raw_hwnd(hwnd)), 0, millis, None) };
-    if id == 0 {
+    let created = unsafe { SetTimer(Some(raw_hwnd(hwnd)), id, millis, None) };
+    if created == 0 {
         Err(win32_error(windows::core::Error::from_thread()))
     } else {
         Ok(id)

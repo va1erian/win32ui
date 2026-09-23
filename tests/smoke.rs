@@ -94,3 +94,81 @@ fn window_with_controls_round_trips() {
     window.destroy();
     assert!(!window.is_alive());
 }
+
+/// The timer's id must survive the round trip: `WM_TIMER` has to report the
+/// id the handler gave `SetTimer`, otherwise a handler can never match it.
+///
+/// A second, slow "watchdog" timer makes the test fail rather than hang if the
+/// 50 ms timer never fires; the two ids differing also shows that starting a
+/// second timer no longer replaces the first.
+#[test]
+fn timer_id_round_trips() {
+    use std::cell::Cell;
+    use std::rc::Rc;
+
+    win32ui::init();
+
+    struct TimerHandler {
+        under_test: Rc<Cell<Option<TimerId>>>,
+        watchdog: Rc<Cell<Option<TimerId>>>,
+        fired: Rc<Cell<bool>>,
+    }
+
+    impl WindowHandler for TimerHandler {
+        fn message(&mut self, window: &Window, message: Message) -> Option<LResult> {
+            match message {
+                Message::Create => {
+                    self.under_test.set(window.set_timer(50).ok());
+                    self.watchdog.set(window.set_timer(3000).ok());
+                }
+                Message::Timer { id } if Some(id) == self.under_test.get() => {
+                    self.fired.set(true);
+                    window.destroy();
+                    win32ui::quit(0);
+                }
+                Message::Timer { id } if Some(id) == self.watchdog.get() => {
+                    window.destroy();
+                    win32ui::quit(0);
+                }
+                _ => {}
+            }
+            None
+        }
+    }
+
+    let theme = Theme::light();
+    let Ok(class) = WindowClass::register("win32ui.timer", theme.background) else {
+        return;
+    };
+    let under_test = Rc::new(Cell::new(None));
+    let watchdog = Rc::new(Cell::new(None));
+    let fired = Rc::new(Cell::new(false));
+    let Ok(window) = Window::create(
+        class,
+        None,
+        WindowStyle::overlapped(),
+        WindowExStyle::new(),
+        Rect::new(0, 0, 320, 200),
+        "timer",
+        TimerHandler {
+            under_test: Rc::clone(&under_test),
+            watchdog: Rc::clone(&watchdog),
+            fired: Rc::clone(&fired),
+        },
+    ) else {
+        return;
+    };
+
+    window.show();
+    win32ui::run();
+    assert!(
+        under_test.get().is_some() && watchdog.get().is_some(),
+        "the timers were not started"
+    );
+    assert_ne!(
+        under_test.get(),
+        watchdog.get(),
+        "two timers on one window got the same id"
+    );
+    assert!(fired.get(), "WM_TIMER never reported the SetTimer id");
+}

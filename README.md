@@ -68,7 +68,7 @@ intercept the header's `NM_CUSTOMDRAW` and paint it dark too.
 3. Decode application-level notifications into a `…Event` enum and add a
    `Notify::…` variant in `message.rs` + `sys::message::decode_notify`.
 4. Re-export it from `lib.rs` (and `prelude`), and exercise it in
-   `examples/demo.rs` + `tests/smoke.rs`.
+   `examples/demo/` + `tests/smoke.rs`.
 
 ## Dark theming notes
 
