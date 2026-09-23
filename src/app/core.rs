@@ -22,6 +22,7 @@ use crate::theme::Theme;
 use crate::window::Window;
 
 use super::layout::split;
+use super::layout::tabs;
 use super::layout::{Content, Layout, LayoutItem, Placed};
 use super::ui::Ui;
 
@@ -253,6 +254,7 @@ impl<M> Core<M> {
                     self.dividers.borrow_mut().push(window);
                 }
             }
+            Content::Tabs(node) => tabs::build_tabs(ui, node),
             Content::Widget(_) => {}
         }
     }

@@ -2,24 +2,25 @@
 //! in isolation from Win32.
 
 use super::split::Split;
+use super::tabs::Tabs;
 use super::*;
 use crate::units::dip;
 
 /// A fake widget at `bounds`, for pure tree-to-rects tests.
 fn leaf(bounds: Rect) -> WidgetHandle {
-    WidgetHandle {
-        hwnd: Hwnd::NULL,
-        bounds: Rc::new(Cell::new(bounds)),
-        visible: Rc::new(Cell::new(true)),
-    }
+    WidgetHandle::new(
+        Hwnd::NULL,
+        Rc::new(Cell::new(bounds)),
+        Rc::new(Cell::new(true)),
+    )
 }
 
 fn hidden(bounds: Rect) -> WidgetHandle {
-    WidgetHandle {
-        hwnd: Hwnd::NULL,
-        bounds: Rc::new(Cell::new(bounds)),
-        visible: Rc::new(Cell::new(false)),
-    }
+    WidgetHandle::new(
+        Hwnd::NULL,
+        Rc::new(Cell::new(bounds)),
+        Rc::new(Cell::new(false)),
+    )
 }
 
 fn widget(handle: WidgetHandle, sizing: Sizing) -> LayoutItem {
@@ -254,6 +255,94 @@ fn split_collapses_to_the_visible_pane() {
     let placed = split_layout(split).compute(Rect::new(0, 0, 100, 40), 96);
     assert_eq!(placed.len(), 1);
     assert_eq!(placed[0].rect, Rect::new(0, 0, 100, 40));
+}
+
+#[test]
+fn auto_slots_do_not_ratchet_under_overflow() {
+    // An over-subscribed column: an `Auto` widget (natural height 100) and two
+    // fixed slots. Overflow shrinking resizes the widget; without a cached
+    // natural size its shrunken height becomes the next pass's natural size,
+    // which shrinks it again — a one-pixel creep on every relayout.
+    let mut layout = Layout::column();
+    layout
+        .slots
+        .push(widget(leaf(Rect::new(0, 0, 0, 100)), Sizing::Auto));
+    layout
+        .slots
+        .push(widget(leaf(Rect::default()), Sizing::Fixed(dip(90.0))));
+    layout
+        .slots
+        .push(widget(leaf(Rect::default()), Sizing::Fixed(dip(90.0))));
+
+    let area = Rect::new(0, 0, 100, 100);
+    let mut rect = None;
+    for _ in 0..4 {
+        let placed = layout.compute(area, 96);
+        if let Some(previous) = rect {
+            assert_eq!(
+                previous, placed[0].rect,
+                "an Auto slot must not shrink on every relayout"
+            );
+        }
+        rect = Some(placed[0].rect);
+        for placed in &placed {
+            placed.handle.set_bounds(placed.rect);
+        }
+    }
+}
+
+#[test]
+fn tabs_show_only_the_selected_page() {
+    let on_page = leaf(Rect::default());
+    let off_page = leaf(Rect::default());
+    let on_visible = Rc::clone(&on_page.visible);
+    let off_visible = Rc::clone(&off_page.visible);
+
+    let tabs = Tabs::new()
+        .page("One", widget(on_page, Sizing::Fill(1)))
+        .page("Two", widget(off_page, Sizing::Fill(1)));
+    let tree = Layout::row().item(tabs);
+
+    let placed = tree.compute(Rect::new(0, 0, 200, 100), 96);
+    assert_eq!(placed.len(), 1, "only the selected page is laid out");
+    assert_eq!(
+        placed[0].rect,
+        Rect::new(0, 0, 200, 100),
+        "page fills the node"
+    );
+    assert!(on_visible.get(), "the selected page is shown");
+    assert!(!off_visible.get(), "the unselected page is hidden");
+}
+
+#[test]
+fn tabs_honour_the_initial_selection() {
+    let first = leaf(Rect::default());
+    let second = leaf(Rect::default());
+    let second_visible = Rc::clone(&second.visible);
+
+    let tabs = Tabs::new()
+        .page("One", widget(first, Sizing::Fill(1)))
+        .page("Two", widget(second, Sizing::Fill(1)))
+        .selected(1);
+    let placed = Layout::row()
+        .item(tabs)
+        .compute(Rect::new(0, 0, 200, 100), 96);
+
+    assert_eq!(placed.len(), 1);
+    assert!(second_visible.get(), "the initially selected page is shown");
+}
+
+#[test]
+fn tabs_macro_builds_pages_in_order() {
+    let tabs = crate::tabs![
+        ("One", widget(leaf(Rect::default()), Sizing::Fill(1))),
+        ("Two", widget(leaf(Rect::default()), Sizing::Fill(1))),
+    ];
+    let node = (&tabs).into_layout_item();
+    let Content::Tabs(node) = node.content else {
+        panic!("expected a tabs node");
+    };
+    assert_eq!(node.page_count(), 2);
 }
 
 #[test]

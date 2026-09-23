@@ -115,7 +115,8 @@ already retained), and closures that capture shared mutable app state.
 | Menus mapped to `Msg`: menu bar, context popups, owner-drawn dark items | exist (#16) |
 | Draggable `split_row!`/`split_col!` layout nodes; themed `ScrollView` (native vertical scrollbar, wheel, `scroll_to`) | exist (#11) |
 | Custom widgets: Direct2D paint path (`CustomWidget::renderer`/`paint_d2d`) and a built-in vertical scroll host (`Custom::with_vscroll`, `scroll_to`, `Scrolled` event) | exist (#64) |
-| Tabs, tooltips | #15-#17 |
+| `tabs!` paged layout node: native `SysTabControl32`, owner-drawn tabs, pages are layout subtrees | exists (#15) |
+| Tooltips | #17 |
 | Direct2D shapes, clips and transforms (`d2d`, anti-aliased); `ProgressBar` draws with it (GDI fallback) | exists (#22) |
 | DirectWrite text, gradients, bitmaps, rounded clips, colour emoji | #22 follow-up |
 
@@ -137,6 +138,7 @@ src/
   app/child.rs    secondary windows: `open_window`, `open_modal`, `WindowHandle`
   app/layout/     the layout tree: `column!`/`row!`, `fill`/`width`, relayout
   app/layout/split/   `Split`: `split_row!`/`split_col!` and the divider widget
+  app/layout/tabs/    `Tabs`: `tabs!` pages a native tab control's layout subtrees
   gdi/            RAII `Font` / `Brush` / `Pen` / `Bitmap`, `Paint`, `Canvas`
   d2d/            anti-aliased Direct2D `D2dSurface` / `D2dCanvas` for any `HWND`
   controls/       `ListView`, `TreeView`, `Toolbar`, `StatusBar`, `Label`,
@@ -265,6 +267,27 @@ On a dark theme the items are owner-drawn (`MF_OWNERDRAW`, painted from theme
 tokens on `WM_MEASUREITEM`/`WM_DRAWITEM`); on the light theme the native menu
 is used, and switching the theme rebuilds the bar in place. Only documented
 APIs are used — no `uxtheme` ordinals.
+
+## Tabs
+
+`tabs!` is a paged layout node: its pages are layout subtrees, shown and hidden
+automatically, so the app never places them or handles a resize for them.
+
+```rust
+let tabs = tabs![
+    ("General", column![general_label.fill(1)]),
+    ("Accounts", column![accounts_label.fill(1)]),
+]
+.on_change(|index| Some(Msg::Tab(index)));
+ui.set_layout(column![tabs]);
+```
+
+The node owns a native `SysTabControl32`; the selected page is laid out into the
+control's display area (`TCM_ADJUSTRECT`), and every other page is hidden (so it
+takes no space and cannot receive focus). The native tabs ignore dark mode, so
+the control is `TCS_OWNERDRAWFIXED` and each tab is painted from theme tokens on
+`WM_DRAWITEM` — including hover, selected and focus states — with a small
+subclass tracking the hot tab and `Ctrl+Tab`.
 
 ## Dark theming notes
 

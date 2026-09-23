@@ -16,6 +16,7 @@ mod ui;
 
 pub use child::WindowHandle;
 pub use layout::split::Split;
+pub use layout::tabs::Tabs;
 pub use layout::{IntoLayoutItem, Layout, LayoutExt, LayoutItem};
 pub use proxy::Proxy;
 pub use run::run_app;
