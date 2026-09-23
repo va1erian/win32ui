@@ -15,7 +15,8 @@ use crate::hwnd::Hwnd;
 use crate::message::{Message, MouseButton};
 use crate::sys;
 use crate::theme::Theme;
-use crate::window::{Window, WindowClass, WindowExStyle, WindowHandler, WindowStyle, dpi_scale};
+use crate::units::dip;
+use crate::window::{Window, WindowClass, WindowExStyle, WindowHandler, WindowStyle};
 
 const WM_COMMAND: u32 = 0x0111;
 const BN_CLICKED: u16 = 0;
@@ -83,6 +84,7 @@ struct ToolbarState {
     items: Vec<ToolbarItem>,
     theme: ToolbarTheme,
     font: Font,
+    dpi: u32,
     widths: Vec<i32>,
     rects: Vec<Rect>,
     bounds: Rect,
@@ -94,17 +96,17 @@ struct ToolbarState {
 impl ToolbarState {
     fn new(parent: Hwnd, items: Vec<ToolbarItem>, theme: ToolbarTheme, dpi: u32) -> Result<Self> {
         let font = Font::system_ui(dpi)?;
-        let padding = dpi_scale(10, dpi);
-        let icon = dpi_scale(16, dpi);
-        let gap = dpi_scale(6, dpi);
-        let height = font.pixel_height() + dpi_scale(12, dpi);
+        let padding = dip(10.0).to_px(dpi).value();
+        let icon = dip(16.0).to_px(dpi).value();
+        let gap = dip(6.0).to_px(dpi).value();
+        let height = font.pixel_height() + dip(12.0).to_px(dpi).value();
 
         let widths = items
             .iter()
             .map(|item| {
                 let text = sys::gdi::measure_text(font.raw(), &item.label).width;
                 let icon_width = if item.icon.is_some() { icon + gap } else { 0 };
-                (text + icon_width + padding * 2).max(dpi_scale(32, dpi))
+                (text + icon_width + padding * 2).max(dip(32.0).to_px(dpi).value())
             })
             .collect();
 
@@ -113,6 +115,7 @@ impl ToolbarState {
             items,
             theme,
             font,
+            dpi,
             widths,
             rects: Vec::new(),
             bounds: Rect::new(0, 0, 0, height),
@@ -145,7 +148,7 @@ impl ToolbarState {
 
     fn draw(&self, canvas: &crate::gdi::Canvas) {
         canvas.fill_rect(self.bounds, self.theme.background);
-        let radius = dpi_scale(4, 96);
+        let radius = dip(4.0).to_px(self.dpi).value();
         for (index, rect) in self.rects.iter().enumerate() {
             if index >= self.items.len() {
                 break;
@@ -157,13 +160,13 @@ impl ToolbarState {
             } else {
                 self.theme.button
             };
-            let button = rect.shrink(dpi_scale(2, 96));
+            let button = rect.shrink(dip(2.0).to_px(self.dpi).value());
             canvas.round_rect(button, radius, background, None);
 
-            let mut text_rect = button.shrink(dpi_scale(6, 96));
+            let mut text_rect = button.shrink(dip(6.0).to_px(self.dpi).value());
             if let Some(icon) = &self.items[index].icon {
                 let icon_size = icon.size();
-                let inset = dpi_scale(6, 96);
+                let inset = dip(6.0).to_px(self.dpi).value();
                 let top = button.top + (button.height() - icon_size.height) / 2;
                 let icon_rect = Rect::new(
                     button.left + inset,

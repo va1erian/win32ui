@@ -36,7 +36,7 @@ fn reentrant_notification_reaches_parent() {
                         window.hwnd(),
                         1,
                         Rect::new(0, 0, 200, 200),
-                        &[Column::new("A", 80)],
+                        &[Column::new("A", dip(80.0))],
                         Box::new(TestRows),
                         ListViewTheme::from_theme(&Theme::light()),
                         96,

@@ -21,7 +21,7 @@ use crate::geometry::Rect;
 use crate::hwnd::Hwnd;
 use crate::sys;
 use crate::theme::Theme;
-use crate::window::dpi_scale;
+use crate::units::Dip;
 
 const LVS_REPORT: u32 = 0x0000_0001;
 const LVS_SHOWSELALWAYS: u32 = 0x0000_0008;
@@ -37,15 +37,15 @@ const CDDS_ITEMPREPAINT: u32 = 0x0001_0001;
 pub struct Column {
     /// Header label.
     pub title: String,
-    /// Initial width at 96 DPI.
-    pub width: i32,
+    /// Initial width as a [`Dip`] design value.
+    pub width: Dip,
     /// Whether the column's cells are right-aligned.
     pub align_right: bool,
 }
 
 impl Column {
     /// A left-aligned column.
-    pub fn new(title: impl Into<String>, width: i32) -> Column {
+    pub fn new(title: impl Into<String>, width: Dip) -> Column {
         Column {
             title: title.into(),
             width,
@@ -54,7 +54,7 @@ impl Column {
     }
 
     /// A right-aligned column (numbers, durations).
-    pub fn right(title: impl Into<String>, width: i32) -> Column {
+    pub fn right(title: impl Into<String>, width: Dip) -> Column {
         Column {
             title: title.into(),
             width,
@@ -408,7 +408,7 @@ impl ListView {
                 hwnd,
                 index as i32,
                 &column.title,
-                dpi_scale(column.width, dpi),
+                column.width.to_px(dpi).value(),
                 column.align_right,
             );
         }
@@ -538,6 +538,7 @@ mod tests {
     use crate::geometry::Rect;
     use crate::message::{LResult, Message};
     use crate::theme::Theme;
+    use crate::units::dip;
     use crate::window::{Window, WindowClass, WindowExStyle, WindowHandler, WindowStyle};
 
     struct NullHandler;
@@ -615,7 +616,10 @@ mod tests {
             window.hwnd(),
             1,
             Rect::new(0, 0, 700, 500),
-            &[Column::new("Title", 300), Column::new("Artist", 200)],
+            &[
+                Column::new("Title", dip(300.0)),
+                Column::new("Artist", dip(200.0)),
+            ],
             source,
             ListViewTheme::from_theme(&theme),
             96,
@@ -659,7 +663,7 @@ mod tests {
             window.hwnd(),
             1,
             Rect::new(0, 0, 200, 200),
-            &[Column::new("A", 80)],
+            &[Column::new("A", dip(80.0))],
             Box::new(Empty),
             ListViewTheme::from_theme(&theme),
             96,

@@ -52,6 +52,7 @@ mod hwnd;
 mod layout;
 mod message;
 mod theme;
+mod units;
 mod window;
 
 pub mod controls;
@@ -67,7 +68,8 @@ pub use hwnd::Hwnd;
 pub use layout::{Dock, DockLayout, Insets, Stack, StackDirection, StackSlot};
 pub use message::{Command, CommandNotification, LResult, Message, MouseButton, Notify, TimerId};
 pub use theme::Theme;
-pub use window::{Window, WindowClass, WindowExStyle, WindowHandler, WindowStyle, dpi_scale};
+pub use units::{Dip, Px, dip};
+pub use window::{Window, WindowClass, WindowExStyle, WindowHandler, WindowStyle};
 
 pub use controls::label::Label;
 pub use controls::listview::{
@@ -82,12 +84,12 @@ pub use looper::{quit, run};
 /// Everything a frontend typically needs, in one `use`.
 pub mod prelude {
     pub use crate::{
-        Color, Column, Command, CommandNotification, Dock, DockLayout, Error, Hwnd, Insets,
+        Color, Column, Command, CommandNotification, Dip, Dock, DockLayout, Error, Hwnd, Insets,
         LResult, Label, ListSource, ListView, ListViewEvent, ListViewTheme, Message, MouseButton,
-        Notify, Point, Rect, Result, RgbaImage, SortDirection, Stack, StackDirection, StackSlot,
-        StatusBar, StatusBarTheme, Theme, TimerId, Toolbar, ToolbarItem, ToolbarTheme, TreeEntry,
-        TreeSource, TreeView, TreeViewEvent, Win32Error, Window, WindowClass, WindowExStyle,
-        WindowHandler, WindowStyle, dpi_scale,
+        Notify, Point, Px, Rect, Result, RgbaImage, SortDirection, Stack, StackDirection,
+        StackSlot, StatusBar, StatusBarTheme, Theme, TimerId, Toolbar, ToolbarItem, ToolbarTheme,
+        TreeEntry, TreeSource, TreeView, TreeViewEvent, Win32Error, Window, WindowClass,
+        WindowExStyle, WindowHandler, WindowStyle, dip,
     };
     pub use crate::{gdi, looper, quit, run};
 }

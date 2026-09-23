@@ -59,7 +59,10 @@ fn window_with_controls_round_trips() {
         window.hwnd(),
         2,
         Rect::new(200, 0, 640, 400),
-        &[Column::new("Title", 160), Column::right("Time", 60)],
+        &[
+            Column::new("Title", dip(160.0)),
+            Column::right("Time", dip(60.0)),
+        ],
         Box::new(TestRows),
         ListViewTheme::from_theme(&theme),
         96,
