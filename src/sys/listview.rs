@@ -112,6 +112,23 @@ pub(crate) fn lv_subitem_rect(hwnd: Hwnd, item: i32, sub_item: i32) -> crate::ge
     }
 }
 
+/// The rectangle of one cell's text, always clipped to that column.
+///
+/// `LVM_GETSUBITEMRECT` cannot do this for subitem 0: with `LVIR_BOUNDS` it
+/// reports the entire row, and `LVIR_LABEL` measures the text — which, on a
+/// virtual list, re-enters `LVN_GETDISPINFO` synchronously, i.e. a nested
+/// notification while the registry already holds this control. So column 0
+/// clamps the row bounds to the first column's width instead; both queries
+/// are pure geometry and never notify.
+pub(crate) fn lv_cell_rect(hwnd: Hwnd, item: i32, sub_item: i32) -> crate::geometry::Rect {
+    if sub_item <= 0 {
+        let mut row = lv_subitem_rect(hwnd, item, 0);
+        row.right = row.left + lv_column_width(hwnd, 0).max(0);
+        return row;
+    }
+    lv_subitem_rect(hwnd, item, sub_item)
+}
+
 /// Reads back a cell's text, driving the owner-data request path.
 pub(crate) fn lv_item_text(hwnd: Hwnd, item: i32, sub_item: i32) -> String {
     let mut buffer = vec![0u16; 1024];

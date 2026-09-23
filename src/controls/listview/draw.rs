@@ -19,6 +19,7 @@ use crate::gdi::{Brush, Canvas, Font, TextFormat};
 use crate::geometry::Rect;
 use crate::hwnd::Hwnd;
 use crate::sys;
+use crate::units::Dip;
 
 // `CDDS_*` stage codes, from `commctrl.h`.
 const CDDS_PREPAINT: u32 = 0x0000_0001;
@@ -97,7 +98,10 @@ impl<T> ListViewInner<T> {
             .filter(|(_, column)| column.width != ColumnWidth::Fill)
             .map(|(index, _)| sys::listview::lv_column_width(view, index))
             .sum();
-        let each = (client - fixed).max(0) / fills as i32;
+        // A `Fill` column never collapses to zero under a narrow window; the
+        // control scrolls horizontally instead.
+        let minimum = Dip::new(48.0).to_px(self.dpi).value();
+        let each = ((client - fixed) / fills as i32).max(minimum);
         for (index, column) in self.columns.iter().enumerate() {
             if column.width == ColumnWidth::Fill {
                 sys::listview::lv_set_column_width(view, index, each);
@@ -145,7 +149,7 @@ impl<T> ListViewInner<T> {
         canvas.fill_rect(row, background);
         canvas.with_font(&self.font, |canvas| {
             for (column, spec) in self.columns.iter().enumerate() {
-                let cell = sys::listview::lv_subitem_rect(hwnd, item, column as i32);
+                let cell = sys::listview::lv_cell_rect(hwnd, item, column as i32);
                 if cell.is_empty() {
                     continue;
                 }
