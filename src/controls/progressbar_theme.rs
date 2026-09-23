@@ -8,6 +8,8 @@ use crate::theme::Theme;
 /// Colours for the progress bar.
 #[derive(Clone, Copy, Debug)]
 pub struct ProgressBarTheme {
+    /// The colour behind the bar, visible outside its rounded ends.
+    pub background: Color,
     /// The empty portion of the bar.
     pub track: Color,
     /// The fill for [`ProgressState::Normal`](super::progressbar::ProgressState::Normal).
@@ -23,6 +25,7 @@ impl ProgressBarTheme {
     /// calling this for a custom look.
     pub fn from_theme(theme: &Theme) -> ProgressBarTheme {
         ProgressBarTheme {
+            background: theme.background,
             track: theme.border,
             fill: theme.accent,
             paused: theme.warning,
@@ -40,6 +43,7 @@ mod tests {
     fn follows_semantic_tokens() {
         for theme in [Theme::light(), Theme::dark()] {
             let bar = ProgressBarTheme::from_theme(&theme);
+            assert_eq!(bar.background, theme.background);
             assert_eq!(bar.track, theme.border);
             assert_eq!(bar.fill, theme.accent);
             assert_eq!(bar.paused, theme.warning);

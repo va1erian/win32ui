@@ -80,6 +80,10 @@ pub enum Error {
     /// A task dialog was configured in a way that cannot be shown.
     #[error("invalid task dialog: {0}")]
     TaskDialog(String),
+
+    /// A Direct2D surface was misused (for example, drawn to re-entrantly).
+    #[error("invalid Direct2D use: {0}")]
+    Direct2d(&'static str),
 }
 
 /// Convenience alias used throughout the crate.

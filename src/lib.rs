@@ -59,6 +59,7 @@ mod window;
 
 pub mod clipboard;
 pub mod controls;
+pub mod d2d;
 pub mod gdi;
 pub mod looper;
 mod sys;

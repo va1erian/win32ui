@@ -1,4 +1,7 @@
 use super::*;
+use crate::controls::progressbar_theme::ProgressBarTheme;
+use crate::geometry::Rect;
+use crate::theme::Theme;
 
 fn state() -> ProgressBarState {
     ProgressBarState {
@@ -70,4 +73,27 @@ fn state_selects_the_fill_colour() {
         state.state = progress;
         assert_eq!(state.fill_color(), expected);
     }
+}
+
+#[test]
+fn float_geometry_matches_the_pixel_geometry() {
+    let mut state = state();
+    state.set_value(25);
+    assert_eq!(state.value_width(200.0), 50.0);
+    assert_eq!(state.value_fill().map(|rect| rect.width()), Some(50));
+    state.set_range(5..=5);
+    assert_eq!(state.value_width(200.0), 0.0);
+}
+
+#[test]
+fn marquee_stays_inside_the_track() {
+    let mut state = state();
+    for offset in [0.0, 0.5, 1.0] {
+        state.offset = offset;
+        let (left, width) = state.marquee_span(200.0);
+        assert!((width - 60.0).abs() < 1e-3);
+        assert!(left >= 0.0 && left + width <= 200.0);
+    }
+    state.offset = 1.0;
+    assert!((state.marquee_span(200.0).0 - 140.0).abs() < 1e-3);
 }

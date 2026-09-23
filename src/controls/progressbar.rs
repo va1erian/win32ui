@@ -7,157 +7,96 @@
 //! small custom child window that paints its track and fill from semantic
 //! theme tokens — the same approach as the owner-drawn status bar and toolbar.
 
+mod draw;
+mod state;
+
 use std::cell::RefCell;
 use std::ops::RangeInclusive;
 use std::rc::Rc;
 
 use crate::app::Ui;
-use crate::color::Color;
 use crate::controls::control::{AsControl, Control};
 use crate::controls::progressbar_theme::ProgressBarTheme;
+use crate::d2d::D2dSurface;
 use crate::error::Result;
 use crate::gdi::Paint;
 use crate::geometry::Rect;
-use crate::message::{Message, TimerId};
+use crate::message::Message;
 use crate::sys;
 use crate::theme::{Theme, Themed};
 use crate::units::dip;
 use crate::window::{Window, WindowClass, WindowExStyle, WindowHandler, WindowStyle};
+use state::ProgressBarState;
+pub use state::ProgressState;
 
 /// How often the marquee animation advances, in milliseconds.
 const MARQUEE_MS: u32 = 30;
-/// How far the marquee highlight travels per tick, as a fraction of its range.
-const MARQUEE_STEP: f32 = 0.02;
-/// The marquee highlight's width, as a fraction of the bar's width.
-const MARQUEE_FRACTION: f32 = 0.3;
 
-/// The visual state of a progress bar.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ProgressState {
-    /// Normal progress (accent fill).
-    Normal,
-    /// Paused (caution fill).
-    Paused,
-    /// Error (danger fill).
-    Error,
-}
-
-struct ProgressBarState {
-    theme: ProgressBarTheme,
-    min: i32,
-    max: i32,
-    value: i32,
-    state: ProgressState,
-    marquee: bool,
-    offset: f32,
-    timer: Option<TimerId>,
-    bounds: Rect,
-}
-
-impl ProgressBarState {
-    fn fill_color(&self) -> Color {
-        match self.state {
-            ProgressState::Normal => self.theme.fill,
-            ProgressState::Paused => self.theme.paused,
-            ProgressState::Error => self.theme.error,
-        }
-    }
-
-    /// Stores `range`, swapping a reversed range so `min <= max` always holds.
-    fn set_range(&mut self, range: RangeInclusive<i32>) {
-        let (mut start, mut end) = (*range.start(), *range.end());
-        if start > end {
-            std::mem::swap(&mut start, &mut end);
-        }
-        self.min = start;
-        self.max = end;
-        self.value = self.value.clamp(start, end);
-    }
-
-    /// Stores `value`, clamped to the current range.
-    fn set_value(&mut self, value: i32) {
-        self.value = value.clamp(self.min, self.max);
-    }
-
-    /// Advances the marquee highlight, wrapping at the end.
-    fn advance_marquee(&mut self) {
-        if !self.marquee {
-            return;
-        }
-        self.offset += MARQUEE_STEP;
-        if self.offset > 1.0 {
-            self.offset = 0.0;
-        }
-    }
-
-    /// The rectangle of the filled portion for the current value, if any.
-    fn value_fill(&self) -> Option<Rect> {
-        let span = self.max - self.min;
-        if span <= 0 || self.bounds.width() <= 0 {
-            return None;
-        }
-        let fraction = (self.value - self.min) as f32 / span as f32;
-        let width = (self.bounds.width() as f32 * fraction).round() as i32;
-        if width <= 0 {
-            return None;
-        }
-        let width = width.min(self.bounds.width());
-        Some(Rect::new(
-            self.bounds.left,
-            self.bounds.top,
-            self.bounds.left + width,
-            self.bounds.bottom,
-        ))
-    }
-
-    /// The rectangle of the marquee highlight for the current offset.
-    fn marquee_fill(&self) -> Option<Rect> {
-        let width = (self.bounds.width() as f32 * MARQUEE_FRACTION) as i32;
-        if width <= 0 {
-            return None;
-        }
-        let travel = (self.bounds.width() - width).max(0);
-        let left = self.bounds.left + (travel as f32 * self.offset).round() as i32;
-        Some(Rect::new(
-            left,
-            self.bounds.top,
-            left + width,
-            self.bounds.bottom,
-        ))
-    }
-
-    fn draw(&self, canvas: &crate::gdi::Canvas) {
-        let radius = self.bounds.height().max(1);
-        canvas.round_rect(self.bounds, radius, self.theme.track, None);
-
-        let fill = if self.marquee {
-            self.marquee_fill()
-        } else {
-            self.value_fill()
-        };
-        if let Some(rect) = fill {
-            let radius = self.bounds.height().min(rect.width()).max(1);
-            canvas.round_rect(rect, radius, self.fill_color(), None);
-        }
-    }
+/// How the bar is drawn. Direct2D is tried on the first paint; if it cannot be
+/// created (a broken driver, say) the bar stays on GDI for good.
+enum Renderer {
+    Untried,
+    Direct2d(D2dSurface),
+    Gdi,
 }
 
 struct ProgressBarHandler {
     state: Rc<RefCell<ProgressBarState>>,
+    renderer: RefCell<Renderer>,
+}
+
+impl ProgressBarHandler {
+    fn paint(&self, window: &Window) {
+        if self.paint_d2d(window) {
+            return;
+        }
+        if let Some(paint) = Paint::begin(window.hwnd()) {
+            self.state.borrow().draw_gdi(paint.canvas());
+        }
+    }
+
+    /// Draws with Direct2D; `false` means this paint must fall back to GDI.
+    fn paint_d2d(&self, window: &Window) -> bool {
+        let mut renderer = self.renderer.borrow_mut();
+        if matches!(*renderer, Renderer::Untried) {
+            *renderer = D2dSurface::new(window.hwnd()).map_or(Renderer::Gdi, Renderer::Direct2d);
+        }
+        let Renderer::Direct2d(surface) = &*renderer else {
+            return false;
+        };
+        let Ok(mut canvas) = surface.begin_draw() else {
+            return false;
+        };
+        self.state.borrow().draw_d2d(&mut canvas);
+        if canvas.end_draw().is_err() {
+            *renderer = Renderer::Gdi;
+            window.invalidate();
+        }
+        true
+    }
+
+    fn with_surface(&self, apply: impl FnOnce(&D2dSurface)) {
+        if let Renderer::Direct2d(surface) = &*self.renderer.borrow() {
+            apply(surface);
+        }
+    }
 }
 
 impl WindowHandler for ProgressBarHandler {
     fn message(&self, window: &Window, message: Message) -> Option<isize> {
         match message {
             Message::Paint => {
-                if let Some(paint) = Paint::begin(window.hwnd()) {
-                    self.state.borrow().draw(paint.canvas());
-                }
+                self.paint(window);
                 Some(0)
             }
             Message::Size { width, height } => {
                 self.state.borrow_mut().bounds = Rect::new(0, 0, width, height);
+                self.with_surface(|surface| surface.resize(width, height));
                 Some(0)
+            }
+            Message::DpiChanged { dpi, .. } => {
+                self.with_surface(|surface| surface.set_dpi(dpi));
+                None
             }
             Message::Timer { id } => {
                 let mut state = self.state.borrow_mut();
@@ -167,6 +106,11 @@ impl WindowHandler for ProgressBarHandler {
                     window.invalidate();
                 }
                 Some(0)
+            }
+            _ if D2dSurface::is_erase_background(&message)
+                && matches!(*self.renderer.borrow(), Renderer::Direct2d(_)) =>
+            {
+                Some(1)
             }
             _ => None,
         }
@@ -206,6 +150,7 @@ impl ProgressBar {
         let class = WindowClass::register("win32ui.progressbar", app_theme.background)?;
         let handler = ProgressBarHandler {
             state: Rc::clone(&shared),
+            renderer: RefCell::new(Renderer::Untried),
         };
         let window = Window::create(
             class,
