@@ -78,6 +78,9 @@ pub(super) struct MenuData<M> {
     pub(super) entries: Vec<Entry<M>>,
     handle: Cell<isize>,
     owner_draw: Cell<bool>,
+    /// Whether this level was built as a menu *bar* (so its direct entries are
+    /// bar items, not popup items).
+    bar: Cell<bool>,
     /// The themed background brush, kept alive while the menu uses it.
     background: RefCell<Option<Brush>>,
 }
@@ -104,6 +107,9 @@ pub(crate) struct RenderItem<'a> {
     pub submenu: bool,
     /// Whether this entry is a separator line.
     pub separator: bool,
+    /// Whether this is a top-level item of a menu *bar*: it draws no chevron
+    /// and uses the native bar's tighter metrics instead of a popup's gutter.
+    pub bar_item: bool,
 }
 
 impl<M: 'static> MenuData<M> {
@@ -113,6 +119,7 @@ impl<M: 'static> MenuData<M> {
             entries: Vec::new(),
             handle: Cell::new(0),
             owner_draw: Cell::new(false),
+            bar: Cell::new(false),
             background: RefCell::new(None),
         }
     }
@@ -155,6 +162,7 @@ impl<M: 'static> MenuData<M> {
         }
         self.handle.set(handle);
         self.owner_draw.set(owner_draw);
+        self.bar.set(bar);
         handle
     }
 
@@ -211,6 +219,13 @@ impl<M: 'static> MenuData<M> {
     /// The owner-draw description for the item with render id `data`, searching
     /// submenus.
     pub(super) fn render(&self, data: usize) -> Option<RenderItem<'_>> {
+        self.render_level(data, self.bar.get())
+    }
+
+    /// Renders `data` at this level, recursing into submenus. `bar_item` marks
+    /// direct children of a menu bar (no chevron, native bar metrics); nested
+    /// levels are always popup items.
+    fn render_level(&self, data: usize, bar_item: bool) -> Option<RenderItem<'_>> {
         for entry in &self.entries {
             match entry {
                 Entry::Item(item) if item.data == data => {
@@ -222,6 +237,7 @@ impl<M: 'static> MenuData<M> {
                         enabled: item.enabled,
                         submenu: false,
                         separator: false,
+                        bar_item,
                     });
                 }
                 Entry::Separator { data: entry_data } if *entry_data == data => {
@@ -233,6 +249,7 @@ impl<M: 'static> MenuData<M> {
                         enabled: false,
                         submenu: false,
                         separator: true,
+                        bar_item,
                     });
                 }
                 Entry::Submenu(submenu) if submenu.data == data => {
@@ -242,8 +259,10 @@ impl<M: 'static> MenuData<M> {
                         checked: false,
                         radio: false,
                         enabled: true,
-                        submenu: true,
+                        // A bar item opens a dropdown but draws no chevron.
+                        submenu: !bar_item,
                         separator: false,
+                        bar_item,
                     });
                 }
                 _ => {}
@@ -251,7 +270,7 @@ impl<M: 'static> MenuData<M> {
         }
         for entry in &self.entries {
             if let Entry::Submenu(submenu) = entry
-                && let Some(found) = submenu.menu.data.render(data)
+                && let Some(found) = submenu.menu.data.render_level(data, false)
             {
                 return Some(found);
             }

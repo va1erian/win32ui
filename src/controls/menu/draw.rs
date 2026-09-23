@@ -8,7 +8,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use windows::Win32::Graphics::Gdi::HDC;
-use windows::Win32::UI::Controls::{ODS_DISABLED, ODS_SELECTED};
+use windows::Win32::UI::Controls::{ODS_DISABLED, ODS_NOACCEL, ODS_SELECTED};
 
 use crate::color::Color;
 use crate::gdi::{Canvas, Font, TextFormat};
@@ -79,9 +79,15 @@ pub(crate) fn measure(item: &RenderItem, dpi: u32) -> Size {
     let Some(font) = font(dpi) else {
         return fallback;
     };
+    // Native menus size text without the mnemonic `&`; stripping it here keeps
+    // the measured width equal to what is actually drawn.
+    let label = sys::gdi::measure_text(font.raw(), &without_mnemonics(item.label)).width;
+    if item.bar_item {
+        let (height, padding) = sys::menu::bar_item_metrics(dpi);
+        return Size::new((label + padding * 2).max(1), height);
+    }
     let gutter = gutter(dpi);
     let pad = dip(16.0).to_px(dpi).value();
-    let label = sys::gdi::measure_text(font.raw(), item.label).width;
     let shortcut = item
         .shortcut
         .map(|shortcut| sys::gdi::measure_text(font.raw(), &shortcut.to_string()).width)
@@ -102,7 +108,7 @@ pub(crate) fn measure(item: &RenderItem, dpi: u32) -> Size {
 }
 
 /// Paints one owner-drawn item into the `WM_DRAWITEM` device context. `state`
-/// is the raw `ODS_*` flags; only selected and disabled are read.
+/// is the raw `ODS_*` flags; selected, disabled and `ODS_NOACCEL` are read.
 pub(crate) fn paint_item(
     dc: isize,
     area: Rect,
@@ -147,76 +153,131 @@ pub(crate) fn paint_item(
     } else {
         paint.shortcut
     };
-    let gutter = gutter(dpi);
-    let pad = dip(16.0).to_px(dpi).value();
     let center = area.top + area.height() / 2;
 
-    // The check/radio glyph sits in the leading gutter.
-    let glyph_x = area.left + dip(6.0).to_px(dpi).value();
-    if item.radio && item.checked {
-        draw_radio(&canvas, glyph_x, center, dpi, disabled, paint);
-    } else if item.checked {
-        draw_check(&canvas, glyph_x, center, dpi, text);
+    // A menu-bar item has no leading check/radio gutter; a popup item reserves
+    // one. Only popups can carry checks, so skip the gutter and glyphs on bars.
+    if !item.bar_item {
+        let gutter = gutter(dpi);
+        let glyph_x = area.left + dip(6.0).to_px(dpi).value();
+        if item.radio && item.checked {
+            draw_radio(&canvas, glyph_x, center, dpi, disabled, paint);
+        } else if item.checked {
+            draw_check(&canvas, glyph_x, center, dpi, text);
+        }
+
+        let Some(font) = font(dpi) else {
+            return;
+        };
+        let arrow = if item.submenu {
+            dip(20.0).to_px(dpi).value()
+        } else {
+            0
+        };
+        let pad = dip(16.0).to_px(dpi).value();
+        let mut label_rect = Rect::new(
+            area.left + gutter,
+            area.top,
+            area.right - pad - arrow,
+            area.bottom,
+        );
+        if let Some(shortcut) = item.shortcut {
+            let text_value = shortcut.to_string();
+            let width = sys::gdi::measure_text(font.raw(), &text_value).width;
+            let right = label_rect.right - dip(8.0).to_px(dpi).value();
+            canvas.with_font(&font, |canvas| {
+                canvas.draw_text(
+                    Rect::new(right - width, area.top, right, area.bottom),
+                    &text_value,
+                    shortcut_color,
+                    TextFormat::left().right().vcenter().single_line(),
+                );
+            });
+            label_rect.right = (right - width - dip(8.0).to_px(dpi).value()).max(label_rect.left);
+        }
+        draw_label(&canvas, &font, label_rect, item.label, state, text);
+        if item.submenu {
+            draw_chevron(&canvas, area, center, dpi, text);
+        }
+        return;
     }
 
+    // A menu-bar item: native metrics, no gutter, no shortcut, no chevron.
     let Some(font) = font(dpi) else {
         return;
     };
-    let arrow = if item.submenu {
-        dip(20.0).to_px(dpi).value()
-    } else {
-        0
-    };
-    let mut label_rect = Rect::new(
-        area.left + gutter,
+    let (_, padding) = sys::menu::bar_item_metrics(dpi);
+    let label_rect = Rect::new(
+        area.left + padding,
         area.top,
-        area.right - pad - arrow,
+        area.right - padding,
         area.bottom,
     );
-    if let Some(shortcut) = item.shortcut {
-        let text_value = shortcut.to_string();
-        let width = sys::gdi::measure_text(font.raw(), &text_value).width;
-        let right = label_rect.right - dip(8.0).to_px(dpi).value();
-        canvas.with_font(&font, |canvas| {
-            canvas.draw_text(
-                Rect::new(right - width, area.top, right, area.bottom),
-                &text_value,
-                shortcut_color,
-                TextFormat::left().right().vcenter().single_line(),
-            );
-        });
-        label_rect.right = (right - width - dip(8.0).to_px(dpi).value()).max(label_rect.left);
-    }
-    canvas.with_font(&font, |canvas| {
-        canvas.draw_text(
-            label_rect,
-            item.label,
-            text,
-            TextFormat::left().vcenter().single_line().end_ellipsis(),
-        );
-    });
+    draw_label(&canvas, &font, label_rect, item.label, state, text);
+}
 
-    if item.submenu {
-        let x = area.right - dip(12.0).to_px(dpi).value();
-        let half = dip(3.0).to_px(dpi).value().max(3);
-        let color = if disabled {
-            paint.text_disabled
-        } else {
-            paint.text
-        };
-        canvas.line(
-            Point::new(x - half, center - half),
-            Point::new(x, center),
-            color,
-            1,
-        );
-        canvas.line(
-            Point::new(x, center),
-            Point::new(x - half, center + half),
-            color,
-            1,
-        );
+/// Draws an item label, underlining the mnemonic only when the system wants
+/// keyboard cues. Windows conveys that through `ODS_NOACCEL` (set from the
+/// `WM_UPDATEUISTATE` cue state and the `SPI_GETKEYBOARDCUES` "always
+/// underlined" preference), so when it is set the `&` markers are stripped
+/// instead of drawn as underlines.
+fn draw_label(canvas: &Canvas, font: &Font, rect: Rect, label: &str, state: u32, color: Color) {
+    let format = TextFormat::left().vcenter().single_line().end_ellipsis();
+    if underline_mnemonics(state) {
+        canvas.with_font(font, |canvas| {
+            canvas.draw_text(rect, label, color, format);
+        });
+    } else {
+        let hidden = without_mnemonics(label);
+        canvas.with_font(font, |canvas| {
+            canvas.draw_text(rect, &hidden, color, format.no_prefix());
+        });
     }
+}
+
+/// Draws the popup submenu chevron at the right edge of `area`.
+fn draw_chevron(canvas: &Canvas, area: Rect, center: i32, dpi: u32, color: Color) {
+    let x = area.right - dip(12.0).to_px(dpi).value();
+    let half = dip(3.0).to_px(dpi).value().max(3);
+    canvas.line(
+        Point::new(x - half, center - half),
+        Point::new(x, center),
+        color,
+        1,
+    );
+    canvas.line(
+        Point::new(x, center),
+        Point::new(x - half, center + half),
+        color,
+        1,
+    );
+}
+
+/// Whether the mnemonic underline should be drawn for an item in `state`.
+///
+/// `ODS_NOACCEL` (from `Winuser.h` via the `windows` crate, `0x0100`) is set
+/// by the system when keyboard cues are hidden; `SPI_GETKEYBOARDCUES` is
+/// reflected in the same flag, so this is the whole decision.
+fn underline_mnemonics(state: u32) -> bool {
+    state & ODS_NOACCEL.0 == 0
+}
+
+/// `label` with its mnemonic `&` markers removed. `&&` becomes a literal `&`.
+fn without_mnemonics(label: &str) -> String {
+    let mut out = String::with_capacity(label.len());
+    let mut chars = label.chars();
+    while let Some(ch) = chars.next() {
+        if ch == '&' {
+            match chars.next() {
+                Some('&') => out.push('&'),
+                Some(next) => out.push(next),
+                None => {}
+            }
+        } else {
+            out.push(ch);
+        }
+    }
+    out
 }
 
 /// The leading gutter reserved for check/radio marks.
@@ -275,4 +336,29 @@ fn draw_radio(
         },
         None,
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{underline_mnemonics, without_mnemonics};
+    use windows::Win32::UI::Controls::{ODS_DISABLED, ODS_NOACCEL};
+
+    /// Mnemonics are underlined iff the system did not ask to hide them.
+    #[test]
+    fn underline_follows_keyboard_cues() {
+        assert!(underline_mnemonics(0));
+        assert!(underline_mnemonics(ODS_DISABLED.0));
+        assert!(!underline_mnemonics(ODS_NOACCEL.0));
+        assert!(!underline_mnemonics(ODS_NOACCEL.0 | ODS_DISABLED.0));
+    }
+
+    /// Hiding cues removes only the mnemonic `&`, keeping a literal `&&`.
+    #[test]
+    fn without_mnemonics_strips_markers() {
+        assert_eq!(without_mnemonics("&File"), "File");
+        assert_eq!(without_mnemonics("E&xit"), "Exit");
+        assert_eq!(without_mnemonics("A && B"), "A & B");
+        assert_eq!(without_mnemonics("Plain"), "Plain");
+        assert_eq!(without_mnemonics("trailing&"), "trailing");
+    }
 }

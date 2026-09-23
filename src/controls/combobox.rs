@@ -84,7 +84,7 @@ impl<T: 'static, M: 'static> ComboBox<T, M> {
         let font = Font::system_ui(dpi)?;
         sys::control::set_control_font(hwnd, font.raw());
         sys::combobox::cb_set_min_visible(hwnd, DEFAULT_VISIBLE_ITEMS);
-        sys::apply_native_theme(hwnd, sys::NativeControlKind::Button, ui.theme().is_dark);
+        sys::apply_native_theme(hwnd, sys::NativeControlKind::ComboBox, ui.theme().is_dark);
 
         // The closed field's height comes from the font, so a layout that does
         // not size the widget still gets a sensible natural height.
@@ -110,7 +110,7 @@ impl<T: 'static, M: 'static> ComboBox<T, M> {
             window,
             hwnd,
             Rc::new(move |applied| {
-                sys::apply_native_theme(hwnd, sys::NativeControlKind::Button, applied.is_dark);
+                sys::apply_native_theme(hwnd, sys::NativeControlKind::ComboBox, applied.is_dark);
                 sys::window::invalidate(hwnd);
             }),
         );
@@ -254,11 +254,14 @@ impl<T, M> AsControl for ComboBox<T, M> {
 impl<T, M> Themed for ComboBox<T, M> {
     fn apply_theme(&self, theme: &Theme) {
         // The system paints the closed field and the dropped list through the
-        // `DarkMode_CFD` visual style (the central `WM_CTLCOLOR*` path only
-        // covers statics, edits and list boxes, not the combo's own field).
+        // `DarkMode_CFD` visual style: that common-file-dialog/combo theme is
+        // the one that darkens both. `DarkMode_Explorer` (used by the other
+        // controls) left the field bright white in the dark theme (#67), and
+        // the central `WM_CTLCOLOR*` path only covers statics, edits and list
+        // boxes, not the combo's own field.
         sys::apply_native_theme(
             self.control.hwnd(),
-            sys::NativeControlKind::Button,
+            sys::NativeControlKind::ComboBox,
             theme.is_dark,
         );
         sys::window::invalidate(self.control.hwnd());

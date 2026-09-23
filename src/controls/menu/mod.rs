@@ -224,6 +224,34 @@ mod tests {
         assert!(menu.is_owner_drawn());
     }
 
+    /// A submenu item on a menu *bar* draws no chevron, while the same item in
+    /// a popup does; nested items are always popup items (#67).
+    #[test]
+    fn bar_items_have_no_chevron() {
+        let menu = Menu::<u8>::new()
+            .item("&Plain", None, || 1)
+            .submenu("&More", Menu::new().item("&Deep", None, || 2));
+        let ids = menu.data_ids();
+        let theme = crate::theme::Theme::dark();
+
+        menu.build(true, true, theme.raised);
+        let plain = menu.render(ids[0]).expect("bar item");
+        assert!(plain.bar_item, "a top-level bar item is a bar item");
+        assert!(!plain.submenu);
+
+        let more = menu.render(ids[1]).expect("bar submenu");
+        assert!(more.bar_item);
+        assert!(!more.submenu, "a bar submenu draws no chevron");
+
+        let deep = menu.render(ids[2]).expect("nested item");
+        assert!(!deep.bar_item, "a nested item is a popup item");
+
+        // The same menu as a popup: a submenu *does* draw a chevron.
+        menu.build(false, true, theme.raised);
+        let popup = menu.render(ids[1]).expect("popup submenu");
+        assert!(popup.submenu && !popup.bar_item);
+    }
+
     /// Every enabled shortcut is collected, recursively, for auto-registration.
     #[test]
     fn collects_shortcuts() {
