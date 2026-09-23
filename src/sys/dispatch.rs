@@ -14,7 +14,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{
     CREATESTRUCTW, DefWindowProcW, GWLP_USERDATA, GetWindowLongPtrW, SetWindowLongPtrW,
-    WM_NCCREATE, WM_NCDESTROY, WM_NOTIFY,
+    WM_GETMINMAXINFO, WM_NCCREATE, WM_NCDESTROY, WM_NOTIFY,
 };
 
 use crate::window::WindowHandler;
@@ -107,6 +107,12 @@ pub(crate) unsafe extern "system" fn window_proc(
     // SAFETY: reads back the pointer stored above (null for foreign windows).
     let raw = unsafe { GetWindowLongPtrW(hwnd, GWLP_USERDATA) } as *mut Box<dyn WindowHandler>;
 
+    if msg == WM_GETMINMAXINFO {
+        // Apply the window's configured tracking limits before the handler, so
+        // it can read them with `Window::min_max_info`.
+        super::window_ext::apply_track_limits(hwnd_from(hwnd), lparam.0);
+    }
+
     // Every message but `WM_NCDESTROY` goes to the handler, reentrant or not:
     // the handler is shared (`&self`), so a synchronous second message to the
     // same window may run while the first is still on the stack.
@@ -134,10 +140,17 @@ pub(crate) unsafe extern "system" fn window_proc(
         None => default_proc(hwnd, msg, wparam, lparam),
     };
 
+    // `DefWindowProcW` fills in default limits, so re-apply the configured ones
+    // when the handler did not claim the message.
+    if msg == WM_GETMINMAXINFO && handled.is_none() {
+        super::window_ext::apply_track_limits(hwnd_from(hwnd), lparam.0);
+    }
+
     if msg == WM_NCDESTROY {
         // The window is gone: drop its cached off-screen buffer so a dead
         // `HWND` never keeps a thread-local bitmap alive.
         super::gdi::release_back_buffer(hwnd_from(hwnd));
+        super::window_ext::forget_track_limits(hwnd_from(hwnd));
     }
 
     if msg == WM_NCDESTROY && !raw.is_null() {

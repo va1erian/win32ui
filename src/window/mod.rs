@@ -3,6 +3,16 @@
 //! Safe window handles: [`WindowClass`] registration, the [`Window`] wrapper
 //! and the [`WindowHandler`] trait that receives typed [`Message`]s.
 
+mod icon;
+mod modal;
+mod ops;
+mod placement;
+mod size;
+
+pub use icon::Icon;
+pub use ops::CursorShape;
+pub use placement::{Placement, ShowState, monitor_work_areas};
+
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use windows::Win32::UI::WindowsAndMessaging as wam;
