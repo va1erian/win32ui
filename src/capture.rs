@@ -53,6 +53,24 @@ impl Window {
             pixels: captured.pixels,
         })
     }
+
+    /// Renders the window's screen rectangle into an [`RgbaImage`], via a
+    /// `BitBlt` from the screen DC.
+    ///
+    /// Unlike [`capture`](Window::capture), this includes everything DWM draws
+    /// on screen: the caption buttons, the frame and the backdrop material —
+    /// none of which `PrintWindow` reproduces. The window must be on screen and
+    /// unobscured for the result to be meaningful. The captured region is the
+    /// whole window (frame included) and the alpha channel is forced to 255.
+    pub fn capture_screen(&self) -> Result<RgbaImage> {
+        let rect = self.window_rect();
+        let captured = sys::capture::capture_screen(rect)?;
+        Ok(RgbaImage {
+            width: captured.width as u32,
+            height: captured.height as u32,
+            pixels: captured.pixels,
+        })
+    }
 }
 
 /// The captured-image type a frontend usually needs.

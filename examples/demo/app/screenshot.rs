@@ -27,6 +27,22 @@ pub(crate) fn capture_if_requested<M: 'static>(ui: &Ui<M>) {
     }
 }
 
+/// Captures the window's *screen* rectangle (DWM frame, caption buttons and
+/// backdrop included) and writes it as a PNG if `WIN32UI_DEMO_SCREENSHOT_SCREEN`
+/// is set. The window must be on screen and unobscured.
+pub(crate) fn capture_screen_if_requested<M: 'static>(ui: &Ui<M>) {
+    let Ok(path) = std::env::var("WIN32UI_DEMO_SCREENSHOT_SCREEN") else {
+        return;
+    };
+    match ui.capture_screen() {
+        Ok(image) => match write_screenshot(&image, Path::new(&path)) {
+            Ok(()) => eprintln!("demo: wrote screen screenshot to {path}"),
+            Err(error) => eprintln!("demo: screen screenshot failed: {error}"),
+        },
+        Err(error) => eprintln!("demo: screen screenshot failed: {error}"),
+    }
+}
+
 /// Crops `image` to `rect` (in image pixels), clipped to the image bounds.
 /// Returns `None` when the intersection is empty.
 pub(crate) fn crop(image: &RgbaImage, rect: Rect) -> Option<RgbaImage> {

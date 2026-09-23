@@ -87,6 +87,24 @@ fn spacing_and_margins_apply() {
 }
 
 #[test]
+fn a_top_margin_reserves_the_title_bar_strip() {
+    // The extended title bar reserves a top strip for the caption buttons and
+    // menu bar; the first content row (the toolbar) must start below it, so the
+    // two rectangles never intersect.
+    let mut layout = Layout::column().margins(Insets::new(dip(0.0), dip(40.0), dip(0.0), dip(0.0)));
+    layout
+        .slots
+        .push(widget(leaf(Rect::new(0, 0, 0, 28)), Sizing::Auto));
+
+    let placed = layout.compute(Rect::new(0, 0, 200, 100), 96);
+    assert_eq!(
+        placed[0].rect,
+        Rect::new(0, 40, 200, 68),
+        "the toolbar must start below the reserved strip"
+    );
+}
+
+#[test]
 fn nested_rows_recurse() {
     let mut inner = Layout::row();
     inner

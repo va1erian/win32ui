@@ -15,10 +15,12 @@ use windows::Win32::Foundation::{COLORREF, ERROR_SUCCESS};
 use windows::Win32::Graphics::Dwm::{
     DWM_WINDOW_CORNER_PREFERENCE, DWMSBT_MAINWINDOW, DWMSBT_TABBEDWINDOW, DWMSBT_TRANSIENTWINDOW,
     DWMWA_BORDER_COLOR, DWMWA_CAPTION_COLOR, DWMWA_SYSTEMBACKDROP_TYPE, DWMWA_TEXT_COLOR,
-    DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND, DwmSetWindowAttribute,
+    DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND, DwmExtendFrameIntoClientArea,
+    DwmSetWindowAttribute,
 };
 use windows::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW};
 use windows::Win32::UI::Accessibility::{HCF_HIGHCONTRASTON, HIGHCONTRASTW};
+use windows::Win32::UI::Controls::MARGINS;
 use windows::Win32::UI::WindowsAndMessaging::{
     SPI_GETHIGHCONTRAST, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, SystemParametersInfoW,
 };
@@ -119,12 +121,31 @@ pub(crate) fn apply_backdrop(hwnd: Hwnd, backdrop: Backdrop, dark: bool) -> bool
         return false;
     }
 
-    // Extending the frame into the client area is deliberately left to the
-    // extended-client-area work: GDI draws text with zero alpha over the glass
-    // and DWM drops it, so the material stays in the frame until content there
-    // is painted with Direct2D alpha. `Canvas::clear_to_backdrop` is the seam
-    // for that follow-up.
+    // The material only shows where the frame is extended into the client
+    // (the top strip of the extended title bar). Extending the whole client
+    // would make every GDI fill a zero-alpha "glass" pixel, so the strip is
+    // extended separately by [`extend_frame`] and only its rectangle is
+    // cleared to black for transparency.
     true
+}
+
+/// Extends the frame into the top `top` pixels of `hwnd`'s client area, so DWM
+/// draws the caption buttons there and the backdrop material shows through that
+/// strip. The rest of the client stays an ordinary opaque surface.
+///
+/// `top` is the caption height including the top frame, in device pixels.
+/// Returns whether DWM accepted the margins; a failure leaves the client opaque
+/// (and the caption buttons undrawn), which is the pre-#76 behaviour.
+pub(crate) fn extend_frame(hwnd: Hwnd, top: i32) -> bool {
+    let margins = MARGINS {
+        cxLeftWidth: 0,
+        cxRightWidth: 0,
+        cyTopHeight: top,
+        cyBottomHeight: 0,
+    };
+    // SAFETY: `hwnd` is a live top-level window and `margins` is a correctly
+    // sized struct read by DWM for the duration of the call.
+    unsafe { DwmExtendFrameIntoClientArea(raw_hwnd(hwnd), &margins) }.is_ok()
 }
 
 /// Paints the standard caption from `theme` (Windows 11 only), returning

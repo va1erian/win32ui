@@ -18,6 +18,9 @@ struct Entry {
     extended: bool,
     /// The caption buttons' bounds in client coordinates (empty when unknown).
     caption_inset: Rect,
+    /// The height of the extended strip (the caption incl. its top frame), in
+    /// device pixels. Zero until the frame is first extended.
+    strip_height: i32,
 }
 
 thread_local! {
@@ -54,6 +57,25 @@ pub(crate) fn caption_inset(window: Hwnd) -> Rect {
         map.borrow()
             .get(&window.raw())
             .map_or(Rect::default(), |entry| entry.caption_inset)
+    })
+}
+
+/// Records the extended strip's height (device pixels) for `window`.
+pub(crate) fn set_strip_height(window: Hwnd, height: i32) {
+    WINDOWS.with(|map| {
+        map.borrow_mut()
+            .entry(window.raw())
+            .or_default()
+            .strip_height = height;
+    });
+}
+
+/// The extended strip's height (device pixels) for `window`, or 0 when unknown.
+pub(crate) fn strip_height(window: Hwnd) -> i32 {
+    WINDOWS.with(|map| {
+        map.borrow()
+            .get(&window.raw())
+            .map_or(0, |entry| entry.strip_height)
     })
 }
 

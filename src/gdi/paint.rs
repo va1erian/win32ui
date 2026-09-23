@@ -124,9 +124,12 @@ impl Canvas {
 
     /// Fills `rect` with the colour DWM treats as transparent inside an
     /// extended frame (pure black), so the window's
-    /// [`Backdrop`](crate::Backdrop) material shows through. Only meaningful
-    /// when the window's backdrop is active: a widget that should sit on the
-    /// material paints this as its background instead of an opaque token.
+    /// [`Backdrop`](crate::Backdrop) material shows through.
+    ///
+    /// Only meaningful inside the extended title bar's caption strip: the rest
+    /// of the client is an ordinary opaque surface and must keep the solid
+    /// [`Theme::background`](crate::Theme::background). The window erases the
+    /// strip itself; call this only with a rectangle inside that strip.
     pub fn clear_to_backdrop(&self, rect: Rect) {
         self.fill_rect(rect, Color::rgb(0, 0, 0));
     }
