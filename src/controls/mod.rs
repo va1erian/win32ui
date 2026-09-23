@@ -10,9 +10,6 @@ pub(crate) mod combobox_model;
 pub mod control;
 pub mod label;
 pub mod listview;
-pub(crate) mod listview_events;
-pub(crate) mod listview_inner;
-pub mod listview_theme;
 pub mod progressbar;
 pub mod progressbar_theme;
 pub(crate) mod registry;
@@ -22,7 +19,7 @@ pub mod toolbar;
 pub mod treeview;
 
 pub use control::{AsControl, Control, ControlExt, HasText};
-pub use listview_theme::ListViewTheme;
+pub use listview::ListViewTheme;
 pub use progressbar_theme::ProgressBarTheme;
 
 use crate::error::{Error, Result};
