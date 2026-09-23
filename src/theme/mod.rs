@@ -18,3 +18,8 @@ pub(crate) use registry::{
     retheme_children, set_backdrop_active, set_window_theme, unregister_child as unregister_themed,
     window_background, window_theme,
 };
+
+/// The theming types a frontend usually needs.
+pub mod prelude {
+    pub use super::{Theme, Themed};
+}

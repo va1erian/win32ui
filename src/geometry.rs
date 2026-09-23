@@ -152,3 +152,8 @@ impl From<Size> for Rect {
         Rect::from_size(size)
     }
 }
+
+/// The geometry types a frontend usually needs.
+pub mod prelude {
+    pub use super::{Point, Rect};
+}

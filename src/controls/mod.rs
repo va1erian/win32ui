@@ -34,6 +34,30 @@ pub use custom::{Custom, CustomWidget, Input, Renderer, WidgetCx};
 pub use listview::ListViewTheme;
 pub use progressbar_theme::ProgressBarTheme;
 
+/// The control types a frontend usually needs.
+pub mod prelude {
+    pub use super::button::Button;
+    pub use super::checkbox::CheckBox;
+    pub use super::combobox::ComboBox;
+    pub use super::control::{AsControl, Control, ControlExt, HasText};
+    pub use super::custom::{Custom, CustomWidget, Input, Renderer, WidgetCx};
+    pub use super::edit::Edit;
+    pub use super::groupbox::GroupBox;
+    pub use super::label::Label;
+    pub use super::listview::{
+        Column, ColumnWidth, Fill, ListModel, ListView, ListViewEvent, ListViewTheme, SortDirection,
+    };
+    pub use super::menu::Menu;
+    pub use super::progressbar::{ProgressBar, ProgressState};
+    pub use super::progressbar_theme::ProgressBarTheme;
+    pub use super::radio::{RadioGroup, RadioOption};
+    pub use super::scrollview::ScrollView;
+    pub use super::statusbar::{StatusBar, StatusBarTheme};
+    pub use super::taskdialog::{TaskDialog, TaskDialogIcon};
+    pub use super::toolbar::{Toolbar, ToolbarItem, ToolbarTheme};
+    pub use super::treeview::{TreeEntry, TreeSource, TreeView, TreeViewEvent};
+}
+
 use crate::error::{Error, Result};
 use crate::geometry::Rect;
 use crate::hwnd::Hwnd;

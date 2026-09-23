@@ -44,3 +44,8 @@ pub fn run_modal(window: Hwnd) -> i32 {
 pub fn quit(code: i32) {
     sys::looper::post_quit(code);
 }
+
+/// The message-loop entry points a frontend usually needs.
+pub mod prelude {
+    pub use super::{quit, run, run_modal};
+}

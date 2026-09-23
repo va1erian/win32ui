@@ -106,3 +106,8 @@ mod tests {
         assert!((white.contrast_ratio(white) - 1.0).abs() < 1e-6);
     }
 }
+
+/// The colour type a frontend usually needs.
+pub mod prelude {
+    pub use super::Color;
+}

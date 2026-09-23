@@ -22,3 +22,12 @@ pub use proxy::Proxy;
 pub use run::run_app;
 pub use spec::{App, WindowSpec};
 pub use ui::Ui;
+
+/// The widget-layer types a frontend usually needs.
+pub mod prelude {
+    pub use super::{
+        App, IntoLayoutItem, Layout, LayoutExt, LayoutItem, Proxy, Split, Tabs, Ui, WindowHandle,
+        WindowSpec, run_app,
+    };
+    pub use crate::{column, row, split_col, split_row, tabs};
+}

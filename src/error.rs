@@ -88,3 +88,8 @@ pub enum Error {
 
 /// Convenience alias used throughout the crate.
 pub type Result<T> = std::result::Result<T, Error>;
+
+/// The error types a frontend usually needs.
+pub mod prelude {
+    pub use super::{Error, Result, Win32Error};
+}

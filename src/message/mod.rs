@@ -254,3 +254,11 @@ impl Message {
         matches!(self, Message::Paint | Message::Size { .. })
     }
 }
+
+/// The typed-message vocabulary a frontend usually needs.
+pub mod prelude {
+    pub use super::{
+        Command, CommandNotification, HitTest, Key, LResult, Message, MinMaxInfo, Modifiers,
+        MouseButton, Notify, TimerId,
+    };
+}

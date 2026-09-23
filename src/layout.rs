@@ -74,6 +74,11 @@ impl Insets {
     }
 }
 
+/// The layout-arithmetic types a frontend usually needs.
+pub mod prelude {
+    pub use super::{Dock, DockLayout, Insets, Stack, StackDirection, StackSlot};
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
