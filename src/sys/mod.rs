@@ -13,6 +13,7 @@ pub(crate) mod gdi;
 pub(crate) mod layout;
 pub(crate) mod message;
 pub(crate) mod proxy;
+pub(crate) mod taskdialog;
 pub(crate) mod theme;
 pub(crate) mod window;
 pub(crate) mod window_ext;

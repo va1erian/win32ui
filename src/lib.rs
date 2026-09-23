@@ -85,7 +85,10 @@ pub use controls::label::Label;
 pub use controls::listview::{
     Column, ListSource, ListView, ListViewEvent, ListViewTheme, SortDirection,
 };
+pub use controls::progressbar::{ProgressBar, ProgressState};
+pub use controls::progressbar_theme::ProgressBarTheme;
 pub use controls::statusbar::{StatusBar, StatusBarTheme};
+pub use controls::taskdialog::{TaskDialog, TaskDialogIcon};
 pub use controls::toolbar::{Toolbar, ToolbarItem, ToolbarTheme};
 pub use controls::treeview::{TreeEntry, TreeSource, TreeView, TreeViewEvent};
 
@@ -98,10 +101,11 @@ pub mod prelude {
         CursorShape, Dip, Dock, DockLayout, Error, HasText, HitTest, Hwnd, Icon, Insets,
         IntoLayoutItem, Key, LResult, Label, Layout, LayoutExt, LayoutItem, ListSource, ListView,
         ListViewEvent, ListViewTheme, Message, MinMaxInfo, Modifiers, MouseButton, Notify,
-        Placement, Point, Proxy, Px, Rect, Result, RgbaImage, ShowState, SortDirection, Stack,
-        StackDirection, StackSlot, StatusBar, StatusBarTheme, Theme, Themed, TimerId, Toolbar,
-        ToolbarItem, ToolbarTheme, TreeEntry, TreeSource, TreeView, TreeViewEvent, Ui, Win32Error,
-        Window, WindowClass, WindowExStyle, WindowHandler, WindowSpec, WindowStyle, column, dip,
+        Placement, Point, ProgressBar, ProgressBarTheme, ProgressState, Proxy, Px, Rect, Result,
+        RgbaImage, ShowState, SortDirection, Stack, StackDirection, StackSlot, StatusBar,
+        StatusBarTheme, TaskDialog, TaskDialogIcon, Theme, Themed, TimerId, Toolbar, ToolbarItem,
+        ToolbarTheme, TreeEntry, TreeSource, TreeView, TreeViewEvent, Ui, Win32Error, Window,
+        WindowClass, WindowExStyle, WindowHandler, WindowSpec, WindowStyle, column, dip,
         monitor_work_areas, row, run_app,
     };
     pub use crate::{clipboard, gdi, looper, quit, run, run_modal};

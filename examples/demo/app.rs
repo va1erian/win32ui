@@ -51,6 +51,7 @@ pub(crate) fn main() {
                         .with_icon(dot_icon(theme.text_secondary))
                         .on_click(|| Some(Msg::Refresh)),
                     ToolbarItem::new("Theme").on_click(|| Some(Msg::ToggleTheme)),
+                    ToolbarItem::new("Clear").on_click(|| Some(Msg::Clear)),
                 ],
             )
             .expect("toolbar");
@@ -98,11 +99,17 @@ pub(crate) fn main() {
             status.set_parts(&[-1]);
             status.set_text(0, "Ready");
 
+            let progress = ProgressBar::new(ui)
+                .expect("progress")
+                .range(0..=100)
+                .value(40);
+
             // The window owns the layout: it re-runs this tree on every resize
             // and DPI change, so the app never handles `WM_SIZE`.
             ui.set_layout(
                 column![
                     toolbar,
+                    progress.height(dip(8.0)),
                     row![tree.width(dip(220.0)), list.fill(1)].fill(1),
                     status,
                 ]
@@ -114,6 +121,7 @@ pub(crate) fn main() {
                 tree,
                 list,
                 status,
+                progress,
                 tracks,
                 order,
                 column_count: columns.len(),
@@ -183,6 +191,7 @@ enum Msg {
     Shuffle,
     Refresh,
     ToggleTheme,
+    Clear,
     TreeSelect,
     Play(usize),
     Select(usize),
@@ -191,11 +200,19 @@ enum Msg {
     AutoClose,
 }
 
+/// The typed choices the demo's task dialog can return.
+#[derive(Clone, PartialEq, Eq)]
+enum DialogChoice {
+    Delete,
+    Cancel,
+}
+
 struct App {
     toolbar: Toolbar<Msg>,
     tree: TreeView<Msg>,
     list: ListView<Msg>,
     status: StatusBar,
+    progress: ProgressBar,
     tracks: Rc<Vec<Track>>,
     order: Vec<usize>,
     column_count: usize,
@@ -234,12 +251,39 @@ impl win32ui::App for App {
 
     fn update(&mut self, msg: Msg, ui: &mut Ui<Msg>) {
         match msg {
-            Msg::Scan => self.set_status("Scanning… (not wired in this PoC)"),
+            Msg::Scan => {
+                self.progress.set_marquee(true);
+                self.set_status("Scanning… (indeterminate)");
+            }
             Msg::Shuffle => self.set_status("Shuffle requested"),
             Msg::Refresh => {
                 self.toolbar.invalidate();
+                self.progress.set_marquee(false);
+                self.progress.set_range(0..=100);
+                self.progress.set_value(40);
                 self.set_status("Refreshed");
             }
+            Msg::Clear => match TaskDialog::new("Delete 3 messages?")
+                .content("They will be moved to Trash.")
+                .buttons([
+                    ("Delete", DialogChoice::Delete),
+                    ("Cancel", DialogChoice::Cancel),
+                ])
+                .default(DialogChoice::Cancel)
+                .icon(TaskDialogIcon::Warning)
+                .verification("Don't ask again")
+                .show(ui)
+            {
+                Ok((DialogChoice::Delete, dont_ask)) => {
+                    self.set_status(if dont_ask {
+                        "Deleted 3 messages (and won't ask again)"
+                    } else {
+                        "Deleted 3 messages"
+                    });
+                }
+                Ok((DialogChoice::Cancel, _)) => self.set_status("Delete cancelled"),
+                Err(error) => self.set_status(&format!("Task dialog unavailable: {error}")),
+            },
             Msg::ToggleTheme => {
                 let next = if ui.theme().is_dark {
                     Theme::light()

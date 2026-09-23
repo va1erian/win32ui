@@ -36,6 +36,12 @@ pub struct Theme {
     /// Accent used for highlighted rows and active buttons (WinUI
     /// AccentDefault: light `#005FB8`, dark `#4CC2FF`).
     pub accent: Color,
+    /// Caution fill, e.g. a paused progress bar (WinUI SystemFillColorCaution:
+    /// light `#9D5D00`, dark `#FCE100`).
+    pub warning: Color,
+    /// Critical/danger fill, e.g. an error progress bar (WinUI
+    /// SystemFillColorCritical: light `#C42B1C`, dark `#FF99A4`).
+    pub danger: Color,
     /// Focused selection background (Explorer selected row: light `#C7E0F4`,
     /// dark `#2B4A67`).
     pub selection: Color,
@@ -72,6 +78,8 @@ impl Theme {
             text_disabled: Color::hex(0xA1_9F_9D),
             text_on_accent: Color::hex(0xFF_FF_FF),
             accent: Color::hex(0x00_5F_B8),
+            warning: Color::hex(0x9D_5D_00),
+            danger: Color::hex(0xC4_2B_1C),
             selection: Color::hex(0xC7_E0_F4),
             selection_unfocused: Color::hex(0xE5_E5_E5),
             hover: Color::hex(0xEA_EA_EA),
@@ -96,6 +104,8 @@ impl Theme {
             text_disabled: Color::hex(0x76_76_76),
             text_on_accent: Color::hex(0x00_00_00),
             accent: Color::hex(0x4C_C2_FF),
+            warning: Color::hex(0xFC_E1_00),
+            danger: Color::hex(0xFF_99_A4),
             selection: Color::hex(0x2B_4A_67),
             selection_unfocused: Color::hex(0x3A_3A_3A),
             hover: Color::hex(0x33_33_33),
@@ -137,5 +147,11 @@ mod tests {
     fn focused_borders_match_accent() {
         assert_eq!(Theme::light().border_focused, Theme::light().accent);
         assert_eq!(Theme::dark().border_focused, Theme::dark().accent);
+    }
+
+    #[test]
+    fn status_fills_differ_between_variants() {
+        assert_ne!(Theme::light().warning, Theme::dark().warning);
+        assert_ne!(Theme::light().danger, Theme::dark().danger);
     }
 }

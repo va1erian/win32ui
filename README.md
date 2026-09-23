@@ -108,7 +108,8 @@ already retained), and closures that capture shared mutable app state.
 | Widget layer: `App`/`Ui`, `Msg` mapping, `ControlExt`, `run_app` | exists |
 | Layout tree (`column!`/`row!`, `fill`/`width`, relayout on resize/DPI) | exists |
 | Theming foundation: tokens, `Themed`, live switching, central `WM_CTLCOLOR*` | #30 |
-| Edit, buttons, ComboBox, tabs, menus, tooltips, progress/task dialog, split/scroll | #11–#18 |
+| Owner-drawn `ProgressBar` (range/value/state/marquee), typed `TaskDialog` | exist (#18) |
+| Edit, buttons, ComboBox, tabs, menus, tooltips, split/scroll | #11–#17 |
 | Direct2D/DirectWrite (anti-aliasing, colour emoji) | #22 |
 
 ## Source layout
@@ -128,7 +129,8 @@ src/
   app/            `App`, `Ui`, the per-window message queue, `run_app`
   app/layout/     the layout tree: `column!`/`row!`, `fill`/`width`, relayout
   gdi/            RAII `Font` / `Brush` / `Pen` / `Bitmap`, `Paint`, `Canvas`
-  controls/       `ListView`, `TreeView`, `Toolbar`, `StatusBar`, `Label`
+  controls/       `ListView`, `TreeView`, `Toolbar`, `StatusBar`, `Label`,
+                  `ProgressBar`, `TaskDialog`
   controls/control.rs   `Control`, `AsControl`, `ControlExt`, `HasText`
   controls/registry.rs  routes a control's own notifications back to it
   sys/            ALL `unsafe` lives here; every block has a `// SAFETY:` note
@@ -203,12 +205,14 @@ Controls theme themselves; the app never handles `NM_CUSTOMDRAW`,
 
 - **Tokens.** `Theme` is the complete semantic palette (`is_dark`, `background`,
   `surface`, `raised`, `text`/`text_secondary`/`text_disabled`/`text_on_accent`,
-  `accent`, `selection`/`selection_unfocused`, `hover`, `pressed`,
-  `border`/`border_focused`, `input_background`, `scrollbar`/`scrollbar_track`).
+  `accent`, `warning`/`danger`, `selection`/`selection_unfocused`, `hover`,
+  `pressed`, `border`/`border_focused`, `input_background`,
+  `scrollbar`/`scrollbar_track`).
   `Theme::light()`/`dark()` sample Windows 11 Explorer/Settings/WinUI values;
   each field documents its source. Per-control structs
   (`ListViewTheme::from_theme`, `ToolbarTheme::from_theme`,
-  `StatusBarTheme::from_theme`) are derived, overridable views.
+  `StatusBarTheme::from_theme`, `ProgressBarTheme::from_theme`) are derived,
+  overridable views.
 - **Live switching.** The theme lives on the window: `Ui::set_theme(theme)` for
   widget apps, `Window::set_theme(theme)` for platform windows. It stores the
   theme for central `WM_CTLCOLOR*` answers, applies the DWM dark title bar
