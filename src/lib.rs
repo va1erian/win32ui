@@ -66,8 +66,8 @@ mod sys;
 
 pub use accel::{Shortcut, ShortcutParseError};
 pub use app::{
-    App, IntoLayoutItem, Layout, LayoutExt, LayoutItem, Proxy, Split, Ui, WindowHandle, WindowSpec,
-    run_app,
+    App, IntoLayoutItem, Layout, LayoutExt, LayoutItem, Proxy, Split, Tabs, Ui, WindowHandle,
+    WindowSpec, run_app,
 };
 pub use capture::RgbaImage;
 pub use color::Color;
@@ -120,10 +120,10 @@ pub mod prelude {
         Placement, Point, ProgressBar, ProgressBarTheme, ProgressState, Proxy, Px, RadioGroup,
         RadioOption, Rect, Renderer, Result, RgbaImage, ScrollView, Shortcut, ShortcutParseError,
         ShowState, SortDirection, Split, Stack, StackDirection, StackSlot, StatusBar,
-        StatusBarTheme, TaskDialog, TaskDialogIcon, Theme, Themed, TimerId, Toolbar, ToolbarItem,
-        ToolbarTheme, TreeEntry, TreeSource, TreeView, TreeViewEvent, Ui, WidgetCx, Win32Error,
-        Window, WindowClass, WindowExStyle, WindowHandle, WindowHandler, WindowSpec, WindowStyle,
-        column, dip, monitor_work_areas, row, run_app, split_col, split_row,
+        StatusBarTheme, Tabs, TaskDialog, TaskDialogIcon, Theme, Themed, TimerId, Toolbar,
+        ToolbarItem, ToolbarTheme, TreeEntry, TreeSource, TreeView, TreeViewEvent, Ui, WidgetCx,
+        Win32Error, Window, WindowClass, WindowExStyle, WindowHandle, WindowHandler, WindowSpec,
+        WindowStyle, column, dip, monitor_work_areas, row, run_app, split_col, split_row, tabs,
     };
     pub use crate::{clipboard, gdi, looper, quit, run, run_modal};
 }

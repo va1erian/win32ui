@@ -195,6 +195,31 @@ pub(crate) fn main() {
             // A tall Direct2D document with its own vertical scroll host,
             // mapping the scroll offset to `Msg::DocumentScrolled`.
             let document = document::build(ui);
+
+            // The three big views live in one tab node — a draggable
+            // tree/list, the Direct2D primitives and the document — so the
+            // window stays compact. `tabs!` pages layout subtrees; each page is
+            // shown and hidden automatically and reports its index as a `Msg`.
+            let library = split_row![
+                // A draggable split: the tree on the left, the search box and
+                // list on the right. `on_moved` lets the app persist the
+                // divider position.
+                tree,
+                column![
+                    row![search_label.width(dip(60.0)), search.fill(1)].height(dip(28.0)),
+                    list.fill(1),
+                ]
+            ]
+            .position(dip(220.0))
+            .min(dip(120.0), dip(220.0))
+            .on_moved(|position| Some(Msg::SplitMoved(position)));
+            let views = tabs![
+                ("Library", library),
+                ("Primitives", primitives),
+                ("Document", document),
+            ]
+            .on_change(|page| Some(Msg::TabsPage(page)));
+
             // Options panel: a default push button, a check box, a labelled
             // group of typed radios and a disabled button. The radios report
             // values, not indices.
@@ -249,26 +274,7 @@ pub(crate) fn main() {
                     row![sort_label.width(dip(60.0)), sort.width(dip(180.0))].height(dip(30.0)),
                     progress.height(dip(8.0)),
                     swatch.height(dip(24.0)),
-                    primitives.height(dip(170.0)),
-                    document.height(dip(240.0)),
-                    row![
-                        // A draggable split: the tree on the left, the search
-                        // box and list on the right. `on_moved` lets the app
-                        // persist the divider position.
-                        split_row![
-                            tree,
-                            column![
-                                row![search_label.width(dip(60.0)), search.fill(1)]
-                                    .height(dip(28.0)),
-                                list.fill(1),
-                            ]
-                        ]
-                        .position(dip(220.0))
-                        .min(dip(120.0), dip(220.0))
-                        .on_moved(|position| Some(Msg::SplitMoved(position))),
-                        options.width(dip(220.0))
-                    ]
-                    .fill(1),
+                    row![views, options.width(dip(220.0))].fill(1),
                     status,
                 ]
                 .spacing(dip(4.0)),
@@ -423,6 +429,7 @@ enum Msg {
     ContextDelete,
     Quit,
     AutoClose,
+    TabsPage(usize),
 }
 
 /// The sort keys the demo's combo box holds as typed values.
@@ -713,6 +720,7 @@ impl win32ui::App for App {
             Msg::ShowListMenu => ui.popup(&self.context, ui.cursor_position()),
             Msg::ContextPlay => self.set_status("Context: play"),
             Msg::ContextDelete => self.set_status("Context: delete"),
+            Msg::TabsPage(page) => self.set_status(&format!("Tab page {page}")),
             Msg::AutoClose => {
                 screenshot::capture_if_requested(ui);
                 primitives::PrimitivesPanel::capture_if_requested(ui, &self._primitives);

@@ -74,11 +74,11 @@ impl SplitShared {
     }
 
     fn handle(&self) -> WidgetHandle {
-        WidgetHandle {
-            hwnd: self.hwnd.get(),
-            bounds: Rc::clone(&self.bounds),
-            visible: Rc::clone(&self.visible),
-        }
+        WidgetHandle::new(
+            self.hwnd.get(),
+            Rc::clone(&self.bounds),
+            Rc::clone(&self.visible),
+        )
     }
 
     fn is_horizontal(&self) -> bool {
@@ -215,6 +215,22 @@ impl SplitNode {
     /// Whether either pane is visible.
     pub(crate) fn is_visible(&self) -> bool {
         self.a.is_visible() || self.b.is_visible()
+    }
+
+    /// Shows or hides both panes and the divider. Used when a split is a page
+    /// of a [`Tabs`](crate::Tabs) node.
+    pub(crate) fn set_tree_visible(&self, visible: bool) {
+        self.a.set_tree_visible(visible);
+        self.b.set_tree_visible(visible);
+        let hwnd = self.shared.hwnd.get();
+        if !hwnd.is_null() {
+            let kind = if visible {
+                sys::window::ShowKind::Normal
+            } else {
+                sys::window::ShowKind::Hidden
+            };
+            sys::window::show(hwnd, kind);
+        }
     }
 
     /// Lays the two panes and the divider into `rect`.

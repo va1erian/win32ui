@@ -10,10 +10,10 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{TME_LEAVE, TRACKMOUSEEVENT, Tr
 use windows::Win32::UI::Shell::SUBCLASSPROC;
 use windows::Win32::UI::WindowsAndMessaging::{
     CS_DBLCLKS, CreateWindowExW, DestroyWindow, GWL_STYLE, GetClientRect, GetWindowLongPtrW,
-    GetWindowRect, HCURSOR, HMENU, IDC_ARROW, KillTimer, LoadCursorW, MoveWindow, RegisterClassExW,
-    SW_HIDE, SW_SHOW, SW_SHOWMAXIMIZED, SW_SHOWMINIMIZED, SetTimer, SetWindowLongPtrW,
-    SetWindowTextW, ShowWindow, UnregisterClassW, WINDOW_EX_STYLE, WINDOW_STYLE, WNDCLASSEXW,
-    WS_TABSTOP,
+    GetWindowRect, HCURSOR, HMENU, HWND_BOTTOM, IDC_ARROW, KillTimer, LoadCursorW, MoveWindow,
+    RegisterClassExW, SW_HIDE, SW_SHOW, SW_SHOWMAXIMIZED, SW_SHOWMINIMIZED, SWP_NOACTIVATE,
+    SWP_NOMOVE, SWP_NOSIZE, SetTimer, SetWindowLongPtrW, SetWindowPos, SetWindowTextW, ShowWindow,
+    UnregisterClassW, WINDOW_EX_STYLE, WINDOW_STYLE, WNDCLASSEXW, WS_TABSTOP,
 };
 use windows::core::{HSTRING, PCWSTR};
 
@@ -241,6 +241,24 @@ pub(crate) fn move_window(hwnd: Hwnd, bounds: Rect) {
             bounds.width(),
             bounds.height(),
             true,
+        );
+    }
+}
+
+/// Sends `hwnd` to the bottom of its sibling z-order, so a container created
+/// after its content (a tab strip) draws behind the content windows.
+pub(crate) fn send_to_back(hwnd: Hwnd) {
+    // SAFETY: only state flags and a positioning constant are passed; a stale
+    // handle is a documented no-op failure.
+    unsafe {
+        let _ = SetWindowPos(
+            raw_hwnd(hwnd),
+            Some(HWND_BOTTOM),
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
         );
     }
 }
