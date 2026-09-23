@@ -15,6 +15,7 @@ thiserror = "2"
 # the generated bindings (and the resulting binary) stay as small as possible.
 windows = { version = "0.62", default-features = false, features = [
     "Win32_Foundation",
+    "Win32_Graphics_Dwm",
     "Win32_Graphics_Gdi",
     "Win32_Storage_Xps",
     "Win32_System_DataExchange",

@@ -15,7 +15,7 @@ use crate::gdi::{Bitmap, Font, Paint, TextFormat};
 use crate::geometry::{Point, Rect};
 use crate::message::{Message, MouseButton};
 use crate::sys;
-use crate::theme::Theme;
+use crate::theme::{Theme, Themed};
 use crate::units::dip;
 use crate::window::{Window, WindowClass, WindowExStyle, WindowHandler, WindowStyle};
 
@@ -67,13 +67,14 @@ pub struct ToolbarTheme {
 }
 
 impl ToolbarTheme {
-    /// Derives a toolbar palette from the app [`Theme`].
+    /// Derives a toolbar palette from the app [`Theme`]. Override any field
+    /// after calling this for a custom look.
     pub fn from_theme(theme: &Theme) -> ToolbarTheme {
         ToolbarTheme {
             background: theme.surface,
             button: theme.surface,
-            button_hover: theme.surface.lerp(theme.accent, 0.22),
-            button_pressed: theme.selection,
+            button_hover: theme.hover,
+            button_pressed: theme.pressed,
             text: theme.text,
             border: theme.border,
         }
@@ -285,12 +286,10 @@ pub struct Toolbar<M> {
 }
 
 impl<M: 'static> Toolbar<M> {
-    /// Creates the toolbar as a child of the window behind `ui`.
-    pub fn new(
-        ui: &mut Ui<M>,
-        items: Vec<ToolbarItem<M>>,
-        theme: ToolbarTheme,
-    ) -> Result<Toolbar<M>> {
+    /// Creates the toolbar as a child of the window behind `ui`, adopting
+    /// `ui`'s theme. Use [`Themed::apply_theme`] for a one-off override.
+    pub fn new(ui: &mut Ui<M>, items: Vec<ToolbarItem<M>>) -> Result<Toolbar<M>> {
+        let theme = ToolbarTheme::from_theme(&ui.theme());
         let state = Rc::new(RefCell::new(ToolbarState::new(
             items,
             theme,
@@ -312,11 +311,28 @@ impl<M: 'static> Toolbar<M> {
             handler,
         )?;
         let control = Control::borrowed(window.hwnd(), bounds);
-        Ok(Toolbar {
+        let toolbar = Toolbar {
             window,
             control,
             state,
-        })
+        };
+        {
+            let weak = Rc::downgrade(&toolbar.state);
+            let hwnd = toolbar.control.hwnd();
+            let parent = ui.hwnd();
+            crate::theme::register_themed(
+                parent,
+                hwnd,
+                Rc::new(move |applied| {
+                    if let Some(state) = weak.upgrade() {
+                        state.borrow_mut().theme = ToolbarTheme::from_theme(applied);
+                        sys::set_class_background(hwnd, applied.surface);
+                        sys::window::invalidate(hwnd);
+                    }
+                }),
+            );
+        }
+        Ok(toolbar)
     }
 
     /// The toolbar's natural height.
@@ -333,5 +349,19 @@ impl<M: 'static> Toolbar<M> {
 impl<M> AsControl for Toolbar<M> {
     fn control(&self) -> &Control {
         &self.control
+    }
+}
+
+impl<M> Themed for Toolbar<M> {
+    fn apply_theme(&self, theme: &Theme) {
+        self.state.borrow_mut().theme = ToolbarTheme::from_theme(theme);
+        sys::set_class_background(self.control.hwnd(), theme.surface);
+        self.window.invalidate();
+    }
+}
+
+impl<M> Drop for Toolbar<M> {
+    fn drop(&mut self) {
+        crate::theme::unregister_themed(self.control.hwnd());
     }
 }

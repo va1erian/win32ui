@@ -22,6 +22,7 @@ use crate::geometry::Rect;
 use crate::hwnd::Hwnd;
 use crate::message::{Message, Notify};
 use crate::sys;
+use crate::theme::{Theme, Themed};
 use crate::units::dip;
 
 const TVS_HASBUTTONS: u32 = 0x0000_0001;
@@ -149,8 +150,11 @@ pub struct TreeView<M> {
 }
 
 impl<M: 'static> TreeView<M> {
-    /// Creates the control as a child of the window behind `ui`.
+    /// Creates the control as a child of the window behind `ui`, adopting
+    /// `ui`'s theme.
     pub fn new(ui: &mut Ui<M>, bounds: Rect, source: Box<dyn TreeSource>) -> Result<TreeView<M>> {
+        let parent = ui.hwnd();
+        let theme = ui.theme();
         let style = style::WS_CHILD
             | style::WS_VISIBLE
             | style::WS_BORDER
@@ -171,6 +175,8 @@ impl<M: 'static> TreeView<M> {
 
         sys::control::tv_set_extended_style(hwnd, TVS_EX_DOUBLEBUFFER);
         sys::control::tv_set_item_height(hwnd, dip(20.0).to_px(ui.dpi()).value());
+        sys::control::tv_set_colors(hwnd, theme.background, theme.text);
+        sys::apply_native_theme(hwnd, sys::NativeControlKind::Scrollable, theme.is_dark);
 
         for entry in source.children(None) {
             sys::control::tv_insert(
@@ -225,6 +231,16 @@ impl<M: 'static> TreeView<M> {
         });
         registry::register_app_events(hwnd, mapper);
 
+        crate::theme::register_themed(
+            parent,
+            hwnd,
+            Rc::new(move |applied| {
+                sys::control::tv_set_colors(hwnd, applied.background, applied.text);
+                sys::apply_native_theme(hwnd, sys::NativeControlKind::Scrollable, applied.is_dark);
+                sys::window::invalidate(hwnd);
+            }),
+        );
+
         Ok(TreeView {
             control: Control::own(hwnd, bounds),
             inner,
@@ -250,7 +266,9 @@ impl<M: 'static> TreeView<M> {
         self
     }
 
-    /// Sets the tree's background and text colours.
+    /// Sets the tree's background and text colours as a one-off override.
+    /// Prefer [`Themed::apply_theme`]: a later `Ui::set_theme` re-derives the
+    /// colours from the window theme.
     pub fn set_colors(&self, background: crate::Color, text: crate::Color) {
         sys::control::tv_set_colors(self.control.hwnd(), background, text);
     }
@@ -280,9 +298,22 @@ impl<M> AsControl for TreeView<M> {
     }
 }
 
+impl<M> Themed for TreeView<M> {
+    fn apply_theme(&self, theme: &Theme) {
+        sys::control::tv_set_colors(self.control.hwnd(), theme.background, theme.text);
+        sys::apply_native_theme(
+            self.control.hwnd(),
+            sys::NativeControlKind::Scrollable,
+            theme.is_dark,
+        );
+        sys::window::invalidate(self.control.hwnd());
+    }
+}
+
 impl<M> Drop for TreeView<M> {
     fn drop(&mut self) {
         registry::unregister(self.control.hwnd());
         registry::unregister_app_events(self.control.hwnd());
+        crate::theme::unregister_themed(self.control.hwnd());
     }
 }

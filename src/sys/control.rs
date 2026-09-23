@@ -10,14 +10,14 @@ use windows::Win32::UI::Controls::{
     LVM_GETITEMTEXTW, LVM_GETNEXTITEM, LVM_GETSUBITEMRECT, LVM_INSERTCOLUMNW, LVM_SETBKCOLOR,
     LVM_SETEXTENDEDLISTVIEWSTYLE, LVM_SETITEMCOUNT, LVM_SETITEMSTATE, LVM_SETTEXTBKCOLOR,
     LVM_SETTEXTCOLOR, LVNI_SELECTED, LVSICF_NOSCROLL, NM_CUSTOMDRAW, NMCUSTOMDRAW, NMHDR,
-    NMLVCUSTOMDRAW, NMLVDISPINFOW, NMTREEVIEWW, SetWindowTheme, TVGN_CARET, TVIF_CHILDREN,
-    TVIF_HANDLE, TVIF_PARAM, TVIF_TEXT, TVINSERTSTRUCTW, TVINSERTSTRUCTW_0, TVITEMEXW_CHILDREN,
-    TVITEMW, TVM_GETCOUNT, TVM_GETITEMW, TVM_GETNEXTITEM, TVM_INSERTITEMW, TVM_SETBKCOLOR,
-    TVM_SETEXTENDEDSTYLE, TVM_SETITEMHEIGHT, TVM_SETTEXTCOLOR,
+    NMLVCUSTOMDRAW, NMLVDISPINFOW, NMTREEVIEWW, TVGN_CARET, TVIF_CHILDREN, TVIF_HANDLE, TVIF_PARAM,
+    TVIF_TEXT, TVINSERTSTRUCTW, TVINSERTSTRUCTW_0, TVITEMEXW_CHILDREN, TVITEMW, TVM_GETCOUNT,
+    TVM_GETITEMW, TVM_GETNEXTITEM, TVM_INSERTITEMW, TVM_SETBKCOLOR, TVM_SETEXTENDEDSTYLE,
+    TVM_SETITEMHEIGHT, TVM_SETTEXTCOLOR,
 };
 use windows::Win32::UI::Shell::DefSubclassProc;
 use windows::Win32::UI::WindowsAndMessaging::{SendMessageW, WM_NOTIFY, WM_SETFONT};
-use windows::core::{PCWSTR, PWSTR, w};
+use windows::core::PWSTR;
 
 use crate::geometry::Rect;
 
@@ -261,15 +261,6 @@ pub(crate) fn lv_is_selected(hwnd: Hwnd, item: i32) -> bool {
 /// Gives a control a font (and asks it to repaint).
 pub(crate) fn set_control_font(hwnd: Hwnd, font: HFONT) {
     send(hwnd, WM_SETFONT, font.0 as usize, 1);
-}
-
-/// Opts a control into the undocumented "DarkMode_Explorer" visual-style
-/// theme, which darkens scroll bars and headers on Windows 10/11.
-pub(crate) fn set_dark_theme(hwnd: Hwnd) {
-    // SAFETY: `hwnd` is a live control; the strings are static literals.
-    unsafe {
-        let _ = SetWindowTheme(raw_hwnd(hwnd), w!("DarkMode_Explorer"), PCWSTR::null());
-    }
 }
 
 /// The list view's header control.

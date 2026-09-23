@@ -22,8 +22,12 @@ use crate::geometry::Rect;
 use crate::hwnd::Hwnd;
 use crate::message::{Key, Message, Modifiers, Notify};
 use crate::sys;
-use crate::theme::Theme;
+use crate::theme::{Theme, Themed};
 use crate::units::Dip;
+
+pub use super::listview_events::ListViewEvent;
+use super::listview_events::ListViewEvents;
+pub use super::listview_theme::ListViewTheme;
 
 const LVS_REPORT: u32 = 0x0000_0001;
 const LVS_SHOWSELALWAYS: u32 = 0x0000_0008;
@@ -80,103 +84,6 @@ pub enum SortDirection {
     Descending,
 }
 
-/// Colours used while owner-drawing the list.
-#[derive(Clone, Copy, Debug)]
-pub struct ListViewTheme {
-    /// Even-row background.
-    pub background: crate::Color,
-    /// Odd-row background (the subtle zebra shade).
-    pub alternate: crate::Color,
-    /// Normal cell text.
-    pub text: crate::Color,
-    /// Selected-row background.
-    pub selection: crate::Color,
-    /// Background of the currently playing row.
-    pub playing: crate::Color,
-    /// Text colour on the playing/selected row.
-    pub on_playing: crate::Color,
-    /// Column-separator colour.
-    pub border: crate::Color,
-    /// Header background.
-    pub header_background: crate::Color,
-    /// Header label colour.
-    pub header_text: crate::Color,
-}
-
-impl ListViewTheme {
-    /// Derives a list palette from the app [`Theme`], tuned to match the egui
-    /// frontend: a subtle two-shade zebra, a blue playing/selection highlight
-    /// and thin column separators.
-    pub fn from_theme(theme: &Theme) -> ListViewTheme {
-        ListViewTheme {
-            background: theme.background,
-            alternate: theme.background.lerp(theme.text, 0.04),
-            text: theme.text.lerp(theme.background, 0.12),
-            selection: crate::Color::hex(0x2f_5f_8f),
-            playing: crate::Color::hex(0x2f_5f_8f),
-            on_playing: crate::Color::rgb(0xf2, 0xf2, 0xf2),
-            border: theme.border,
-            header_background: theme.background.lerp(theme.text, 0.07),
-            header_text: theme.text.lerp(theme.background, 0.25),
-        }
-    }
-}
-
-/// An event from the list view, delivered to the parent window.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ListViewEvent {
-    /// The selection changed.
-    ItemChanged {
-        /// The row that changed.
-        item: i32,
-        /// Whether it is now selected.
-        selected: bool,
-    },
-    /// A row was clicked.
-    Click {
-        /// The row clicked (`-1` for empty space).
-        item: i32,
-    },
-    /// A row was double-clicked.
-    DoubleClick {
-        /// The row double-clicked.
-        item: i32,
-    },
-    /// A row was right-clicked.
-    RightClick {
-        /// The row right-clicked.
-        item: i32,
-    },
-    /// Enter was pressed.
-    ReturnKey {
-        /// The focused row.
-        item: i32,
-    },
-    /// A column header was clicked.
-    ColumnClick {
-        /// The column clicked.
-        column: i32,
-    },
-    /// A key was pressed while the list had focus.
-    KeyDown {
-        /// The virtual-key code.
-        key: u16,
-        /// The modifier keys held when the key was pressed.
-        modifiers: Modifiers,
-    },
-}
-
-/// Maps a focused key press, with its modifiers, to an optional app message.
-type KeyMapper<M> = Box<dyn Fn(Key, Modifiers) -> Option<M>>;
-
-/// The app-level events a [`ListView`] maps to `Msg`.
-struct ListViewEvents<M> {
-    on_select: Option<Box<dyn Fn(usize) -> Option<M>>>,
-    on_activate: Option<Box<dyn Fn(usize) -> Option<M>>>,
-    on_context: Option<Box<dyn Fn(usize) -> Option<M>>>,
-    on_key: Option<KeyMapper<M>>,
-}
-
 /// A virtual report list view.
 pub struct ListView<M> {
     control: Control,
@@ -187,15 +94,17 @@ pub struct ListView<M> {
 }
 
 impl<M: 'static> ListView<M> {
-    /// Creates the control as a child of the window behind `ui`.
+    /// Creates the control as a child of the window behind `ui`, adopting
+    /// `ui`'s theme. Use [`Themed::apply_theme`] for a one-off override.
     pub fn new(
         ui: &mut Ui<M>,
         bounds: Rect,
         columns: &[Column],
         source: Box<dyn ListSource>,
-        theme: ListViewTheme,
     ) -> Result<ListView<M>> {
         let dpi = ui.dpi();
+        let window = ui.hwnd();
+        let theme = ListViewTheme::from_theme(&ui.theme());
         let style = style::WS_CHILD
             | style::WS_VISIBLE
             | style::WS_BORDER
@@ -228,14 +137,18 @@ impl<M: 'static> ListView<M> {
         sys::control::lv_set_item_count(hwnd, source.item_count());
 
         // Match the egui frontend's font/row height, opt the control and its
-        // header into the dark visual-style theme, and owner-draw the header.
+        // header into the theme's visual style, and owner-draw the header.
         let font = Font::system_ui(dpi)?;
         sys::control::set_control_font(hwnd, font.raw());
-        sys::control::set_dark_theme(hwnd);
+        sys::apply_native_theme(hwnd, sys::NativeControlKind::Scrollable, ui.theme().is_dark);
         let header = sys::control::lv_header(hwnd);
         if !header.is_null() {
             sys::control::set_control_font(header, font.raw());
-            sys::control::set_dark_theme(header);
+            sys::apply_native_theme(
+                header,
+                sys::NativeControlKind::Scrollable,
+                ui.theme().is_dark,
+            );
         }
 
         let inner = Rc::new(RefCell::new(ListViewInner {
@@ -259,12 +172,7 @@ impl<M: 'static> ListView<M> {
             )
         };
 
-        let events = Rc::new(RefCell::new(ListViewEvents {
-            on_select: None,
-            on_activate: None,
-            on_context: None,
-            on_key: None,
-        }));
+        let events = Rc::new(RefCell::new(ListViewEvents::new()));
         let sink = ui.clone();
         let events_for_mapper = events.clone();
         let mapper: Rc<dyn Fn(&Message) -> bool> = Rc::new(move |message| {
@@ -300,6 +208,39 @@ impl<M: 'static> ListView<M> {
             true
         });
         registry::register_app_events(hwnd, mapper);
+
+        {
+            let weak = Rc::downgrade(&inner);
+            let header_copy = header;
+            crate::theme::register_themed(
+                window,
+                hwnd,
+                Rc::new(move |applied| {
+                    if let Some(inner) = weak.upgrade() {
+                        inner.borrow_mut().theme = ListViewTheme::from_theme(applied);
+                        sys::control::lv_set_colors(
+                            hwnd,
+                            inner.borrow().theme.background,
+                            inner.borrow().theme.text,
+                        );
+                        sys::apply_native_theme(
+                            hwnd,
+                            sys::NativeControlKind::Scrollable,
+                            applied.is_dark,
+                        );
+                        if !header_copy.is_null() {
+                            sys::apply_native_theme(
+                                header_copy,
+                                sys::NativeControlKind::Scrollable,
+                                applied.is_dark,
+                            );
+                            sys::window::invalidate(header_copy);
+                        }
+                        sys::window::invalidate(hwnd);
+                    }
+                }),
+            );
+        }
 
         Ok(ListView {
             control: Control::own(hwnd, bounds),
@@ -400,11 +341,34 @@ impl<M> AsControl for ListView<M> {
     }
 }
 
+impl<M> Themed for ListView<M> {
+    fn apply_theme(&self, theme: &Theme) {
+        self.inner.borrow_mut().theme = ListViewTheme::from_theme(theme);
+        let applied = self.inner.borrow().theme;
+        sys::control::lv_set_colors(self.control.hwnd(), applied.background, applied.text);
+        sys::apply_native_theme(
+            self.control.hwnd(),
+            sys::NativeControlKind::Scrollable,
+            theme.is_dark,
+        );
+        if !self.header.is_null() {
+            sys::apply_native_theme(
+                self.header,
+                sys::NativeControlKind::Scrollable,
+                theme.is_dark,
+            );
+            sys::window::invalidate(self.header);
+        }
+        sys::window::invalidate(self.control.hwnd());
+    }
+}
+
 impl<M> Drop for ListView<M> {
     fn drop(&mut self) {
         // Remove the header subclass before the window (and its header) go away.
         self.header_subclass = None;
         registry::unregister(self.control.hwnd());
         registry::unregister_app_events(self.control.hwnd());
+        crate::theme::unregister_themed(self.control.hwnd());
     }
 }

@@ -10,6 +10,7 @@ use crate::geometry::Rect;
 use crate::hwnd::Hwnd;
 use crate::message::TimerId;
 use crate::sys;
+use crate::theme::Theme;
 
 use super::core::Core;
 
@@ -51,6 +52,23 @@ impl<M: 'static> Ui<M> {
     /// Sets the window title.
     pub fn set_title(&self, title: &str) {
         let _ = sys::window::set_title(self.core.hwnd(), title);
+    }
+
+    /// The window's current theme.
+    pub fn theme(&self) -> Theme {
+        self.core.theme()
+    }
+
+    /// Switches the window and every widget created through it to `theme`,
+    /// live. Widgets re-derive their colours, update their native parts and
+    /// repaint; nothing is recreated.
+    pub fn set_theme(&self, theme: Theme) {
+        self.core.set_theme_value(theme);
+        crate::theme::set_window_theme(self.core.hwnd(), theme);
+        sys::set_titlebar_dark(self.core.hwnd(), theme.is_dark);
+        sys::set_class_background(self.core.hwnd(), theme.background);
+        crate::theme::retheme_children(self.core.hwnd(), &theme);
+        sys::window::invalidate(self.core.hwnd());
     }
 
     /// Enqueues `msg` for delivery to [`App::update`](super::App::update). This

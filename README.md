@@ -184,8 +184,44 @@ events to the app's `Msg` through closures given at construction, implements
 4. Map those events to the app's `Msg`: register a `registry::register_app_events`
    mapper (see `controls/listview.rs`) and expose builder methods
    (`on_select`, `on_activate`, …).
-5. Re-export it from `lib.rs` (and `prelude`), and exercise it in
+5. Implement `Themed`: re-derive colours with `<Control>Theme::from_theme`,
+   update native parts via `sys::apply_native_theme`, invalidate, and register
+   the child with `theme::register_themed` at creation (unregister in `Drop`).
+   See *Theming* below.
+6. Re-export it from `lib.rs` (and `prelude`), and exercise it in
    `examples/demo/` + `tests/`.
+
+## Theming
+
+Controls theme themselves; the app never handles `NM_CUSTOMDRAW`,
+`WM_CTLCOLOR*` or `SetWindowTheme`.
+
+- **Tokens.** `Theme` is the complete semantic palette (`is_dark`, `background`,
+  `surface`, `raised`, `text`/`text_secondary`/`text_disabled`/`text_on_accent`,
+  `accent`, `selection`/`selection_unfocused`, `hover`, `pressed`,
+  `border`/`border_focused`, `input_background`, `scrollbar`/`scrollbar_track`).
+  `Theme::light()`/`dark()` sample Windows 11 Explorer/Settings/WinUI values;
+  each field documents its source. Per-control structs
+  (`ListViewTheme::from_theme`, `ToolbarTheme::from_theme`,
+  `StatusBarTheme::from_theme`) are derived, overridable views.
+- **Live switching.** The theme lives on the window: `Ui::set_theme(theme)` for
+  widget apps, `Window::set_theme(theme)` for platform windows. It stores the
+  theme for central `WM_CTLCOLOR*` answers, applies the DWM dark title bar
+  (`DWMWA_USE_IMMERSIVE_DARK_MODE`), updates the class background (no white
+  flashes on resize), re-themes every registered child and repaints once.
+  Widgets created through `Ui` adopt its theme automatically and register a
+  re-theme callback; dropping a widget unregisters it. Nothing is recreated.
+- **Central `WM_CTLCOLOR*`.** The shared window procedure answers
+  `WM_CTLCOLOREDIT/STATIC/BTN/LISTBOX/DLG` from the window's theme with cached
+  brushes (bounded GDI cache). An app handler that claims the message overrides
+  the theme.
+- **Native parts.** `sys/theme.rs` picks `DarkMode_Explorer` (scrollable),
+  `DarkMode_CFD` (button chrome) or `Explorer` (light) per control kind, plus
+  dark scrollbars everywhere. Documented APIs only; where a native part ignores
+  dark mode (list header, status bar), win32ui owner-draws it.
+- **New controls opt in** by implementing `Themed`, painting only from tokens,
+  registering with `theme::register_themed`, and adding a demo toggle state plus
+  light/dark screenshots to the PR.
 
 ## Dark theming notes
 

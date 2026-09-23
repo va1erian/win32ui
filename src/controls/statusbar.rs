@@ -16,7 +16,8 @@ use crate::error::Result;
 use crate::gdi::{Font, Paint, TextFormat};
 use crate::geometry::Rect;
 use crate::message::Message;
-use crate::theme::Theme;
+use crate::sys;
+use crate::theme::{Theme, Themed};
 use crate::units::dip;
 use crate::window::{Window, WindowClass, WindowExStyle, WindowHandler, WindowStyle};
 
@@ -32,11 +33,12 @@ pub struct StatusBarTheme {
 }
 
 impl StatusBarTheme {
-    /// Derives a palette from the app [`Theme`].
+    /// Derives a palette from the app [`Theme`]. Override any field after
+    /// calling this for a custom look.
     pub fn from_theme(theme: &Theme) -> StatusBarTheme {
         StatusBarTheme {
             background: theme.surface,
-            text: theme.text,
+            text: theme.text_secondary,
             border: theme.border,
         }
     }
@@ -129,8 +131,10 @@ pub struct StatusBar {
 }
 
 impl StatusBar {
-    /// Creates the bar as a child of the window behind `ui`.
-    pub fn new<M: 'static>(ui: &mut Ui<M>, theme: StatusBarTheme) -> Result<StatusBar> {
+    /// Creates the bar as a child of the window behind `ui`, adopting `ui`'s
+    /// theme. Use [`Themed::apply_theme`] for a one-off override.
+    pub fn new<M: 'static>(ui: &mut Ui<M>) -> Result<StatusBar> {
+        let theme = StatusBarTheme::from_theme(&ui.theme());
         let dpi = ui.dpi();
         let font = Font::system_ui(dpi)?;
         let height = dip(22.0).to_px(dpi).value();
@@ -155,6 +159,22 @@ impl StatusBar {
             handler,
         )?;
         let control = Control::borrowed(window.hwnd(), Rect::new(0, 0, 0, height));
+        {
+            let weak = Rc::downgrade(&state);
+            let hwnd = control.hwnd();
+            let parent = ui.hwnd();
+            crate::theme::register_themed(
+                parent,
+                hwnd,
+                Rc::new(move |applied| {
+                    if let Some(state) = weak.upgrade() {
+                        state.borrow_mut().theme = StatusBarTheme::from_theme(applied);
+                        sys::set_class_background(hwnd, applied.surface);
+                        sys::window::invalidate(hwnd);
+                    }
+                }),
+            );
+        }
         Ok(StatusBar {
             window,
             control,
@@ -185,5 +205,19 @@ impl StatusBar {
 impl AsControl for StatusBar {
     fn control(&self) -> &Control {
         &self.control
+    }
+}
+
+impl Themed for StatusBar {
+    fn apply_theme(&self, theme: &Theme) {
+        self.state.borrow_mut().theme = StatusBarTheme::from_theme(theme);
+        sys::set_class_background(self.control.hwnd(), theme.surface);
+        self.window.invalidate();
+    }
+}
+
+impl Drop for StatusBar {
+    fn drop(&mut self) {
+        crate::theme::unregister_themed(self.control.hwnd());
     }
 }

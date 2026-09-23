@@ -8,7 +8,8 @@ use std::rc::Rc;
 
 use windows::Win32::UI::Controls::{LVN_GETDISPINFO, NM_CUSTOMDRAW};
 
-use crate::controls::listview::{Column, ListSource, ListViewTheme};
+use crate::controls::listview::{Column, ListSource};
+use crate::controls::listview_theme::ListViewTheme;
 use crate::controls::registry::{ControlEvents, ControlKind};
 use crate::gdi::{Brush, Canvas, Font, TextFormat};
 use crate::geometry::Rect;

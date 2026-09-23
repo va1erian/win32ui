@@ -137,6 +137,15 @@ pub(crate) unsafe extern "system" fn window_proc(
 
     let result = match handled {
         Some(value) => LRESULT(value),
+        // An app that claims a `WM_CTLCOLOR*` overrides the theme; otherwise
+        // the window's theme answers it so native edits, statics and buttons
+        // are correct without the app doing anything.
+        None if crate::theme::is_ctlcolor(msg) => {
+            match crate::theme::ctlcolor_answer(hwnd_from(hwnd), msg, wparam.0 as isize) {
+                Some(brush) => LRESULT(brush),
+                None => default_proc(hwnd, msg, wparam, lparam),
+            }
+        }
         None => default_proc(hwnd, msg, wparam, lparam),
     };
 
@@ -151,6 +160,7 @@ pub(crate) unsafe extern "system" fn window_proc(
         // `HWND` never keeps a thread-local bitmap alive.
         super::gdi::release_back_buffer(hwnd_from(hwnd));
         super::window_ext::forget_track_limits(hwnd_from(hwnd));
+        crate::theme::forget_window_theme(hwnd_from(hwnd));
     }
 
     if msg == WM_NCDESTROY && !raw.is_null() {

@@ -86,13 +86,7 @@ fn window_with_controls_round_trips() {
     let created_for_make = Rc::clone(&created);
 
     let Some(run) = run_app_with_watchdog("win32ui.smoke", move |ui| {
-        let theme = Theme::light();
-        let toolbar = Toolbar::new(
-            ui,
-            vec![ToolbarItem::new("One")],
-            ToolbarTheme::from_theme(&theme),
-        )
-        .ok();
+        let toolbar = Toolbar::new(ui, vec![ToolbarItem::new("One")]).ok();
         let tree = TreeView::new(ui, Rect::new(0, 0, 200, 400), Box::new(TestTree)).ok();
         let list = ListView::new(
             ui,
@@ -102,10 +96,9 @@ fn window_with_controls_round_trips() {
                 Column::right("Time", dip(60.0)),
             ],
             Box::new(TestRows),
-            ListViewTheme::from_theme(&theme),
         )
         .ok();
-        let status = StatusBar::new(ui, StatusBarTheme::from_theme(&theme)).ok();
+        let status = StatusBar::new(ui).ok();
         let label = Label::new(ui, Rect::default(), "hi").ok();
 
         if toolbar.is_none()

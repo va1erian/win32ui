@@ -118,7 +118,6 @@ fn select_during_update_is_not_nested() {
             Rect::new(0, 0, 200, 200),
             &[Column::new("A", dip(80.0))],
             Box::new(TestRows),
-            ListViewTheme::from_theme(&Theme::light()),
         )
         .ok()
         .map(|list| list.on_select(|item| Some(SelMsg::Selected(item))));
@@ -193,7 +192,6 @@ fn dropping_a_widget_destroys_it() {
             Rect::new(0, 0, 200, 200),
             &[Column::new("A", dip(80.0))],
             Box::new(TestRows),
-            ListViewTheme::from_theme(&Theme::light()),
         )
         .ok();
         let list_hwnd = list.as_ref().map(|list| list.hwnd());

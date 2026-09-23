@@ -14,3 +14,5 @@ pub use brush::Brush;
 pub use font::{Font, FontWeight};
 pub use paint::{Canvas, Paint, TextFormat};
 pub use pen::Pen;
+
+pub(crate) use cache::solid_brush as cache_brush;

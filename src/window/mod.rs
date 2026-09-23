@@ -8,6 +8,7 @@ mod modal;
 mod ops;
 mod placement;
 mod size;
+mod theme;
 
 pub use icon::Icon;
 pub use ops::CursorShape;
