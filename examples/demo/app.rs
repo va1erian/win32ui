@@ -10,6 +10,7 @@
 
 mod data;
 mod icons;
+mod primitives;
 mod screenshot;
 mod search;
 mod secondary;
@@ -185,6 +186,10 @@ pub(crate) fn main() {
                 .expect("swatch")
                 .on_event(|_| Some(Msg::SwatchClicked));
 
+            // The Direct2D primitives panel (gradients, bitmaps, rounded
+            // corners, clips and paths).
+            let primitives = primitives::PrimitivesPanel::panel(ui);
+
             // Options panel: a default push button, a check box, a labelled
             // group of typed radios and a disabled button. The radios report
             // values, not indices.
@@ -239,6 +244,7 @@ pub(crate) fn main() {
                     row![sort_label.width(dip(60.0)), sort.width(dip(180.0))].height(dip(30.0)),
                     progress.height(dip(8.0)),
                     swatch.height(dip(24.0)),
+                    primitives.height(dip(170.0)),
                     row![
                         // A draggable split: the tree on the left, the search
                         // box and list on the right. `on_moved` lets the app
@@ -274,6 +280,7 @@ pub(crate) fn main() {
                 _search_label: search_label,
                 swatch,
                 context,
+                _primitives: primitives,
                 options: Options {
                     send,
                     remote,
@@ -458,6 +465,8 @@ struct App {
     swatch: Custom<Swatch, Msg>,
     /// The list's context menu, kept alive for the window's lifetime.
     context: Menu<Msg>,
+    // The Direct2D primitives panel (kept alive; never read).
+    _primitives: Custom<primitives::PrimitivesPanel, Msg>,
     // Owns the options panel's windows; read through their `HWND`s.
     #[allow(dead_code)]
     options: Options,
@@ -691,6 +700,7 @@ impl win32ui::App for App {
             Msg::ContextDelete => self.set_status("Context: delete"),
             Msg::AutoClose => {
                 screenshot::capture_if_requested(ui);
+                primitives::PrimitivesPanel::capture_if_requested(ui, &self._primitives);
                 ui.quit();
             }
         }

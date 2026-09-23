@@ -11,6 +11,7 @@ use crate::sys;
 use crate::sys::d2d::Target;
 
 use super::BASE_DPI;
+use super::bitmap::ImageCache;
 use super::canvas::D2dCanvas;
 
 /// A Direct2D render target for one window.
@@ -28,6 +29,7 @@ pub struct D2dSurface {
     pixels: Cell<(u32, u32)>,
     dpi: Cell<u32>,
     pub(super) drawing: Cell<bool>,
+    pub(super) images: RefCell<ImageCache>,
 }
 
 impl D2dSurface {
@@ -45,6 +47,7 @@ impl D2dSurface {
             pixels: Cell::new(pixels),
             dpi: Cell::new(dpi),
             drawing: Cell::new(false),
+            images: RefCell::new(ImageCache::new()),
         })
     }
 

@@ -15,7 +15,8 @@ use std::rc::Rc;
 
 use crate::app::Ui;
 use crate::controls::control::{AsControl, Control};
-use crate::controls::custom_inner::{CustomHandler, CustomShared};
+use crate::controls::custom_inner::{CustomHandler, CustomShared, Renderer};
+use crate::d2d::{D2dCanvas, RectF};
 use crate::error::Result;
 use crate::gdi::Canvas;
 use crate::geometry::{Rect, Size};
@@ -178,6 +179,11 @@ pub trait CustomWidget: 'static {
     /// semantic tokens so live light/dark switching just works.
     fn paint(&self, canvas: &Canvas, bounds: Rect, theme: &Theme);
 
+    /// Paints the widget with Direct2D instead of GDI, when it can. `bounds`
+    /// is the client area in device-independent pixels. The default does
+    /// nothing, so the widget stays on the GDI [`paint`](CustomWidget::paint).
+    fn paint_d2d(&self, _canvas: &mut D2dCanvas, _bounds: RectF, _theme: &Theme) {}
+
     /// Handles one input event. The default ignores everything.
     fn input(&self, _input: Input, _cx: &mut WidgetCx<Self::Event>) {}
 
@@ -283,6 +289,7 @@ impl<W: CustomWidget, M: 'static> Custom<W, M> {
             shared: Rc::clone(&shared),
             bounds: Rc::clone(&client_bounds),
             emit,
+            renderer: RefCell::new(Renderer::Untried),
         };
 
         let class = WindowClass::register("win32ui.custom", background)?;
@@ -338,6 +345,11 @@ impl<W: CustomWidget, M: 'static> Custom<W, M> {
     /// Schedules a repaint of the widget.
     pub fn invalidate(&self) {
         self.window.invalidate();
+    }
+
+    /// The widget's rectangle in screen coordinates.
+    pub fn window_rect(&self) -> Rect {
+        self.window.window_rect()
     }
 }
 

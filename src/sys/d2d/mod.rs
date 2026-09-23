@@ -8,6 +8,10 @@ pub(crate) mod text;
 
 pub(crate) use target::Target;
 
+pub(crate) mod bitmap;
+pub(crate) mod brush;
+pub(crate) mod geometry;
+
 use std::cell::OnceCell;
 use std::mem::ManuallyDrop;
 
@@ -32,7 +36,7 @@ thread_local! {
 }
 
 /// The calling thread's Direct2D factory, created on first use.
-fn factory() -> Result<ID2D1Factory> {
+pub(crate) fn factory() -> Result<ID2D1Factory> {
     FACTORY.with(|cell| {
         if let Some(factory) = cell.get() {
             return Ok(ID2D1Factory::clone(factory));
@@ -65,7 +69,7 @@ pub(crate) fn is_target_lost(hresult: i32) -> bool {
 }
 
 /// Maps a [`DashStyle`] to Direct2D's built-in dash style.
-fn dash_style(dash: DashStyle) -> D2D1_DASH_STYLE {
+pub(crate) fn dash_style(dash: DashStyle) -> D2D1_DASH_STYLE {
     match dash {
         DashStyle::Solid => D2D1_DASH_STYLE_SOLID,
         DashStyle::Dashed => D2D1_DASH_STYLE_DASH,
