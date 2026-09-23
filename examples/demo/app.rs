@@ -75,7 +75,14 @@ pub(crate) fn main() {
             )
             .expect("list")
             .on_activate(|item| Some(Msg::Play(item)))
-            .on_select(|item| Some(Msg::Select(item)));
+            .on_select(|item| Some(Msg::Select(item)))
+            .on_key(|key, modifiers| {
+                if modifiers.ctrl && key == Key::C {
+                    Some(Msg::Copy)
+                } else {
+                    None
+                }
+            });
 
             let status = StatusBar::new(ui, StatusBarTheme::from_theme(&theme)).expect("status");
             status.set_parts(&[-1]);
@@ -89,6 +96,7 @@ pub(crate) fn main() {
                 status,
                 tracks,
                 order,
+                column_count: columns.len(),
                 now_playing: None,
             };
             app.layout(ui);
@@ -135,6 +143,7 @@ enum Msg {
     TreeSelect(Option<i64>),
     Play(usize),
     Select(usize),
+    Copy,
     AutoClose,
 }
 
@@ -146,6 +155,7 @@ struct App {
     status: StatusBar,
     tracks: Rc<Vec<Track>>,
     order: Vec<usize>,
+    column_count: usize,
     now_playing: Option<usize>,
 }
 
@@ -186,6 +196,14 @@ impl App {
     fn set_status(&self, text: &str) {
         self.status.set_text(0, text);
     }
+
+    /// The selected row's cells as tab-separated text, as shown in the list.
+    fn row_text(&self, row: usize) -> String {
+        (0..self.column_count)
+            .map(|column| self.list.cell_text(row, column))
+            .collect::<Vec<_>>()
+            .join("\t")
+    }
 }
 
 impl win32ui::App for App {
@@ -213,6 +231,13 @@ impl win32ui::App for App {
                 self.set_status(&format!("Playing: {title}"));
             }
             Msg::Select(item) => self.set_status(&format!("Selected row {}", item + 1)),
+            Msg::Copy => match self.list.selected() {
+                None => self.set_status("Nothing selected to copy"),
+                Some(row) => match clipboard::set_text(ui.hwnd(), &self.row_text(row)) {
+                    Ok(()) => self.set_status(&format!("Copied row {}", row + 1)),
+                    Err(error) => self.set_status(&format!("Copy failed: {error}")),
+                },
+            },
             Msg::AutoClose => {
                 screenshot::capture_if_requested(ui);
                 ui.quit();

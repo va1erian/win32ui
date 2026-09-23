@@ -56,6 +56,7 @@ mod theme;
 mod units;
 mod window;
 
+pub mod clipboard;
 pub mod controls;
 pub mod gdi;
 pub mod looper;
@@ -102,7 +103,7 @@ pub mod prelude {
         Win32Error, Window, WindowClass, WindowExStyle, WindowHandler, WindowSpec, WindowStyle,
         dip, monitor_work_areas, run_app,
     };
-    pub use crate::{gdi, looper, quit, run, run_modal};
+    pub use crate::{clipboard, gdi, looper, quit, run, run_modal};
 }
 
 /// Performs one-time process initialisation: per-monitor-v2 DPI awareness and
