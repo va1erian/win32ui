@@ -27,7 +27,30 @@ pub(crate) fn capture_if_requested<M: 'static>(ui: &Ui<M>) {
     }
 }
 
-pub(super) fn write_screenshot(
+/// Crops `image` to `rect` (in image pixels), clipped to the image bounds.
+/// Returns `None` when the intersection is empty.
+pub(crate) fn crop(image: &RgbaImage, rect: Rect) -> Option<RgbaImage> {
+    let left = rect.left.clamp(0, image.width as i32) as u32;
+    let top = rect.top.clamp(0, image.height as i32) as u32;
+    let right = rect.right.clamp(0, image.width as i32) as u32;
+    let bottom = rect.bottom.clamp(0, image.height as i32) as u32;
+    if left >= right || top >= bottom {
+        return None;
+    }
+    let mut pixels = Vec::with_capacity(((right - left) * (bottom - top) * 4) as usize);
+    for y in top..bottom {
+        let start = (y * image.width + left) * 4;
+        let end = (y * image.width + right) * 4;
+        pixels.extend_from_slice(&image.pixels[start as usize..end as usize]);
+    }
+    Some(RgbaImage {
+        width: right - left,
+        height: bottom - top,
+        pixels,
+    })
+}
+
+pub(crate) fn write_screenshot(
     image: &RgbaImage,
     path: &Path,
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {

@@ -1,37 +1,36 @@
 //! The `ID2D1HwndRenderTarget` and the device-dependent resources made from
-//! it (brushes, stroke styles). They are all dropped together when the device
-//! is lost, so a stale brush can never be drawn with.
+//! it (solid brushes). Stroke styles, RGBA/gradient brushes, bitmaps and the
+//! clip/layer stack live in the sibling modules and are dropped together with
+//! this struct when the device is lost, so a stale resource can never be drawn
+//! with.
 
 use std::collections::HashMap;
 
 use windows::Win32::Graphics::Direct2D::Common::{D2D_RECT_F, D2D_SIZE_U, D2D1_COLOR_F};
 use windows::Win32::Graphics::Direct2D::{
-    D2D1_ANTIALIAS_MODE_PER_PRIMITIVE, D2D1_ELLIPSE, D2D1_HWND_RENDER_TARGET_PROPERTIES,
-    D2D1_RENDER_TARGET_PROPERTIES, D2D1_ROUNDED_RECT, D2D1_STROKE_STYLE_PROPERTIES,
-    ID2D1HwndRenderTarget, ID2D1SolidColorBrush, ID2D1StrokeStyle,
+    D2D1_ELLIPSE, D2D1_HWND_RENDER_TARGET_PROPERTIES, D2D1_RENDER_TARGET_PROPERTIES,
+    D2D1_ROUNDED_RECT, ID2D1HwndRenderTarget, ID2D1SolidColorBrush,
 };
 use windows_numerics::{Matrix3x2, Vector2};
 
 use crate::color::Color;
-use crate::d2d::{DashStyle, PointF, RectF, Stroke, clamp_radius};
+use crate::d2d::{PointF, RectF, Stroke, clamp_radius};
 use crate::error::Result;
 use crate::hwnd::Hwnd;
 use crate::sys::{raw_hwnd, win32_error};
 
 mod draw_text;
 
-use super::{EndDraw, dash_style, factory, is_target_lost};
-
-/// A brush and the optional dash style to stroke with.
-type Pen = (ID2D1SolidColorBrush, Option<ID2D1StrokeStyle>);
+use super::{EndDraw, bitmap, brush, factory, geometry, is_target_lost};
 
 /// A render target bound to one window, with its resource caches.
 pub(crate) struct Target {
-    render: ID2D1HwndRenderTarget,
+    pub(crate) render: ID2D1HwndRenderTarget,
     brushes: HashMap<Color, ID2D1SolidColorBrush>,
-    dashed: Option<ID2D1StrokeStyle>,
-    dotted: Option<ID2D1StrokeStyle>,
-    clip_depth: u32,
+    pub(crate) strokes: brush::Strokes,
+    pub(crate) paints: brush::Paints,
+    pub(crate) images: bitmap::Images,
+    pub(crate) shapes: geometry::Shapes,
 }
 
 fn color_f(color: Color) -> D2D1_COLOR_F {
@@ -43,7 +42,7 @@ fn color_f(color: Color) -> D2D1_COLOR_F {
     }
 }
 
-fn rect_f(rect: RectF) -> D2D_RECT_F {
+pub(crate) fn rect_f(rect: RectF) -> D2D_RECT_F {
     D2D_RECT_F {
         left: rect.left,
         top: rect.top,
@@ -52,14 +51,14 @@ fn rect_f(rect: RectF) -> D2D_RECT_F {
     }
 }
 
-fn vector(point: PointF) -> Vector2 {
+pub(crate) fn vector(point: PointF) -> Vector2 {
     Vector2 {
         X: point.x,
         Y: point.y,
     }
 }
 
-fn rounded(rect: RectF, radius: f32) -> D2D1_ROUNDED_RECT {
+pub(crate) fn rounded(rect: RectF, radius: f32) -> D2D1_ROUNDED_RECT {
     let radius = clamp_radius(rect, radius);
     D2D1_ROUNDED_RECT {
         rect: rect_f(rect),
@@ -68,7 +67,7 @@ fn rounded(rect: RectF, radius: f32) -> D2D1_ROUNDED_RECT {
     }
 }
 
-fn ellipse(center: PointF, rx: f32, ry: f32) -> D2D1_ELLIPSE {
+pub(crate) fn ellipse(center: PointF, rx: f32, ry: f32) -> D2D1_ELLIPSE {
     D2D1_ELLIPSE {
         point: vector(center),
         radiusX: rx,
@@ -96,9 +95,10 @@ impl Target {
         Ok(Target {
             render,
             brushes: HashMap::new(),
-            dashed: None,
-            dotted: None,
-            clip_depth: 0,
+            strokes: brush::Strokes::new(),
+            paints: brush::Paints::new(),
+            images: bitmap::Images::new(),
+            shapes: geometry::Shapes::new(),
         })
     }
 
@@ -130,9 +130,7 @@ impl Target {
     /// Ends the frame, popping any clip left open, and reports whether the
     /// device was lost.
     pub(crate) fn end_draw(&mut self) -> Result<EndDraw> {
-        while self.clip_depth > 0 {
-            self.pop_clip();
-        }
+        self.drain_clips();
         // SAFETY: pairs the `begin_draw`; the tag out-pointers are optional.
         match unsafe { self.render.EndDraw(None, None) } {
             Ok(()) => Ok(EndDraw::Presented),
@@ -146,7 +144,7 @@ impl Target {
         unsafe { self.render.Clear(Some(&color_f(color))) }
     }
 
-    fn brush(&mut self, color: Color) -> Option<ID2D1SolidColorBrush> {
+    pub(crate) fn brush(&mut self, color: Color) -> Option<ID2D1SolidColorBrush> {
         if let Some(brush) = self.brushes.get(&color) {
             return Some(brush.clone());
         }
@@ -154,30 +152,6 @@ impl Target {
         let brush = unsafe { self.render.CreateSolidColorBrush(&color_f(color), None) }.ok()?;
         self.brushes.insert(color, brush.clone());
         Some(brush)
-    }
-
-    fn stroke_style(&mut self, dash: DashStyle) -> Option<ID2D1StrokeStyle> {
-        let slot = match dash {
-            DashStyle::Solid => return None,
-            DashStyle::Dashed => &mut self.dashed,
-            DashStyle::Dotted => &mut self.dotted,
-        };
-        if slot.is_none() {
-            let properties = D2D1_STROKE_STYLE_PROPERTIES {
-                dashStyle: dash_style(dash),
-                miterLimit: 10.0,
-                ..Default::default()
-            };
-            // SAFETY: the properties struct is valid for the call; no custom
-            // dash array is passed.
-            *slot = unsafe { factory().ok()?.CreateStrokeStyle(&properties, None) }.ok();
-        }
-        slot.clone()
-    }
-
-    fn pen(&mut self, color: Color, dash: DashStyle) -> Option<Pen> {
-        let brush = self.brush(color)?;
-        Some((brush, self.stroke_style(dash)))
     }
 
     pub(crate) fn fill_rect(&mut self, rect: RectF, color: Color) {
@@ -205,7 +179,7 @@ impl Target {
     }
 
     pub(crate) fn stroke_rect(&mut self, rect: RectF, color: Color, stroke: Stroke) {
-        if let Some((brush, style)) = self.pen(color, stroke.dash) {
+        if let Some((brush, style)) = self.pen(color, stroke) {
             // SAFETY: valid rect, brush and stroke style from this target.
             unsafe {
                 self.render
@@ -221,7 +195,7 @@ impl Target {
         color: Color,
         stroke: Stroke,
     ) {
-        if let Some((brush, style)) = self.pen(color, stroke.dash) {
+        if let Some((brush, style)) = self.pen(color, stroke) {
             // SAFETY: valid geometry, brush and stroke style from this target.
             unsafe {
                 self.render.DrawRoundedRectangle(
@@ -242,7 +216,7 @@ impl Target {
         color: Color,
         stroke: Stroke,
     ) {
-        if let Some((brush, style)) = self.pen(color, stroke.dash) {
+        if let Some((brush, style)) = self.pen(color, stroke) {
             // SAFETY: valid geometry, brush and stroke style from this target.
             unsafe {
                 self.render.DrawEllipse(
@@ -256,7 +230,7 @@ impl Target {
     }
 
     pub(crate) fn line(&mut self, from: PointF, to: PointF, color: Color, stroke: Stroke) {
-        if let Some((brush, style)) = self.pen(color, stroke.dash) {
+        if let Some((brush, style)) = self.pen(color, stroke) {
             // SAFETY: valid points, brush and stroke style from this target.
             unsafe {
                 self.render.DrawLine(
@@ -268,24 +242,6 @@ impl Target {
                 )
             }
         }
-    }
-
-    pub(crate) fn push_clip(&mut self, rect: RectF) {
-        // SAFETY: a valid rect; matched by `pop_clip` (or by `end_draw`).
-        unsafe {
-            self.render
-                .PushAxisAlignedClip(&rect_f(rect), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE)
-        }
-        self.clip_depth += 1;
-    }
-
-    pub(crate) fn pop_clip(&mut self) {
-        if self.clip_depth == 0 {
-            return;
-        }
-        // SAFETY: there is an open clip, tracked by `clip_depth`.
-        unsafe { self.render.PopAxisAlignedClip() }
-        self.clip_depth -= 1;
     }
 
     pub(crate) fn set_translation(&mut self, x: f32, y: f32) {

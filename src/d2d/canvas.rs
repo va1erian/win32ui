@@ -17,7 +17,7 @@ use super::{D2dSurface, PointF, RectF, Stroke};
 /// [`end_draw`](D2dCanvas::end_draw) to present; dropping the canvas presents
 /// too, but discards any error.
 pub struct D2dCanvas<'a> {
-    surface: &'a D2dSurface,
+    pub(super) surface: &'a D2dSurface,
     finished: bool,
 }
 
@@ -102,9 +102,10 @@ impl<'a> D2dCanvas<'a> {
         self.with(|target| target.push_clip(rect));
     }
 
-    /// Ends the innermost clip.
-    pub fn pop_clip(&mut self) {
-        self.with(Target::pop_clip);
+    /// Ends the innermost clip. Popping with nothing open is an error, not a
+    /// crash.
+    pub fn pop_clip(&mut self) -> Result<()> {
+        self.with(Target::pop_clip).unwrap_or(Ok(()))
     }
 
     /// Offsets everything drawn afterwards by `(x, y)` (replacing any earlier

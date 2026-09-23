@@ -15,13 +15,22 @@
 //! Thread affinity: a [`D2dSurface`] and its canvas belong to the UI thread
 //! (they are neither `Send` nor `Sync`).
 
+mod bitmap;
+mod brush;
 mod canvas;
 mod geometry;
+mod path;
 mod surface;
 mod text;
 
+pub use bitmap::{ImageId, Interpolation};
+pub use brush::{ExtendMode, GradientStop, LinearGradient, RadialGradient, Rgba};
 pub use canvas::D2dCanvas;
-pub use geometry::{BASE_DPI, DashStyle, PointF, RectF, Stroke, clamp_radius, pixels_to_dips};
+pub use geometry::{
+    BASE_DPI, Cap, DashStyle, LineJoin, PointF, Radius, RectF, RoundedRect, Stroke, clamp_radius,
+    pixels_to_dips,
+};
+pub use path::{ArcSize, Path, PathBuilder, Sweep};
 pub use surface::D2dSurface;
 pub use text::{
     Font, FontMetrics, FontSpec, FontStretch, HitTest, Layout, LineMetrics, TextSystem,

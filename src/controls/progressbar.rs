@@ -36,7 +36,7 @@ const MARQUEE_MS: u32 = 30;
 /// created (a broken driver, say) the bar stays on GDI for good.
 enum Renderer {
     Untried,
-    Direct2d(D2dSurface),
+    Direct2d(Box<D2dSurface>),
     Gdi,
 }
 
@@ -59,7 +59,9 @@ impl ProgressBarHandler {
     fn paint_d2d(&self, window: &Window) -> bool {
         let mut renderer = self.renderer.borrow_mut();
         if matches!(*renderer, Renderer::Untried) {
-            *renderer = D2dSurface::new(window.hwnd()).map_or(Renderer::Gdi, Renderer::Direct2d);
+            *renderer = D2dSurface::new(window.hwnd()).map_or(Renderer::Gdi, |surface| {
+                Renderer::Direct2d(Box::new(surface))
+            });
         }
         let Renderer::Direct2d(surface) = &*renderer else {
             return false;
