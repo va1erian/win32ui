@@ -216,6 +216,22 @@ fn deliver(
         return handler.message(&window, decoded);
     }
 
+    // `WM_DRAWITEM` is special like `WM_NOTIFY`: an owner-drawn control
+    // (`BS_OWNERDRAW`) asks its parent to paint, so the request is offered to
+    // the widget-layer mapper registered for that control first. A mapper
+    // that paints returns `Some(1)` (TRUE).
+    if msg == message::draw_message_id()
+        && let Some(drawn) = message::decode_draw(wparam, lparam)
+    {
+        if let Message::DrawItem { control, .. } = &drawn
+            && crate::controls::registry::dispatch_app_event(*control, &drawn)
+        {
+            return Some(1);
+        }
+        let window = crate::window::Window::from_raw(hwnd_from(hwnd));
+        return handler.message(&window, drawn);
+    }
+
     // A message may be suppressed (the first half of a `WM_CHAR` surrogate
     // pair), in which case the handler is not called.
     let message = message::decode(hwnd, msg, wparam, lparam)?;

@@ -129,6 +129,37 @@ pub(crate) fn main() {
                 .expect("swatch")
                 .on_event(|_| Some(Msg::SwatchClicked));
 
+            // Options panel: a default push button, a check box, a labelled
+            // group of typed radios and a disabled button. The radios report
+            // values, not indices.
+            let send = Button::new(ui, "Send")
+                .expect("send")
+                .default()
+                .on_click(|| Some(Msg::Send));
+            let remote = CheckBox::new(ui, "Load remote images")
+                .expect("remote")
+                .checked(false)
+                .on_toggle(|on| Some(Msg::RemoteImages(on)));
+            let theme_group = GroupBox::new(ui, "Theme").expect("theme group");
+            let initial_choice = if theme.is_dark {
+                ThemeChoice::Dark
+            } else {
+                ThemeChoice::Light
+            };
+            let themes = RadioGroup::new(
+                ui,
+                [
+                    ("Light", ThemeChoice::Light),
+                    ("Dark", ThemeChoice::Dark),
+                    ("System", ThemeChoice::System),
+                ],
+            )
+            .expect("themes")
+            .selected(initial_choice)
+            .on_select(|choice| Some(Msg::SetTheme(*choice)));
+            let disabled = Button::new(ui, "Disabled").expect("disabled");
+            disabled.set_enabled(false);
+
             // Shortcuts are data and fire whichever widget has focus. `Ctrl+Q`
             // quits; `Ctrl+T` toggles the theme.
             ui.accelerator(Shortcut::ctrl(Key::Q), || Some(Msg::Quit));
@@ -136,6 +167,14 @@ pub(crate) fn main() {
 
             // The window owns the layout: it re-runs this tree on every resize
             // and DPI change, so the app never handles `WM_SIZE`.
+            let options = column![
+                send,
+                remote,
+                theme_group.height(dip(20.0)),
+                themes.layout(),
+                disabled,
+            ]
+            .spacing(dip(6.0));
             ui.set_layout(
                 column![
                     toolbar,
@@ -149,6 +188,7 @@ pub(crate) fn main() {
                             list.fill(1),
                         ]
                         .fill(1),
+                        options.width(dip(220.0))
                     ]
                     .fill(1),
                     status,
@@ -167,6 +207,13 @@ pub(crate) fn main() {
                 _search: search,
                 _search_label: search_label,
                 swatch,
+                options: Options {
+                    send,
+                    remote,
+                    themes,
+                    theme_group,
+                    disabled,
+                },
                 tracks,
                 order,
                 sort: None,
@@ -260,6 +307,9 @@ enum Msg {
     Selected(Vec<usize>),
     Sort(usize),
     Copy,
+    Send,
+    RemoteImages(bool),
+    SetTheme(ThemeChoice),
     Tick(u64),
     SortChanged(SortKey),
     Search(String),
@@ -289,6 +339,14 @@ impl SortKey {
     }
 }
 
+/// The typed choices the options panel's radio group reports.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ThemeChoice {
+    Light,
+    Dark,
+    System,
+}
+
 /// The typed choices the demo's task dialog can return.
 #[derive(Clone, PartialEq, Eq)]
 enum DialogChoice {
@@ -307,10 +365,24 @@ struct App {
     _search: Edit<Msg>,
     _search_label: Label,
     swatch: Custom<Swatch, Msg>,
+    // Owns the options panel's windows; read through their `HWND`s.
+    #[allow(dead_code)]
+    options: Options,
     tracks: Rc<Vec<Track>>,
     order: Vec<usize>,
     sort: Option<(usize, bool)>,
     now_playing: Option<usize>,
+}
+
+/// Handles for the options panel. The widgets paint and notify through their
+/// `HWND`s; holding them here keeps those windows alive.
+#[allow(dead_code)]
+struct Options {
+    send: Button<Msg>,
+    remote: CheckBox<Msg>,
+    themes: RadioGroup<ThemeChoice, Msg>,
+    theme_group: GroupBox,
+    disabled: Button<Msg>,
 }
 
 impl App {
@@ -420,6 +492,22 @@ impl win32ui::App for App {
                 };
                 ui.set_theme(next);
                 self.set_status("Theme switched");
+            }
+            Msg::Send => self.set_status("Send clicked"),
+            Msg::RemoteImages(on) => self.set_status(if on {
+                "Remote images on"
+            } else {
+                "Remote images off"
+            }),
+            Msg::SetTheme(choice) => {
+                // "System" follows the light palette until #23 lands.
+                let next = if choice == ThemeChoice::Dark {
+                    Theme::dark()
+                } else {
+                    Theme::light()
+                };
+                ui.set_theme(next);
+                self.set_status(&format!("Theme: {choice:?}"));
             }
             Msg::TreeSelect => {
                 let label = self
