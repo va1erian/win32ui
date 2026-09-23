@@ -8,11 +8,13 @@
 
 mod core;
 mod layout;
+mod proxy;
 mod run;
 mod spec;
 mod ui;
 
 pub use layout::{IntoLayoutItem, Layout, LayoutExt, LayoutItem};
+pub use proxy::Proxy;
 pub use run::run_app;
 pub use spec::{App, WindowSpec};
 pub use ui::Ui;

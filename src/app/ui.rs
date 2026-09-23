@@ -14,6 +14,7 @@ use crate::theme::Theme;
 
 use super::core::Core;
 use super::layout::Layout;
+use super::proxy::Proxy;
 
 /// The widget-layer handle to the top-level window.
 ///
@@ -76,6 +77,14 @@ impl<M: 'static> Ui<M> {
     /// is how custom widgets hand events back to the application.
     pub fn emit(&self, msg: M) {
         self.core.enqueue(msg);
+    }
+
+    /// Returns a thread-safe handle for sending messages from worker threads.
+    /// `Proxy` is `Clone`, and `Send + Sync` when the message type is; its
+    /// sends join the same queue [`emit`](Ui::emit) feeds, so
+    /// [`App::update`](super::App::update) is still never re-entered.
+    pub fn proxy(&self) -> Proxy<M> {
+        Proxy::new(&self.core)
     }
 
     /// Installs the window's layout tree and lays it out immediately. The tree

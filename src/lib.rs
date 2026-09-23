@@ -62,7 +62,7 @@ pub mod gdi;
 pub mod looper;
 mod sys;
 
-pub use app::{App, IntoLayoutItem, Layout, LayoutExt, LayoutItem, Ui, WindowSpec, run_app};
+pub use app::{App, IntoLayoutItem, Layout, LayoutExt, LayoutItem, Proxy, Ui, WindowSpec, run_app};
 pub use capture::RgbaImage;
 pub use color::Color;
 pub use error::{Error, Result, Win32Error};
@@ -98,7 +98,7 @@ pub mod prelude {
         CursorShape, Dip, Dock, DockLayout, Error, HasText, HitTest, Hwnd, Icon, Insets,
         IntoLayoutItem, Key, LResult, Label, Layout, LayoutExt, LayoutItem, ListSource, ListView,
         ListViewEvent, ListViewTheme, Message, MinMaxInfo, Modifiers, MouseButton, Notify,
-        Placement, Point, Px, Rect, Result, RgbaImage, ShowState, SortDirection, Stack,
+        Placement, Point, Proxy, Px, Rect, Result, RgbaImage, ShowState, SortDirection, Stack,
         StackDirection, StackSlot, StatusBar, StatusBarTheme, Theme, Themed, TimerId, Toolbar,
         ToolbarItem, ToolbarTheme, TreeEntry, TreeSource, TreeView, TreeViewEvent, Ui, Win32Error,
         Window, WindowClass, WindowExStyle, WindowHandler, WindowSpec, WindowStyle, column, dip,

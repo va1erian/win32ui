@@ -120,6 +120,21 @@ pub(crate) fn main() {
                 now_playing: None,
             };
 
+            // A worker thread ticks a counter into the status bar through the
+            // proxy. When the window is gone `send` hands the message back, so
+            // the worker stops itself instead of panicking.
+            let worker = ui.proxy();
+            std::thread::spawn(move || {
+                let mut tick = 0u64;
+                loop {
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                    tick += 1;
+                    if worker.send(Msg::Tick(tick)).is_err() {
+                        break;
+                    }
+                }
+            });
+
             // `WIN32UI_DEMO_AUTOCLOSE_MS` makes the demo quit itself; handy for
             // a headless smoke run of the example.
             if let Ok(millis) = std::env::var("WIN32UI_DEMO_AUTOCLOSE_MS") {
@@ -172,6 +187,7 @@ enum Msg {
     Play(usize),
     Select(usize),
     Copy,
+    Tick(u64),
     AutoClose,
 }
 
@@ -252,6 +268,7 @@ impl win32ui::App for App {
                 self.set_status(&format!("Playing: {title}"));
             }
             Msg::Select(item) => self.set_status(&format!("Selected row {}", item + 1)),
+            Msg::Tick(tick) => self.set_status(&format!("Worker tick {tick}")),
             Msg::Copy => match self.list.selected() {
                 None => self.set_status("Nothing selected to copy"),
                 Some(row) => match clipboard::set_text(ui.hwnd(), &self.row_text(row)) {
