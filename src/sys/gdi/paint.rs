@@ -6,9 +6,10 @@ use std::collections::HashMap;
 
 use windows::Win32::Foundation::{COLORREF, POINT, RECT};
 use windows::Win32::Graphics::Gdi::{
-    BeginPaint, BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DRAW_TEXT_FORMAT, DeleteDC,
-    DeleteObject, DrawTextW, EndPaint, HBITMAP, HBRUSH, HDC, HGDIOBJ, IntersectClipRect, LineTo,
-    MoveToEx, PAINTSTRUCT, Polygon, SRCCOPY, SelectClipRgn, SelectObject, SetBkMode, SetTextColor,
+    AC_SRC_ALPHA, AC_SRC_OVER, AlphaBlend, BLENDFUNCTION, BeginPaint, BitBlt,
+    CreateCompatibleBitmap, CreateCompatibleDC, DRAW_TEXT_FORMAT, DeleteDC, DeleteObject,
+    DrawTextW, EndPaint, HBITMAP, HBRUSH, HDC, HGDIOBJ, IntersectClipRect, LineTo, MoveToEx,
+    PAINTSTRUCT, Polygon, SRCCOPY, SelectClipRgn, SelectObject, SetBkMode, SetTextColor,
     TRANSPARENT,
 };
 
@@ -258,22 +259,39 @@ pub(crate) fn draw_text(hdc: HDC, rect: Rect, text: &str, color: Color, format: 
     }
 }
 
-/// Blits `bitmap` at `target.left/top` (no scaling).
+/// Blits `bitmap` at `target.left/top` (no scaling), honouring its alpha
+/// channel so transparent pixels blend onto whatever is already painted
+/// instead of overwriting it with black (`SRCCOPY` would ignore alpha).
 pub(crate) fn draw_bitmap(hdc: HDC, bitmap: HBITMAP, source: Size, target: Rect) {
-    // SAFETY: all handles are live; `source`/`target` are plain geometry.
+    let width = source.width.min(target.width());
+    let height = source.height.min(target.height());
+    if width <= 0 || height <= 0 {
+        return;
+    }
+    // SAFETY: all handles are live; `source`/`target` are plain geometry and
+    // `blend` is a plain value struct. `AC_SRC_ALPHA` asks `AlphaBlend` to use
+    // the per-pixel alpha of the 32-bpp DIB section.
     unsafe {
         let memory_dc = CreateCompatibleDC(Some(hdc));
         let old = SelectObject(memory_dc, HGDIOBJ(bitmap.0));
-        let _ = BitBlt(
+        let blend = BLENDFUNCTION {
+            BlendOp: AC_SRC_OVER as u8,
+            BlendFlags: 0,
+            SourceConstantAlpha: 255,
+            AlphaFormat: AC_SRC_ALPHA as u8,
+        };
+        let _ = AlphaBlend(
             hdc,
             target.left,
             target.top,
-            source.width.min(target.width()),
-            source.height.min(target.height()),
-            Some(memory_dc),
+            width,
+            height,
+            memory_dc,
             0,
             0,
-            SRCCOPY,
+            width,
+            height,
+            blend,
         );
         SelectObject(memory_dc, old);
         let _ = DeleteDC(memory_dc);
@@ -330,6 +348,44 @@ mod tests {
         let normal = acquire_back_buffer(hwnd, dc, 100, 100, 96).expect("buffer");
         let scaled = acquire_back_buffer(hwnd, dc, 100, 100, 144).expect("scaled");
         assert_ne!(normal.0, scaled.0, "the buffer survived a DPI change");
+        release_back_buffer(hwnd);
+        release_dc(dc);
+    }
+
+    #[test]
+    fn draw_bitmap_honours_per_pixel_alpha() {
+        use windows::Win32::Graphics::Gdi::{GetPixel, HGDIOBJ};
+
+        use crate::color::Color;
+        use crate::geometry::{Rect, Size};
+        use crate::sys::gdi::{create_dib, delete_object, solid_brush};
+
+        let dc = screen_dc();
+        if dc.0.is_null() {
+            return;
+        }
+        let hwnd = Hwnd::from_raw(0x9ABC);
+        let buffer = acquire_back_buffer(hwnd, dc, 8, 8, 96).expect("buffer");
+
+        // Paint the buffer an opaque background colour.
+        let background = Color::rgb(0x11, 0x22, 0x33);
+        let brush = solid_brush(background).expect("brush");
+        super::fill_rect(buffer, Rect::new(0, 0, 8, 8), brush);
+
+        // A fully transparent red pixel. `AlphaBlend` must leave the background
+        // untouched; the old `SRCCOPY` blit stamped red over it.
+        let bitmap = create_dib(1, 1, &[0xFF, 0x00, 0x00, 0x00]).expect("dib");
+        super::draw_bitmap(buffer, bitmap, Size::new(1, 1), Rect::new(0, 0, 1, 1));
+
+        // SAFETY: `buffer` is live with its compatible bitmap selected.
+        let pixel = unsafe { GetPixel(buffer, 0, 0) };
+        assert_eq!(
+            Color::from_colorref(pixel.0),
+            background,
+            "a transparent pixel was not left as the background"
+        );
+
+        delete_object(HGDIOBJ(bitmap.0));
         release_back_buffer(hwnd);
         release_dc(dc);
     }
