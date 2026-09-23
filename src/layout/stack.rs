@@ -4,7 +4,7 @@
 
 use super::Insets;
 use crate::geometry::Rect;
-use crate::window::dpi_scale;
+use crate::units::Dip;
 
 /// The axis a [`Stack`] lays its slots along.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -16,16 +16,16 @@ pub enum StackDirection {
     Vertical,
 }
 
-/// One slot in a [`Stack`], sized in 96-DPI design units.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// One slot in a [`Stack`], sized in [`Dip`] design values.
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum StackSlot {
-    /// Exactly `px` units.
-    Fixed(i32),
+    /// Exactly `size` design values.
+    Fixed(Dip),
     /// Shares the leftover space proportionally to `weight`.
     Fill(u32),
-    /// At least `px` units, shrinking proportionally only when the parent is
-    /// too small to honour every slot.
-    Min(i32),
+    /// At least `size` design values, shrinking proportionally only when the
+    /// parent is too small to honour every slot.
+    Min(Dip),
 }
 
 /// Lays slots along one axis, with spacing between them and optional margins.
@@ -33,10 +33,10 @@ pub enum StackSlot {
 /// The slots tile the parent's content exactly: leftover pixels are shared by
 /// `Fill` slots with largest-remainder rounding, so there are no one-pixel gaps
 /// and no overlap.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Stack {
     direction: StackDirection,
-    spacing: i32,
+    spacing: Dip,
     insets: Insets,
     slots: Vec<StackSlot>,
 }
@@ -46,8 +46,8 @@ impl Stack {
     pub const fn horizontal() -> Stack {
         Stack {
             direction: StackDirection::Horizontal,
-            spacing: 0,
-            insets: Insets::new(0, 0, 0, 0),
+            spacing: Dip(0.0),
+            insets: Insets::new(Dip(0.0), Dip(0.0), Dip(0.0), Dip(0.0)),
             slots: Vec::new(),
         }
     }
@@ -56,27 +56,27 @@ impl Stack {
     pub const fn vertical() -> Stack {
         Stack {
             direction: StackDirection::Vertical,
-            spacing: 0,
-            insets: Insets::new(0, 0, 0, 0),
+            spacing: Dip(0.0),
+            insets: Insets::new(Dip(0.0), Dip(0.0), Dip(0.0), Dip(0.0)),
             slots: Vec::new(),
         }
     }
 
-    /// Gap between adjacent slots, in design units.
-    pub const fn spacing(mut self, spacing: i32) -> Stack {
+    /// Gap between adjacent slots, in design values.
+    pub const fn spacing(mut self, spacing: Dip) -> Stack {
         self.spacing = spacing;
         self
     }
 
-    /// Margins inside the parent, in design units.
+    /// Margins inside the parent, in design values.
     pub const fn margins(mut self, insets: Insets) -> Stack {
         self.insets = insets;
         self
     }
 
     /// Adds a fixed-size slot.
-    pub fn fixed(mut self, px: i32) -> Stack {
-        self.slots.push(StackSlot::Fixed(px));
+    pub fn fixed(mut self, size: Dip) -> Stack {
+        self.slots.push(StackSlot::Fixed(size));
         self
     }
 
@@ -87,8 +87,8 @@ impl Stack {
     }
 
     /// Adds a minimum-size slot.
-    pub fn min(mut self, px: i32) -> Stack {
-        self.slots.push(StackSlot::Min(px));
+    pub fn min(mut self, size: Dip) -> Stack {
+        self.slots.push(StackSlot::Min(size));
         self
     }
 
@@ -113,7 +113,7 @@ impl Stack {
 
         let gaps = count as i32 - 1;
         let spacing = if gaps > 0 {
-            dpi_scale(self.spacing, dpi).clamp(0, main_len / gaps)
+            self.spacing.to_px(dpi).value().clamp(0, main_len / gaps)
         } else {
             0
         };
@@ -123,8 +123,8 @@ impl Stack {
         let mut fills: Vec<(usize, u32)> = Vec::new();
         for (index, slot) in self.slots.iter().enumerate() {
             match *slot {
-                StackSlot::Fixed(px) => rigid.push((index, dpi_scale(px, dpi).max(0))),
-                StackSlot::Min(px) => rigid.push((index, dpi_scale(px, dpi).max(0))),
+                StackSlot::Fixed(size) => rigid.push((index, size.to_px(dpi).value().max(0))),
+                StackSlot::Min(size) => rigid.push((index, size.to_px(dpi).value().max(0))),
                 StackSlot::Fill(weight) => fills.push((index, weight)),
             }
         }
@@ -204,6 +204,7 @@ fn distribute(total: i32, weights: &[i32]) -> Vec<i32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::units::dip;
 
     fn area(rect: Rect) -> i64 {
         i64::from(rect.width()) * i64::from(rect.height())
@@ -221,7 +222,7 @@ mod tests {
     fn stack_horizontal_fills_proportionally() {
         let rect = Rect::new(0, 0, 100, 40);
         let slots = Stack::horizontal()
-            .fixed(10)
+            .fixed(dip(10.0))
             .fill(1)
             .fill(2)
             .split(rect, 96);
@@ -246,9 +247,9 @@ mod tests {
     fn stack_applies_spacing_and_margins() {
         let rect = Rect::new(0, 0, 100, 100);
         let slots = Stack::vertical()
-            .margins(Insets::all(4))
-            .spacing(2)
-            .min(20)
+            .margins(Insets::all(dip(4.0)))
+            .spacing(dip(2.0))
+            .min(dip(20.0))
             .fill(1)
             .split(rect, 96);
         assert_eq!(slots[0], Rect::new(4, 4, 96, 24));
@@ -259,15 +260,37 @@ mod tests {
     #[test]
     fn stack_scales_to_dpi() {
         let rect = Rect::new(0, 0, 200, 100);
-        let slots = Stack::horizontal().fixed(10).fill(1).split(rect, 192);
+        let slots = Stack::horizontal()
+            .fixed(dip(10.0))
+            .fill(1)
+            .split(rect, 192);
         assert_eq!(slots[0], Rect::new(0, 0, 20, 100));
         assert_eq!(slots[1], Rect::new(20, 0, 200, 100));
+    }
+
+    /// Design values with fractional scaling must still tile the parent
+    /// exactly, whatever the DPI: `Fill` absorbs the rounding remainder.
+    #[test]
+    fn stack_tiles_with_dip_at_any_dpi() {
+        for dpi in [96, 120, 144, 192] {
+            let rect = Rect::new(0, 0, 101, 40);
+            let slots = Stack::horizontal()
+                .fixed(dip(10.0))
+                .min(dip(15.0))
+                .fill(1)
+                .fill(2)
+                .split(rect, dpi);
+            assert_tiles(&slots, rect);
+        }
     }
 
     #[test]
     fn stack_overflow_shrinks_rigid_slots() {
         let rect = Rect::new(0, 0, 50, 10);
-        let slots = Stack::horizontal().fixed(100).fixed(50).split(rect, 96);
+        let slots = Stack::horizontal()
+            .fixed(dip(100.0))
+            .fixed(dip(50.0))
+            .split(rect, 96);
         assert_eq!(slots[0], Rect::new(0, 0, 33, 10));
         assert_eq!(slots[1], Rect::new(33, 0, 50, 10));
         assert_tiles(&slots, rect);
@@ -277,7 +300,7 @@ mod tests {
     fn stack_clamps_spacing_in_a_tiny_rect() {
         let rect = Rect::new(0, 0, 10, 10);
         let slots = Stack::horizontal()
-            .spacing(4)
+            .spacing(dip(4.0))
             .fill(1)
             .fill(1)
             .fill(1)

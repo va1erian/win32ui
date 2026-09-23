@@ -16,7 +16,8 @@ use crate::geometry::Rect;
 use crate::hwnd::Hwnd;
 use crate::message::Message;
 use crate::theme::Theme;
-use crate::window::{Window, WindowClass, WindowExStyle, WindowHandler, WindowStyle, dpi_scale};
+use crate::units::dip;
+use crate::window::{Window, WindowClass, WindowExStyle, WindowHandler, WindowStyle};
 
 /// Colours for the status bar.
 #[derive(Clone, Copy, Debug)]
@@ -134,7 +135,7 @@ impl StatusBar {
             texts: Vec::new(),
             theme,
             font,
-            bounds: Rect::new(0, 0, 0, dpi_scale(22, dpi)),
+            bounds: Rect::new(0, 0, 0, dip(22.0).to_px(dpi).value()),
         }));
         let class = WindowClass::register("emusic.statusbar", theme.background)?;
         let handler = StatusBarHandler {
@@ -145,7 +146,7 @@ impl StatusBar {
             Some(parent),
             WindowStyle::new().child().visible(),
             WindowExStyle::new(),
-            Rect::new(0, 0, 0, dpi_scale(22, dpi)),
+            Rect::new(0, 0, 0, dip(22.0).to_px(dpi).value()),
             "",
             handler,
         )?;

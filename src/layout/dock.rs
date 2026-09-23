@@ -4,20 +4,20 @@
 
 use super::Insets;
 use crate::geometry::Rect;
-use crate::window::dpi_scale;
+use crate::units::{Dip, Px, dip};
 
-/// A strip size for [`Dock`]: design units or already-scaled device pixels.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// A strip size for [`Dock`]: a design value or already-scaled device pixels.
+#[derive(Clone, Copy, Debug, PartialEq)]
 enum Extent {
-    Design(i32),
-    Pixels(i32),
+    Design(Dip),
+    Pixels(Px),
 }
 
 impl Extent {
     fn resolve(self, dpi: u32) -> i32 {
         match self {
-            Extent::Design(value) => dpi_scale(value, dpi),
-            Extent::Pixels(value) => value,
+            Extent::Design(value) => value.to_px(dpi).value(),
+            Extent::Pixels(value) => value.value(),
         }
         .max(0)
     }
@@ -43,8 +43,8 @@ pub struct DockLayout {
 ///
 /// Strips are taken in the order top, bottom, left, right, so the horizontal
 /// strips span the full width and the vertical strips fit between them. Sizes
-/// are 96-DPI design units unless a `*_px` builder is used.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+/// are [`Dip`] design values unless a `*_px` builder is used.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Dock {
     insets: Insets,
     top: Option<Extent>,
@@ -57,7 +57,7 @@ impl Dock {
     /// An empty dock.
     pub const fn new() -> Dock {
         Dock {
-            insets: Insets::new(0, 0, 0, 0),
+            insets: Insets::new(dip(0.0), dip(0.0), dip(0.0), dip(0.0)),
             top: None,
             bottom: None,
             left: None,
@@ -65,37 +65,37 @@ impl Dock {
         }
     }
 
-    /// Shrinks the input rect by `insets` before carving (design units).
+    /// Shrinks the input rect by `insets` before carving (design values).
     pub const fn margins(self, insets: Insets) -> Dock {
         Dock { insets, ..self }
     }
 
-    /// A top strip `height` design units tall.
-    pub const fn top(self, height: i32) -> Dock {
+    /// A top strip `height` design values tall.
+    pub const fn top(self, height: Dip) -> Dock {
         Dock {
             top: Some(Extent::Design(height)),
             ..self
         }
     }
 
-    /// A bottom strip `height` design units tall.
-    pub const fn bottom(self, height: i32) -> Dock {
+    /// A bottom strip `height` design values tall.
+    pub const fn bottom(self, height: Dip) -> Dock {
         Dock {
             bottom: Some(Extent::Design(height)),
             ..self
         }
     }
 
-    /// A left strip `width` design units wide.
-    pub const fn left(self, width: i32) -> Dock {
+    /// A left strip `width` design values wide.
+    pub const fn left(self, width: Dip) -> Dock {
         Dock {
             left: Some(Extent::Design(width)),
             ..self
         }
     }
 
-    /// A right strip `width` design units wide.
-    pub const fn right(self, width: i32) -> Dock {
+    /// A right strip `width` design values wide.
+    pub const fn right(self, width: Dip) -> Dock {
         Dock {
             right: Some(Extent::Design(width)),
             ..self
@@ -103,7 +103,7 @@ impl Dock {
     }
 
     /// Like [`Dock::top`], but `height` is already in device pixels.
-    pub const fn top_px(self, height: i32) -> Dock {
+    pub const fn top_px(self, height: Px) -> Dock {
         Dock {
             top: Some(Extent::Pixels(height)),
             ..self
@@ -111,7 +111,7 @@ impl Dock {
     }
 
     /// Like [`Dock::bottom`], but `height` is already in device pixels.
-    pub const fn bottom_px(self, height: i32) -> Dock {
+    pub const fn bottom_px(self, height: Px) -> Dock {
         Dock {
             bottom: Some(Extent::Pixels(height)),
             ..self
@@ -119,7 +119,7 @@ impl Dock {
     }
 
     /// Like [`Dock::left`], but `width` is already in device pixels.
-    pub const fn left_px(self, width: i32) -> Dock {
+    pub const fn left_px(self, width: Px) -> Dock {
         Dock {
             left: Some(Extent::Pixels(width)),
             ..self
@@ -127,7 +127,7 @@ impl Dock {
     }
 
     /// Like [`Dock::right`], but `width` is already in device pixels.
-    pub const fn right_px(self, width: i32) -> Dock {
+    pub const fn right_px(self, width: Px) -> Dock {
         Dock {
             right: Some(Extent::Pixels(width)),
             ..self
@@ -171,15 +171,16 @@ impl Dock {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::units::dip;
 
     #[test]
     fn dock_carves_in_order() {
         let rect = Rect::new(0, 0, 100, 100);
         let areas = Dock::new()
-            .top(10)
-            .bottom(10)
-            .left(10)
-            .right(10)
+            .top(dip(10.0))
+            .bottom(dip(10.0))
+            .left(dip(10.0))
+            .right(dip(10.0))
             .split(rect, 96);
         assert_eq!(areas.top, Some(Rect::new(0, 0, 100, 10)));
         assert_eq!(areas.bottom, Some(Rect::new(0, 90, 100, 100)));
@@ -189,9 +190,12 @@ mod tests {
     }
 
     #[test]
-    fn dock_scales_design_units_but_not_pixels() {
+    fn dock_scales_design_values_but_not_pixels() {
         let rect = Rect::new(0, 0, 200, 200);
-        let areas = Dock::new().top(10).bottom_px(30).split(rect, 192);
+        let areas = Dock::new()
+            .top(dip(10.0))
+            .bottom_px(Px(30))
+            .split(rect, 192);
         assert_eq!(areas.top, Some(Rect::new(0, 0, 200, 20)));
         assert_eq!(areas.bottom, Some(Rect::new(0, 170, 200, 200)));
     }
@@ -199,7 +203,10 @@ mod tests {
     #[test]
     fn dock_with_margins_leaves_fill() {
         let rect = Rect::new(0, 0, 100, 100);
-        let areas = Dock::new().margins(Insets::all(5)).top(10).split(rect, 96);
+        let areas = Dock::new()
+            .margins(Insets::all(dip(5.0)))
+            .top(dip(10.0))
+            .split(rect, 96);
         assert_eq!(areas.top, Some(Rect::new(5, 5, 95, 15)));
         assert_eq!(areas.fill, Rect::new(5, 15, 95, 95));
     }

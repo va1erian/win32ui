@@ -321,8 +321,3 @@ impl Drop for Window {
         }
     }
 }
-
-/// Scales a 96-DPI design value to `dpi`.
-pub fn dpi_scale(value: i32, dpi: u32) -> i32 {
-    (value as f32 * dpi as f32 / 96.0).round() as i32
-}

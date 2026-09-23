@@ -19,7 +19,7 @@ use crate::error::Result;
 use crate::geometry::Rect;
 use crate::hwnd::Hwnd;
 use crate::sys;
-use crate::window::dpi_scale;
+use crate::units::dip;
 
 const TVS_HASBUTTONS: u32 = 0x0000_0001;
 const TVS_HASLINES: u32 = 0x0000_0002;
@@ -162,7 +162,7 @@ impl TreeView {
         )?;
 
         sys::control::tv_set_extended_style(hwnd, TVS_EX_DOUBLEBUFFER);
-        sys::control::tv_set_item_height(hwnd, dpi_scale(20, dpi));
+        sys::control::tv_set_item_height(hwnd, dip(20.0).to_px(dpi).value());
 
         for entry in source.children(None) {
             sys::control::tv_insert(

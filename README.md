@@ -113,7 +113,8 @@ src/
   lib.rs          public API + `prelude`
   error.rs        `Error` / `Result` (thiserror)
   hwnd.rs         `Hwnd`: a Copy handle that never names `windows` types
-  geometry.rs     `Point` / `Size` / `Rect`, with split helpers for layout
+  geometry.rs     `Point` / `Size` / `Rect` (device pixels)
+  units.rs        `Dip` / `Px`: typed design vs device length units
   color.rs        `Color` ↔ Win32 `COLORREF`
   theme.rs        a minimal semantic palette (light/dark)
   message.rs      typed `Message`, `Command`, `Notify`, control events
@@ -190,9 +191,10 @@ these are the platform-level mechanics every control still needs:
   honour it, which is why the header is owner-drawn.
 - The native status bar exposes no text colour, so `StatusBar` is owner-drawn
   too.
-- DPI: `win32ui::init()` opts into per-monitor-v2 awareness; layout values are
-  passed through `dpi_scale`. The example binaries embed a Common Controls v6 +
-  DPI manifest (`win32ui.rc` / `win32ui.manifest`, via `build.rs`).
+- DPI: `win32ui::init()` opts into per-monitor-v2 awareness; design values are
+  written as `Dip` and converted once with `Dip::to_px(dpi)`. The example
+  binaries embed a Common Controls v6 + DPI manifest (`win32ui.rc` /
+  `win32ui.manifest`, via `build.rs`).
 
 ## Running
 

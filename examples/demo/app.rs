@@ -135,16 +135,16 @@ impl App {
         }
 
         let columns = [
-            Column::right("#", 44),
-            Column::new("Title", 260),
-            Column::new("Artist", 180),
-            Column::new("Album", 180),
-            Column::right("Year", 50),
-            Column::new("Genre", 110),
-            Column::right("Time", 64),
-            Column::new("Format", 60),
-            Column::right("Plays", 54),
-            Column::new("Last played", 100),
+            Column::right("#", dip(44.0)),
+            Column::new("Title", dip(260.0)),
+            Column::new("Artist", dip(180.0)),
+            Column::new("Album", dip(180.0)),
+            Column::right("Year", dip(50.0)),
+            Column::new("Genre", dip(110.0)),
+            Column::right("Time", dip(64.0)),
+            Column::new("Format", dip(60.0)),
+            Column::right("Plays", dip(54.0)),
+            Column::new("Last played", dip(100.0)),
         ];
         let source = self.source();
         *self.list.borrow_mut() = ListView::new(
@@ -191,11 +191,11 @@ impl App {
             .unwrap_or(0);
 
         let areas = Dock::new()
-            .top_px(toolbar_height)
-            .bottom(22)
+            .top_px(Px(toolbar_height))
+            .bottom(dip(22.0))
             .split(client, dpi);
         let columns = Stack::horizontal()
-            .fixed(220)
+            .fixed(dip(220.0))
             .fill(1)
             .split(areas.fill, dpi);
 
