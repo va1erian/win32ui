@@ -10,6 +10,7 @@ use crate::error::Result;
 use crate::sys::d2d::geometry::{PathGeometry, PathSink};
 
 use super::canvas::D2dCanvas;
+use super::dc::DcCanvas;
 use super::{PointF, Rgba, RoundedRect, Stroke};
 
 /// The direction an arc is swept.
@@ -160,6 +161,36 @@ impl<'a> D2dCanvas<'a> {
     /// Restricts drawing to `rounded` until the matching
     /// [`pop_clip`](D2dCanvas::pop_clip), using a geometric-mask layer (so the
     /// clip itself is anti-aliased).
+    pub fn push_clip_rounded(&mut self, rounded: RoundedRect) -> Result<()> {
+        self.with(|target| target.push_clip_rounded(rounded))
+            .unwrap_or(Ok(()))
+    }
+}
+
+impl DcCanvas {
+    /// Fills `path` with an RGBA colour.
+    pub fn fill_path(&mut self, path: &Path, color: Rgba) {
+        self.with(|target| target.fill_path(&path.geometry, color));
+    }
+
+    /// Outlines `path` with an RGBA colour.
+    pub fn stroke_path(&mut self, path: &Path, color: Rgba, stroke: Stroke) {
+        self.with(|target| target.stroke_path(&path.geometry, color, stroke));
+    }
+
+    /// Fills a rounded rectangle with a (possibly different) radius per corner.
+    pub fn fill_rounded(&mut self, rounded: RoundedRect, color: Rgba) {
+        self.with(|target| target.fill_rounded(rounded, color));
+    }
+
+    /// Outlines a rounded rectangle with a (possibly different) radius per
+    /// corner.
+    pub fn stroke_rounded(&mut self, rounded: RoundedRect, color: Rgba, stroke: Stroke) {
+        self.with(|target| target.stroke_rounded(rounded, color, stroke));
+    }
+
+    /// Restricts drawing to `rounded` until the matching
+    /// [`pop_clip`](DcCanvas::pop_clip).
     pub fn push_clip_rounded(&mut self, rounded: RoundedRect) -> Result<()> {
         self.with(|target| target.push_clip_rounded(rounded))
             .unwrap_or(Ok(()))

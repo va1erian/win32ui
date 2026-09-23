@@ -13,7 +13,7 @@ use windows::Win32::Graphics::Direct2D::{
     D2D1_ANTIALIAS_MODE_PER_PRIMITIVE, D2D1_ARC_SEGMENT, D2D1_ARC_SIZE_LARGE, D2D1_ARC_SIZE_SMALL,
     D2D1_LAYER_PARAMETERS, D2D1_QUADRATIC_BEZIER_SEGMENT, D2D1_ROUNDED_RECT,
     D2D1_SWEEP_DIRECTION_CLOCKWISE, D2D1_SWEEP_DIRECTION_COUNTER_CLOCKWISE, ID2D1Geometry,
-    ID2D1GeometrySink, ID2D1HwndRenderTarget, ID2D1Layer, ID2D1PathGeometry,
+    ID2D1GeometrySink, ID2D1Layer, ID2D1PathGeometry, ID2D1RenderTarget,
 };
 
 use crate::d2d::{ArcSize, PointF, Radius, RectF, Rgba, RoundedRect, Stroke, Sweep};
@@ -45,7 +45,7 @@ impl Shapes {
         }
     }
 
-    fn push_axis_aligned(&mut self, render: &ID2D1HwndRenderTarget, rect: RectF) {
+    fn push_axis_aligned(&mut self, render: &ID2D1RenderTarget, rect: RectF) {
         // SAFETY: a valid rect; matched by `pop` (or `drain` at end of frame).
         unsafe {
             render.PushAxisAlignedClip(&rect_f(rect), D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
@@ -53,7 +53,7 @@ impl Shapes {
         self.clips.push(Clip::AxisAligned);
     }
 
-    fn push_layer(&mut self, render: &ID2D1HwndRenderTarget, rounded: RoundedRect) -> Result<()> {
+    fn push_layer(&mut self, render: &ID2D1RenderTarget, rounded: RoundedRect) -> Result<()> {
         let geometry = rounded_geometry(rounded)?;
         let layer = if let Some(layer) = self.pool.pop() {
             layer
@@ -76,7 +76,7 @@ impl Shapes {
     }
 
     /// Pops the innermost clip/layer, or errors when the stack is empty.
-    fn pop(&mut self, render: &ID2D1HwndRenderTarget) -> Result<()> {
+    fn pop(&mut self, render: &ID2D1RenderTarget) -> Result<()> {
         match self.clips.pop() {
             None => Err(Error::Direct2d("pop_clip without a matching push_clip")),
             Some(Clip::AxisAligned) => {
@@ -96,7 +96,7 @@ impl Shapes {
     }
 
     /// Pops everything left open, for end-of-frame cleanup.
-    fn drain(&mut self, render: &ID2D1HwndRenderTarget) {
+    fn drain(&mut self, render: &ID2D1RenderTarget) {
         while !self.clips.is_empty() {
             let _ = self.pop(render);
         }

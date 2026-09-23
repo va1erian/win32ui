@@ -244,6 +244,66 @@ impl From<Color> for Rgba {
     }
 }
 
+impl super::DcCanvas {
+    /// Fills `rect` with an RGBA colour.
+    pub fn fill_rect_rgba(&mut self, rect: RectF, color: Rgba) {
+        self.with(|target| target.fill_rect_rgba(rect, color));
+    }
+
+    /// Fills `rect` with rounded corners of `radius` and an RGBA colour.
+    pub fn fill_rounded_rect_rgba(&mut self, rect: RectF, radius: f32, color: Rgba) {
+        self.with(|target| target.fill_rounded_rect_rgba(rect, radius, color));
+    }
+
+    /// Fills an ellipse with an RGBA colour.
+    pub fn fill_ellipse_rgba(&mut self, center: PointF, radius_x: f32, radius_y: f32, color: Rgba) {
+        self.with(|target| target.fill_ellipse_rgba(center, radius_x, radius_y, color));
+    }
+
+    /// Outlines `rect` with an RGBA colour.
+    pub fn stroke_rect_rgba(&mut self, rect: RectF, color: Rgba, stroke: Stroke) {
+        self.with(|target| target.stroke_rect_rgba(rect, color, stroke));
+    }
+
+    /// Outlines a rounded rectangle with an RGBA colour.
+    pub fn stroke_rounded_rect_rgba(
+        &mut self,
+        rect: RectF,
+        radius: f32,
+        color: Rgba,
+        stroke: Stroke,
+    ) {
+        self.with(|target| target.stroke_rounded_rect_rgba(rect, radius, color, stroke));
+    }
+
+    /// Outlines an ellipse with an RGBA colour.
+    pub fn stroke_ellipse_rgba(
+        &mut self,
+        center: PointF,
+        radius_x: f32,
+        radius_y: f32,
+        color: Rgba,
+        stroke: Stroke,
+    ) {
+        self.with(|target| target.stroke_ellipse_rgba(center, radius_x, radius_y, color, stroke));
+    }
+
+    /// Draws a line with an RGBA colour.
+    pub fn draw_line_rgba(&mut self, from: PointF, to: PointF, color: Rgba, stroke: Stroke) {
+        self.with(|target| target.line_rgba(from, to, color, stroke));
+    }
+
+    /// Fills `rect` with a linear gradient.
+    pub fn fill_rect_linear(&mut self, rect: RectF, gradient: &LinearGradient) {
+        self.with(|target| target.fill_rect_linear(rect, gradient));
+    }
+
+    /// Fills `rect` with a radial gradient.
+    pub fn fill_rect_radial(&mut self, rect: RectF, gradient: &RadialGradient) {
+        self.with(|target| target.fill_rect_radial(rect, gradient));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

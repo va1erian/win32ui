@@ -1,21 +1,31 @@
-//! The `ID2D1HwndRenderTarget` and the device-dependent resources made from
-//! it (solid brushes). Stroke styles, RGBA/gradient brushes, bitmaps and the
-//! clip/layer stack live in the sibling modules and are dropped together with
-//! this struct when the device is lost, so a stale resource can never be drawn
-//! with.
+//! A Direct2D render target (window or device context) and the device-dependent
+//! resources made from it (solid brushes). Stroke styles, RGBA/gradient
+//! brushes, bitmaps and the clip/layer stack live in the sibling modules and
+//! are dropped together with this struct when the device is lost, so a stale
+//! resource can never be drawn with.
+//!
+//! Both target kinds share the same resource caches and drawing code: the
+//! concrete interfaces only differ where the surface is bound (`Resize` for a
+//! window, `BindDC` for a device context), so the base
+//! `ID2D1RenderTarget` is what the caches and draw calls use.
 
 use std::collections::HashMap;
 
+use windows::Win32::Foundation::RECT;
 use windows::Win32::Graphics::Direct2D::Common::{D2D_RECT_F, D2D_SIZE_U, D2D1_COLOR_F};
 use windows::Win32::Graphics::Direct2D::{
     D2D1_ELLIPSE, D2D1_HWND_RENDER_TARGET_PROPERTIES, D2D1_RENDER_TARGET_PROPERTIES,
-    D2D1_ROUNDED_RECT, ID2D1HwndRenderTarget, ID2D1SolidColorBrush,
+    D2D1_ROUNDED_RECT, ID2D1DCRenderTarget, ID2D1HwndRenderTarget, ID2D1RenderTarget,
+    ID2D1SolidColorBrush,
 };
+use windows::Win32::Graphics::Gdi::HDC;
+use windows::core::Interface;
 use windows_numerics::{Matrix3x2, Vector2};
 
 use crate::color::Color;
-use crate::d2d::{PointF, RectF, Stroke, clamp_radius};
-use crate::error::Result;
+use crate::d2d::{BASE_DPI, PointF, RectF, Stroke, clamp_radius};
+use crate::error::{Error, Result};
+use crate::geometry::Rect;
 use crate::hwnd::Hwnd;
 use crate::sys::{raw_hwnd, win32_error};
 
@@ -23,9 +33,17 @@ mod draw_text;
 
 use super::{EndDraw, bitmap, brush, factory, geometry, is_target_lost};
 
-/// A render target bound to one window, with its resource caches.
+/// The concrete render-target interface, kept for the two operations that are
+/// not on the shared base: resizing a window target and binding a DC target.
+enum Device {
+    Hwnd(ID2D1HwndRenderTarget),
+    Dc(ID2D1DCRenderTarget),
+}
+
+/// A render target with its resource caches.
 pub(crate) struct Target {
-    pub(crate) render: ID2D1HwndRenderTarget,
+    pub(crate) render: ID2D1RenderTarget,
+    device: Device,
     brushes: HashMap<Color, ID2D1SolidColorBrush>,
     pub(crate) strokes: brush::Strokes,
     pub(crate) paints: brush::Paints,
@@ -92,8 +110,42 @@ impl Target {
         // live window; the factory keeps no pointer into them.
         let render = unsafe { factory()?.CreateHwndRenderTarget(&properties, &window) }
             .map_err(win32_error)?;
+        Target::with_device(Device::Hwnd(render))
+    }
+
+    /// Creates an unbound target for a device context. [`Target::bind_dc`]
+    /// attaches it to an `HDC` for one draw.
+    pub(crate) fn new_dc() -> Result<Target> {
+        // `D2D1_ALPHA_MODE_IGNORE` keeps the DC opaque: the anti-aliased edges
+        // are blended into the pixels GDI already painted, and a later
+        // `BitBlt`/`GetPixel` never sees the premultiplied black that would
+        // otherwise fringe every shape.
+        let properties = D2D1_RENDER_TARGET_PROPERTIES {
+            pixelFormat: windows::Win32::Graphics::Direct2D::Common::D2D1_PIXEL_FORMAT {
+                format: windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_B8G8R8A8_UNORM,
+                alphaMode: windows::Win32::Graphics::Direct2D::Common::D2D1_ALPHA_MODE_IGNORE,
+            },
+            dpiX: BASE_DPI,
+            dpiY: BASE_DPI,
+            ..Default::default()
+        };
+        // SAFETY: the property struct is valid for the call.
+        let render =
+            unsafe { factory()?.CreateDCRenderTarget(&properties) }.map_err(win32_error)?;
+        Target::with_device(Device::Dc(render))
+    }
+
+    /// Shares the resource caches, binding the base interface of `device` for
+    /// every draw call.
+    fn with_device(device: Device) -> Result<Target> {
+        let render: ID2D1RenderTarget = match &device {
+            Device::Hwnd(target) => target.cast(),
+            Device::Dc(target) => target.cast(),
+        }
+        .map_err(win32_error)?;
         Ok(Target {
             render,
+            device,
             brushes: HashMap::new(),
             strokes: brush::Strokes::new(),
             paints: brush::Paints::new(),
@@ -102,10 +154,31 @@ impl Target {
         })
     }
 
-    /// Resizes the backing surface to `width`×`height` device pixels.
+    /// Binds a device-context target to `hdc`, mapping the rectangle `rect` to
+    /// the target origin. Cheap: call it before every draw.
+    pub(crate) fn bind_dc(&self, hdc: HDC, rect: Rect) -> Result<()> {
+        let Device::Dc(target) = &self.device else {
+            return Err(Error::Direct2d("bind_dc on a window render target"));
+        };
+        let sub = RECT {
+            left: rect.left,
+            top: rect.top,
+            right: rect.right,
+            bottom: rect.bottom,
+        };
+        // SAFETY: `hdc` is live for the draw and `sub` is a valid rectangle the
+        // target copies before returning.
+        unsafe { target.BindDC(hdc, &sub) }.map_err(win32_error)
+    }
+
+    /// Resizes the backing surface to `width`×`height` device pixels. A DC
+    /// target has no backing surface, so this does nothing for it.
     pub(crate) fn resize(&mut self, width: u32, height: u32) -> Result<()> {
+        let Device::Hwnd(target) = &self.device else {
+            return Ok(());
+        };
         // SAFETY: the size struct is valid for the call.
-        unsafe { self.render.Resize(&D2D_SIZE_U { width, height }) }.map_err(win32_error)
+        unsafe { target.Resize(&D2D_SIZE_U { width, height }) }.map_err(win32_error)
     }
 
     /// Sets the DPI that maps device-independent to device pixels.

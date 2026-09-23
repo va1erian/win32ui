@@ -11,8 +11,8 @@ use windows::Win32::Graphics::Direct2D::{
     D2D1_EXTEND_MODE_CLAMP, D2D1_EXTEND_MODE_MIRROR, D2D1_EXTEND_MODE_WRAP, D2D1_GAMMA_2_2,
     D2D1_LINE_JOIN_BEVEL, D2D1_LINE_JOIN_MITER, D2D1_LINE_JOIN_ROUND,
     D2D1_LINEAR_GRADIENT_BRUSH_PROPERTIES, D2D1_RADIAL_GRADIENT_BRUSH_PROPERTIES,
-    D2D1_STROKE_STYLE_PROPERTIES, ID2D1HwndRenderTarget, ID2D1LinearGradientBrush,
-    ID2D1RadialGradientBrush, ID2D1SolidColorBrush, ID2D1StrokeStyle,
+    D2D1_STROKE_STYLE_PROPERTIES, ID2D1LinearGradientBrush, ID2D1RadialGradientBrush,
+    ID2D1RenderTarget, ID2D1SolidColorBrush, ID2D1StrokeStyle,
 };
 use windows_numerics::Vector2;
 
@@ -136,7 +136,7 @@ impl Paints {
 
     pub(crate) fn solid(
         &mut self,
-        render: &ID2D1HwndRenderTarget,
+        render: &ID2D1RenderTarget,
         color: Rgba,
     ) -> Option<ID2D1SolidColorBrush> {
         if let Some(brush) = self.solid.get(&color) {
@@ -150,7 +150,7 @@ impl Paints {
 
     pub(crate) fn linear(
         &mut self,
-        render: &ID2D1HwndRenderTarget,
+        render: &ID2D1RenderTarget,
         gradient: &LinearGradient,
     ) -> Option<ID2D1LinearGradientBrush> {
         if let Some((_, brush)) = self.linear.iter().find(|(cached, _)| cached == gradient) {
@@ -179,7 +179,7 @@ impl Paints {
 
     pub(crate) fn radial(
         &mut self,
-        render: &ID2D1HwndRenderTarget,
+        render: &ID2D1RenderTarget,
         gradient: &RadialGradient,
     ) -> Option<ID2D1RadialGradientBrush> {
         if let Some((_, brush)) = self.radial.iter().find(|(cached, _)| cached == gradient) {

@@ -18,6 +18,7 @@
 mod bitmap;
 mod brush;
 mod canvas;
+mod dc;
 mod geometry;
 mod path;
 mod surface;
@@ -26,6 +27,7 @@ mod text;
 pub use bitmap::{ImageId, Interpolation};
 pub use brush::{ExtendMode, GradientStop, LinearGradient, RadialGradient, Rgba};
 pub use canvas::D2dCanvas;
+pub use dc::DcCanvas;
 pub use geometry::{
     BASE_DPI, Cap, DashStyle, LineJoin, PointF, Radius, RectF, RoundedRect, Stroke, clamp_radius,
     pixels_to_dips,

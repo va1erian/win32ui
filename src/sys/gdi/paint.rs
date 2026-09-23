@@ -8,8 +8,8 @@ use windows::Win32::Foundation::{COLORREF, POINT, RECT};
 use windows::Win32::Graphics::Gdi::{
     AC_SRC_ALPHA, AC_SRC_OVER, AlphaBlend, BLENDFUNCTION, BeginPaint, BitBlt,
     CreateCompatibleBitmap, CreateCompatibleDC, DRAW_TEXT_FORMAT, DeleteDC, DeleteObject,
-    DrawTextW, EndPaint, HBITMAP, HBRUSH, HDC, HGDIOBJ, IntersectClipRect, LineTo, MoveToEx,
-    PAINTSTRUCT, Polygon, SRCCOPY, SelectClipRgn, SelectObject, SetBkMode, SetTextColor,
+    DrawTextW, EndPaint, GetClipBox, HBITMAP, HBRUSH, HDC, HGDIOBJ, IntersectClipRect, LineTo,
+    MoveToEx, PAINTSTRUCT, Polygon, SRCCOPY, SelectClipRgn, SelectObject, SetBkMode, SetTextColor,
     TRANSPARENT,
 };
 
@@ -139,6 +139,20 @@ pub(crate) fn clip_rect(hdc: HDC, rect: Rect) {
     unsafe {
         let _ = IntersectClipRect(hdc, rect.left, rect.top, rect.right, rect.bottom);
     }
+}
+
+/// The bounding box of `hdc`'s current clip region, in device pixels (empty
+/// when the region is empty or the DC is stale). A Direct2D DC render target
+/// binds to this so its origin matches the DC's.
+pub(crate) fn clip_box(hdc: HDC) -> Rect {
+    let mut raw = RECT::default();
+    // SAFETY: `raw` is a valid out-pointer; a stale handle returns `ERROR` (0)
+    // and leaves `raw` untouched.
+    let kind = unsafe { GetClipBox(hdc, &mut raw) };
+    if kind.0 == 0 {
+        return Rect::default();
+    }
+    Rect::new(raw.left, raw.top, raw.right, raw.bottom)
 }
 
 /// Copies `rect` from `source` to `dest` at the same coordinates.
