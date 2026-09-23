@@ -26,6 +26,11 @@ impl Hwnd {
     pub const fn is_null(self) -> bool {
         self.0 == 0
     }
+
+    /// Whether the handle names a live window.
+    pub fn is_alive(self) -> bool {
+        !self.is_null() && crate::sys::window::is_window(self)
+    }
 }
 
 impl std::fmt::Debug for Hwnd {

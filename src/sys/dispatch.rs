@@ -185,14 +185,23 @@ fn deliver(
     lparam: LPARAM,
     handler: &dyn WindowHandler,
 ) -> Option<isize> {
-    // Registered controls get first refusal on their own notifications
-    // (owner-data requests, custom draw, lazy expansion…).
+    // `WM_NOTIFY` is special: it may be consumed by a registered control
+    // (self-contained owner-data/custom-draw plumbing), mapped to the app's
+    // `Msg` by a widget-layer event mapper, or left for the window handler.
     if msg == WM_NOTIFY
         && let Some((from, _id, code)) = message::notify_header(lparam)
-        && let Some(result) =
-            crate::controls::registry::dispatch(hwnd_from(from), code, wparam.0, lparam.0)
     {
-        return Some(result);
+        if let Some(result) =
+            crate::controls::registry::dispatch(hwnd_from(from), code, wparam.0, lparam.0)
+        {
+            return Some(result);
+        }
+        let decoded = message::decode(hwnd, msg, wparam, lparam)?;
+        if crate::controls::registry::dispatch_app_event(hwnd_from(from), &decoded) {
+            return Some(0);
+        }
+        let window = crate::window::Window::from_raw(hwnd_from(hwnd));
+        return handler.message(&window, decoded);
     }
 
     // A message may be suppressed (the first half of a `WM_CHAR` surrogate

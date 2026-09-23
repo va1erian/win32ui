@@ -1,7 +1,8 @@
 //! DPI awareness and per-window DPI queries.
 
 use windows::Win32::UI::HiDpi::{
-    DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, GetDpiForWindow, SetProcessDpiAwarenessContext,
+    DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, GetDpiForSystem, GetDpiForWindow,
+    SetProcessDpiAwarenessContext,
 };
 
 use crate::hwnd::Hwnd;
@@ -23,5 +24,14 @@ pub(crate) fn window_dpi(hwnd: Hwnd) -> u32 {
     // SAFETY: `GetDpiForWindow` only reads the handle; it returns 0 on
     // failure, which is mapped to the 100% baseline.
     let dpi = unsafe { GetDpiForWindow(raw_hwnd(hwnd)) };
+    if dpi == 0 { 96 } else { dpi }
+}
+
+/// The process-wide system DPI (96 when unavailable), used to size a window
+/// before it exists.
+pub(crate) fn system_dpi() -> u32 {
+    // SAFETY: `GetDpiForSystem` takes no arguments; 0 means "unavailable" and
+    // is mapped to the 100% baseline.
+    let dpi = unsafe { GetDpiForSystem() };
     if dpi == 0 { 96 } else { dpi }
 }

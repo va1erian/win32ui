@@ -5,7 +5,7 @@
 //! Only root nodes are inserted up front. When a node is first expanded, the
 //! `TVN_ITEMEXPANDING` hook asks the [`TreeSource`] for its children and
 //! inserts them. That notification is consumed inside [`TreeViewInner`]; the
-//! application instead sees [`TreeViewEvent`]s.
+//! application instead sees [`TreeViewEvent`]s mapped to its own `Msg`.
 
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -13,11 +13,14 @@ use std::rc::Rc;
 
 use windows::Win32::UI::Controls::TVN_ITEMEXPANDING;
 
+use crate::app::Ui;
+use crate::controls::control::{AsControl, Control};
 use crate::controls::registry::{self, ControlEvents, ControlKind};
-use crate::controls::{create_child, style};
+use crate::controls::{create_child, next_id, style};
 use crate::error::Result;
 use crate::geometry::Rect;
 use crate::hwnd::Hwnd;
+use crate::message::{Message, Notify};
 use crate::sys;
 use crate::units::dip;
 
@@ -128,21 +131,26 @@ impl ControlEvents for TreeViewInner {
     }
 }
 
-/// A lazily-populated tree view.
-pub struct TreeView {
-    hwnd: Hwnd,
-    inner: Rc<RefCell<TreeViewInner>>,
+/// A mapping from a tree event's payload to an optional app message.
+type TreeMapper<M> = Box<dyn Fn(Option<i64>) -> Option<M>>;
+
+/// The app-level events a [`TreeView`] maps to `Msg`.
+struct TreeViewEvents<M> {
+    on_select: Option<TreeMapper<M>>,
+    on_activate: Option<TreeMapper<M>>,
+    on_context: Option<TreeMapper<M>>,
 }
 
-impl TreeView {
-    /// Creates the control as a child of `parent`.
-    pub fn new(
-        parent: Hwnd,
-        id: usize,
-        bounds: Rect,
-        source: Box<dyn TreeSource>,
-        dpi: u32,
-    ) -> Result<TreeView> {
+/// A lazily-populated tree view.
+pub struct TreeView<M> {
+    control: Control,
+    inner: Rc<RefCell<TreeViewInner>>,
+    events: Rc<RefCell<TreeViewEvents<M>>>,
+}
+
+impl<M: 'static> TreeView<M> {
+    /// Creates the control as a child of the window behind `ui`.
+    pub fn new(ui: &mut Ui<M>, bounds: Rect, source: Box<dyn TreeSource>) -> Result<TreeView<M>> {
         let style = style::WS_CHILD
             | style::WS_VISIBLE
             | style::WS_BORDER
@@ -154,15 +162,15 @@ impl TreeView {
         let hwnd = create_child(
             "TreeView",
             "SysTreeView32",
-            parent,
+            ui.hwnd(),
             style,
             style::WS_EX_CLIENTEDGE,
-            id,
+            next_id(),
             bounds,
         )?;
 
         sys::control::tv_set_extended_style(hwnd, TVS_EX_DOUBLEBUFFER);
-        sys::control::tv_set_item_height(hwnd, dip(20.0).to_px(dpi).value());
+        sys::control::tv_set_item_height(hwnd, dip(20.0).to_px(ui.dpi()).value());
 
         for entry in source.children(None) {
             sys::control::tv_insert(
@@ -179,25 +187,72 @@ impl TreeView {
             source,
             populated: HashSet::new(),
         }));
-        let events: Rc<RefCell<dyn ControlEvents>> = inner.clone();
-        registry::register(hwnd, events);
+        let control_events: Rc<RefCell<dyn ControlEvents>> = inner.clone();
+        registry::register(hwnd, control_events);
 
-        Ok(TreeView { hwnd, inner })
+        let events = Rc::new(RefCell::new(TreeViewEvents {
+            on_select: None,
+            on_activate: None,
+            on_context: None,
+        }));
+        let sink = ui.clone();
+        let events_for_mapper = events.clone();
+        let mapper: Rc<dyn Fn(&Message) -> bool> = Rc::new(move |message| {
+            let Message::Notify(Notify::TreeView { event, .. }) = message else {
+                return false;
+            };
+            let msg = {
+                let events = events_for_mapper.borrow();
+                match *event {
+                    TreeViewEvent::SelectionChanged { item } => {
+                        events.on_select.as_ref().and_then(|f| f(item))
+                    }
+                    TreeViewEvent::DoubleClick => events
+                        .on_activate
+                        .as_ref()
+                        .and_then(|f| f(sys::control::tv_selected(hwnd))),
+                    TreeViewEvent::RightClick => events
+                        .on_context
+                        .as_ref()
+                        .and_then(|f| f(sys::control::tv_selected(hwnd))),
+                    _ => None,
+                }
+            };
+            if let Some(msg) = msg {
+                sink.emit(msg);
+            }
+            true
+        });
+        registry::register_app_events(hwnd, mapper);
+
+        Ok(TreeView {
+            control: Control::own(hwnd, bounds),
+            inner,
+            events,
+        })
     }
 
-    /// The control handle.
-    pub fn hwnd(&self) -> Hwnd {
-        self.hwnd
+    /// Maps a selection change to a message.
+    pub fn on_select(self, f: impl Fn(Option<i64>) -> Option<M> + 'static) -> TreeView<M> {
+        self.events.borrow_mut().on_select = Some(Box::new(f));
+        self
     }
 
-    /// Moves/resizes the control.
-    pub fn set_bounds(&self, bounds: Rect) {
-        sys::window::move_window(self.hwnd, bounds);
+    /// Maps a double-click (activation) to a message.
+    pub fn on_activate(self, f: impl Fn(Option<i64>) -> Option<M> + 'static) -> TreeView<M> {
+        self.events.borrow_mut().on_activate = Some(Box::new(f));
+        self
+    }
+
+    /// Maps a right-click to a message.
+    pub fn on_context(self, f: impl Fn(Option<i64>) -> Option<M> + 'static) -> TreeView<M> {
+        self.events.borrow_mut().on_context = Some(Box::new(f));
+        self
     }
 
     /// Sets the tree's background and text colours.
     pub fn set_colors(&self, background: crate::Color, text: crate::Color) {
-        sys::control::tv_set_colors(self.hwnd, background, text);
+        sys::control::tv_set_colors(self.control.hwnd(), background, text);
     }
 
     /// Replaces the data source. Existing nodes are kept; expansion state for
@@ -210,18 +265,24 @@ impl TreeView {
 
     /// The id of the selected node, if any.
     pub fn selected(&self) -> Option<i64> {
-        sys::control::tv_selected(self.hwnd)
+        sys::control::tv_selected(self.control.hwnd())
     }
 
     /// The total number of materialised nodes.
     pub fn node_count(&self) -> i32 {
-        sys::control::tv_count(self.hwnd)
+        sys::control::tv_count(self.control.hwnd())
     }
 }
 
-impl Drop for TreeView {
+impl<M> AsControl for TreeView<M> {
+    fn control(&self) -> &Control {
+        &self.control
+    }
+}
+
+impl<M> Drop for TreeView<M> {
     fn drop(&mut self) {
-        registry::unregister(self.hwnd);
-        sys::window::destroy(self.hwnd);
+        registry::unregister(self.control.hwnd());
+        registry::unregister_app_events(self.control.hwnd());
     }
 }

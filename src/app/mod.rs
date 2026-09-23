@@ -1,0 +1,16 @@
+#![forbid(unsafe_code)]
+
+//! The widget layer: [`App`] + [`Ui`], message-mapped events, and [`run_app`].
+//!
+//! Applications implement [`App`], build their widgets inside [`run_app`]'s
+//! closure, and receive their own [`App::Msg`] type in [`App::update`] — never
+//! raw window messages, and never re-entered.
+
+mod core;
+mod run;
+mod spec;
+mod ui;
+
+pub use run::run_app;
+pub use spec::{App, WindowSpec};
+pub use ui::Ui;

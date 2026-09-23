@@ -1,4 +1,4 @@
-//! Headless smoke test: creates real windows and controls and checks the safe
+//! Headless smoke test: creates a real widget-layer window and checks the safe
 //! wrapper's bookkeeping. If the CI session cannot create windows at all, the
 //! test skips rather than fails.
 
@@ -6,7 +6,10 @@
 
 mod common;
 
-use common::{NullHandler, TestRows, run_with_watchdog};
+use std::cell::{Cell, RefCell};
+use std::rc::Rc;
+
+use common::{TestRows, run_app_with_watchdog, run_with_watchdog};
 use win32ui::prelude::*;
 
 struct TestTree;
@@ -24,61 +27,137 @@ impl TreeSource for TestTree {
     }
 }
 
+enum SmokeMsg {
+    Start,
+}
+
+struct SmokeApp {
+    tree: Option<TreeView<SmokeMsg>>,
+    list: Option<ListView<SmokeMsg>>,
+    status: Option<StatusBar>,
+    toolbar: Option<Toolbar<SmokeMsg>>,
+    label: Option<Label>,
+    node_count: Rc<Cell<Option<i32>>>,
+    selected: Rc<Cell<Option<Option<usize>>>>,
+    label_text: Rc<RefCell<Option<String>>>,
+    toolbar_height: Rc<Cell<Option<i32>>>,
+}
+
+impl App for SmokeApp {
+    type Msg = SmokeMsg;
+
+    fn update(&mut self, msg: SmokeMsg, ui: &mut Ui<SmokeMsg>) {
+        let SmokeMsg::Start = msg;
+        let (Some(tree), Some(list), Some(status), Some(label), Some(toolbar)) = (
+            &self.tree,
+            &self.list,
+            &self.status,
+            &self.label,
+            &self.toolbar,
+        ) else {
+            return;
+        };
+
+        self.node_count.set(Some(tree.node_count()));
+        list.select(2);
+        self.selected.set(Some(list.selected()));
+        list.set_playing(Some(3));
+        list.set_sort_indicator(1, SortDirection::Ascending);
+        status.set_text(0, "Ready");
+        label.set_text("hello");
+        self.label_text.replace(Some(label.text()));
+        self.toolbar_height.set(Some(toolbar.height()));
+        ui.quit();
+    }
+}
+
 #[test]
 fn window_with_controls_round_trips() {
-    win32ui::init();
+    let node_count = Rc::new(Cell::new(None));
+    let selected = Rc::new(Cell::new(None));
+    let label_text = Rc::new(RefCell::new(None));
+    let toolbar_height = Rc::new(Cell::new(None));
+    let created = Rc::new(Cell::new(false));
 
-    let theme = Theme::light();
-    let Ok(class) = WindowClass::register("win32ui.smoke", theme.background) else {
+    let node_count_for_make = Rc::clone(&node_count);
+    let selected_for_make = Rc::clone(&selected);
+    let label_text_for_make = Rc::clone(&label_text);
+    let toolbar_height_for_make = Rc::clone(&toolbar_height);
+    let created_for_make = Rc::clone(&created);
+
+    let Some(run) = run_app_with_watchdog("win32ui.smoke", move |ui| {
+        let theme = Theme::light();
+        let toolbar = Toolbar::new(
+            ui,
+            vec![ToolbarItem::new("One")],
+            ToolbarTheme::from_theme(&theme),
+        )
+        .ok();
+        let tree = TreeView::new(ui, Rect::new(0, 0, 200, 400), Box::new(TestTree)).ok();
+        let list = ListView::new(
+            ui,
+            Rect::new(200, 0, 640, 400),
+            &[
+                Column::new("Title", dip(160.0)),
+                Column::right("Time", dip(60.0)),
+            ],
+            Box::new(TestRows),
+            ListViewTheme::from_theme(&theme),
+        )
+        .ok();
+        let status = StatusBar::new(ui, StatusBarTheme::from_theme(&theme)).ok();
+        let label = Label::new(ui, Rect::default(), "hi").ok();
+
+        if toolbar.is_none()
+            || tree.is_none()
+            || list.is_none()
+            || status.is_none()
+            || label.is_none()
+        {
+            ui.quit();
+        } else {
+            created_for_make.set(true);
+            ui.emit(SmokeMsg::Start);
+        }
+
+        SmokeApp {
+            tree,
+            list,
+            status,
+            toolbar,
+            label,
+            node_count: node_count_for_make,
+            selected: selected_for_make,
+            label_text: label_text_for_make,
+            toolbar_height: toolbar_height_for_make,
+        }
+    }) else {
         return;
     };
-    let Ok(window) = Window::create(
-        class,
-        None,
-        WindowStyle::overlapped(),
-        WindowExStyle::new(),
-        Rect::new(0, 0, 640, 480),
-        "smoke",
-        NullHandler,
-    ) else {
-        return;
-    };
 
-    let Ok(tree) = TreeView::new(
-        window.hwnd(),
-        1,
-        Rect::new(0, 0, 200, 400),
-        Box::new(TestTree),
-        96,
-    ) else {
+    assert!(!run.timed_out, "the watchdog fired before the app quit");
+    if !created.get() {
         return;
-    };
-    assert_eq!(tree.node_count(), 2);
-
-    let Ok(list) = ListView::new(
-        window.hwnd(),
-        2,
-        Rect::new(200, 0, 640, 400),
-        &[
-            Column::new("Title", dip(160.0)),
-            Column::right("Time", dip(60.0)),
-        ],
-        Box::new(TestRows),
-        ListViewTheme::from_theme(&theme),
-        96,
-    ) else {
-        return;
-    };
-    assert_eq!(list.selected(), None);
-    list.select(2);
-    assert_eq!(list.selected(), Some(2));
-    list.set_playing(Some(3));
-    list.set_sort_indicator(1, SortDirection::Ascending);
-
-    drop(list);
-    drop(tree);
-    window.destroy();
-    assert!(!window.is_alive());
+    }
+    assert_eq!(
+        node_count.get(),
+        Some(2),
+        "the tree did not report its roots"
+    );
+    assert_eq!(
+        selected.get(),
+        Some(Some(2)),
+        "the list did not select row 2"
+    );
+    assert_eq!(
+        label_text.borrow().as_deref(),
+        Some("hello"),
+        "the label text did not round-trip"
+    );
+    assert!(
+        toolbar_height.get().is_some_and(|height| height > 0),
+        "the toolbar reported no height"
+    );
 }
 
 /// The timer's id must survive the round trip: `WM_TIMER` has to report the

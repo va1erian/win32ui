@@ -5,20 +5,22 @@
 //! The control is created with `LVS_OWNERDATA`, so it never stores the rows
 //! itself: cell text is requested lazily through [`ListSource`], and row
 //! colours/backgrounds are supplied through `NM_CUSTOMDRAW`. Both hooks are
-//! handled inside [`ListViewInner`] and never reach the application. Only the
-//! meaningful events surface, as [`ListViewEvent`]s.
+//! handled inside the owner-draw plumbing and never reach the application;
+//! only the meaningful events surface, mapped to the app's `Msg`.
 
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use windows::Win32::UI::Controls::{LVN_GETDISPINFO, NM_CUSTOMDRAW};
-
-use crate::controls::registry::{self, ControlEvents, ControlKind};
-use crate::controls::{create_child, style};
+use crate::app::Ui;
+use crate::controls::control::{AsControl, Control};
+use crate::controls::listview_inner::{HeaderDrawer, ListViewInner};
+use crate::controls::registry::{self, ControlEvents};
+use crate::controls::{create_child, next_id, style};
 use crate::error::Result;
-use crate::gdi::{Brush, Canvas, Font, TextFormat};
+use crate::gdi::Font;
 use crate::geometry::Rect;
 use crate::hwnd::Hwnd;
+use crate::message::{Message, Notify};
 use crate::sys;
 use crate::theme::Theme;
 use crate::units::Dip;
@@ -28,9 +30,6 @@ const LVS_SHOWSELALWAYS: u32 = 0x0000_0008;
 const LVS_OWNERDATA: u32 = 0x0000_1000;
 const LVS_EX_FULLROWSELECT: u32 = 0x0000_0020;
 const LVS_EX_DOUBLEBUFFER: u32 = 0x0001_0000;
-
-const CDDS_PREPAINT: u32 = 0x0000_0001;
-const CDDS_ITEMPREPAINT: u32 = 0x0001_0001;
 
 /// A report-mode column.
 #[derive(Clone, Debug)]
@@ -165,224 +164,32 @@ pub enum ListViewEvent {
     },
 }
 
-struct ListViewInner {
-    source: Box<dyn ListSource>,
-    theme: ListViewTheme,
-    columns: Vec<Column>,
-    font: Font,
-    playing: Option<usize>,
-    /// `(column, ascending)` for the header sort arrow.
-    sort: Option<(usize, bool)>,
-}
-
-impl ControlEvents for ListViewInner {
-    fn kind(&self) -> ControlKind {
-        ControlKind::ListView
-    }
-
-    fn on_notification(
-        &mut self,
-        hwnd: Hwnd,
-        code: u32,
-        _wparam: usize,
-        lparam: isize,
-    ) -> Option<isize> {
-        if code == LVN_GETDISPINFO {
-            let text = sys::control::lv_disp_info(lparam, |item, sub| self.cell(item, sub));
-            return Some(text);
-        }
-        if code == NM_CUSTOMDRAW {
-            return Some(sys::control::lv_custom_draw(lparam, |ctx| {
-                self.custom_draw(hwnd, ctx)
-            }));
-        }
-        None
-    }
-}
-
-impl ListViewInner {
-    fn cell(&self, item: i32, column: i32) -> String {
-        if item < 0 || column < 0 {
-            return String::new();
-        }
-        self.source.text(item as usize, column as usize)
-    }
-
-    fn custom_draw(
-        &self,
-        hwnd: Hwnd,
-        ctx: &sys::control::CustomDraw,
-    ) -> sys::control::CustomDrawResult {
-        if ctx.stage == CDDS_PREPAINT {
-            return sys::control::CustomDrawResult::NotifyItemDraw;
-        }
-        if ctx.stage != CDDS_ITEMPREPAINT || ctx.item < 0 {
-            return sys::control::CustomDrawResult::Default;
-        }
-
-        let item = ctx.item;
-        let row = sys::control::lv_subitem_rect(hwnd, item, 0);
-        if row.is_empty() {
-            return sys::control::CustomDrawResult::SkipDefault;
-        }
-
-        let selected = sys::control::lv_is_selected(hwnd, item);
-        let playing = self.playing == Some(item as usize);
-        let highlight = playing || selected;
-        let background = if highlight {
-            self.theme.selection
-        } else if item % 2 == 1 {
-            self.theme.alternate
-        } else {
-            self.theme.background
-        };
-        let text_color = if highlight {
-            self.theme.on_playing
-        } else {
-            self.theme.text
-        };
-
-        // Paint the row ourselves: this is a real owner-drawn list, which also
-        // lets us suppress the system's (focus-dependent) selection colour.
-        let canvas = Canvas::new(ctx.hdc);
-        canvas.fill_rect(row, background);
-        canvas.with_font(&self.font, |canvas| {
-            for (column, spec) in self.columns.iter().enumerate() {
-                let cell = sys::control::lv_subitem_rect(hwnd, item, column as i32);
-                if cell.is_empty() {
-                    continue;
-                }
-                let text = self.source.text(item as usize, column);
-                let format = if spec.align_right {
-                    TextFormat::left().right()
-                } else {
-                    TextFormat::left()
-                };
-                let text_rect = Rect::new(cell.left + 4, cell.top, cell.right - 4, cell.bottom);
-                canvas.draw_text(
-                    text_rect,
-                    &text,
-                    text_color,
-                    format.single_line().vcenter().end_ellipsis().no_prefix(),
-                );
-            }
-        });
-
-        // Thin vertical separators between columns.
-        if let Ok(brush) = Brush::solid(self.theme.border) {
-            for column in 1..self.columns.len() {
-                let cell = sys::control::lv_subitem_rect(hwnd, item, column as i32);
-                if cell.height() > 0 && cell.left > 0 {
-                    canvas.fill_rect_brush(
-                        Rect::new(cell.left, cell.top, cell.left + 1, cell.bottom),
-                        &brush,
-                    );
-                }
-            }
-        }
-
-        sys::control::CustomDrawResult::SkipDefault
-    }
-}
-
-/// Paints the list view's header in the app's colours.
-struct HeaderDrawer {
-    inner: Rc<RefCell<ListViewInner>>,
-}
-
-impl sys::control::HeaderPainter for HeaderDrawer {
-    fn draw_header(&self, draw: &sys::control::HeaderDraw) -> Option<isize> {
-        const CDDS_PREPAINT: u32 = 0x0000_0001;
-        const CDDS_ITEMPREPAINT: u32 = 0x0001_0001;
-
-        let inner = self.inner.borrow();
-        if draw.stage == CDDS_PREPAINT {
-            Canvas::new(draw.hdc).fill_rect(draw.rect, inner.theme.header_background);
-            // Ask for a notification per header item.
-            return Some(32);
-        }
-        if draw.stage != CDDS_ITEMPREPAINT {
-            return None;
-        }
-
-        let canvas = Canvas::new(draw.hdc);
-        canvas.fill_rect(draw.rect, inner.theme.header_background);
-        let item = draw.item.max(0) as usize;
-
-        if let Some(column) = inner.columns.get(item) {
-            let format = if column.align_right {
-                TextFormat::left().right()
-            } else {
-                TextFormat::left()
-            };
-            let text_rect = Rect::new(
-                draw.rect.left + 6,
-                draw.rect.top,
-                draw.rect.right - 6,
-                draw.rect.bottom,
-            );
-            canvas.with_font(&inner.font, |canvas| {
-                canvas.draw_text(
-                    text_rect,
-                    &column.title,
-                    inner.theme.header_text,
-                    format.single_line().vcenter().no_prefix(),
-                );
-            });
-        }
-
-        if let Ok(brush) = Brush::solid(inner.theme.border)
-            && item > 0
-        {
-            canvas.fill_rect_brush(
-                Rect::new(
-                    draw.rect.left,
-                    draw.rect.top,
-                    draw.rect.left + 1,
-                    draw.rect.bottom,
-                ),
-                &brush,
-            );
-        }
-
-        if let Some((sort_column, ascending)) = inner.sort
-            && sort_column == item
-        {
-            let size = 4;
-            let middle = (draw.rect.top + draw.rect.bottom) / 2;
-            let arrow = Rect::new(
-                draw.rect.right - 16,
-                middle - size,
-                draw.rect.right - 8,
-                middle + size,
-            );
-            canvas.triangle(arrow, inner.theme.header_text, ascending);
-        }
-
-        // We painted the whole item.
-        Some(4)
-    }
+/// The app-level events a [`ListView`] maps to `Msg`.
+struct ListViewEvents<M> {
+    on_select: Option<Box<dyn Fn(usize) -> Option<M>>>,
+    on_activate: Option<Box<dyn Fn(usize) -> Option<M>>>,
+    on_context: Option<Box<dyn Fn(usize) -> Option<M>>>,
 }
 
 /// A virtual report list view.
-pub struct ListView {
-    hwnd: Hwnd,
+pub struct ListView<M> {
+    control: Control,
     header: Hwnd,
     inner: Rc<RefCell<ListViewInner>>,
     header_subclass: Option<sys::control::HeaderSubclass>,
+    events: Rc<RefCell<ListViewEvents<M>>>,
 }
 
-impl ListView {
-    /// Creates the control as a child of `parent`.
+impl<M: 'static> ListView<M> {
+    /// Creates the control as a child of the window behind `ui`.
     pub fn new(
-        parent: Hwnd,
-        id: usize,
+        ui: &mut Ui<M>,
         bounds: Rect,
         columns: &[Column],
         source: Box<dyn ListSource>,
         theme: ListViewTheme,
-        dpi: u32,
-    ) -> Result<ListView> {
+    ) -> Result<ListView<M>> {
+        let dpi = ui.dpi();
         let style = style::WS_CHILD
             | style::WS_VISIBLE
             | style::WS_BORDER
@@ -394,10 +201,10 @@ impl ListView {
         let hwnd = create_child(
             "ListView",
             "SysListView32",
-            parent,
+            ui.hwnd(),
             style,
             style::WS_EX_CLIENTEDGE,
-            id,
+            next_id(),
             bounds,
         )?;
 
@@ -433,8 +240,8 @@ impl ListView {
             playing: None,
             sort: None,
         }));
-        let events: Rc<RefCell<dyn ControlEvents>> = inner.clone();
-        registry::register(hwnd, events);
+        let control_events: Rc<RefCell<dyn ControlEvents>> = inner.clone();
+        registry::register(hwnd, control_events);
 
         let header_subclass = if header.is_null() {
             None
@@ -442,46 +249,93 @@ impl ListView {
             sys::control::HeaderSubclass::install(
                 hwnd,
                 header,
-                Box::new(HeaderDrawer {
-                    inner: Rc::clone(&inner),
-                }),
+                Box::new(HeaderDrawer::new(Rc::clone(&inner))),
             )
         };
 
+        let events = Rc::new(RefCell::new(ListViewEvents {
+            on_select: None,
+            on_activate: None,
+            on_context: None,
+        }));
+        let sink = ui.clone();
+        let events_for_mapper = events.clone();
+        let mapper: Rc<dyn Fn(&Message) -> bool> = Rc::new(move |message| {
+            let Message::Notify(Notify::ListView { event, .. }) = message else {
+                return false;
+            };
+            let msg = {
+                let events = events_for_mapper.borrow();
+                match *event {
+                    ListViewEvent::ItemChanged {
+                        item,
+                        selected: true,
+                    } if item >= 0 => events.on_select.as_ref().and_then(|f| f(item as usize)),
+                    ListViewEvent::DoubleClick { item } if item >= 0 => {
+                        events.on_activate.as_ref().and_then(|f| f(item as usize))
+                    }
+                    ListViewEvent::ReturnKey { item } if item >= 0 => {
+                        events.on_activate.as_ref().and_then(|f| f(item as usize))
+                    }
+                    ListViewEvent::RightClick { item } if item >= 0 => {
+                        events.on_context.as_ref().and_then(|f| f(item as usize))
+                    }
+                    _ => None,
+                }
+            };
+            if let Some(msg) = msg {
+                sink.emit(msg);
+            }
+            true
+        });
+        registry::register_app_events(hwnd, mapper);
+
         Ok(ListView {
-            hwnd,
+            control: Control::own(hwnd, bounds),
             header,
             inner,
             header_subclass,
+            events,
         })
     }
 
-    /// The control handle.
-    pub fn hwnd(&self) -> Hwnd {
-        self.hwnd
+    /// Maps a selection change to a message.
+    pub fn on_select(self, f: impl Fn(usize) -> Option<M> + 'static) -> ListView<M> {
+        self.events.borrow_mut().on_select = Some(Box::new(f));
+        self
     }
 
-    /// Moves/resizes the control.
-    pub fn set_bounds(&self, bounds: Rect) {
-        sys::window::move_window(self.hwnd, bounds);
+    /// Maps a double-click or Enter (activation) to a message.
+    pub fn on_activate(self, f: impl Fn(usize) -> Option<M> + 'static) -> ListView<M> {
+        self.events.borrow_mut().on_activate = Some(Box::new(f));
+        self
+    }
+
+    /// Maps a right-click to a message.
+    pub fn on_context(self, f: impl Fn(usize) -> Option<M> + 'static) -> ListView<M> {
+        self.events.borrow_mut().on_context = Some(Box::new(f));
+        self
     }
 
     /// Updates the number of virtual rows after the source changed.
     pub fn set_item_count(&self, count: usize) {
-        sys::control::lv_set_item_count(self.hwnd, count);
+        sys::control::lv_set_item_count(self.control.hwnd(), count);
     }
 
     /// Replaces the data source and refreshes the view.
     pub fn set_source(&self, source: Box<dyn ListSource>) {
         self.inner.borrow_mut().source = source;
-        sys::control::lv_set_item_count(self.hwnd, self.inner.borrow().source.item_count());
-        sys::window::invalidate(self.hwnd);
+        sys::control::lv_set_item_count(
+            self.control.hwnd(),
+            self.inner.borrow().source.item_count(),
+        );
+        sys::window::invalidate(self.control.hwnd());
     }
 
     /// Marks `row` as the now-playing row (highlighted during custom draw).
     pub fn set_playing(&self, row: Option<usize>) {
         self.inner.borrow_mut().playing = row;
-        sys::window::invalidate(self.hwnd);
+        sys::window::invalidate(self.control.hwnd());
     }
 
     /// Shows a sort arrow on `column`.
@@ -502,175 +356,37 @@ impl ListView {
 
     /// The first selected row, if any.
     pub fn selected(&self) -> Option<usize> {
-        sys::control::lv_selected(self.hwnd).map(|index| index as usize)
+        sys::control::lv_selected(self.control.hwnd()).map(|index| index as usize)
     }
 
     /// The control's background colour.
     pub fn background_color(&self) -> crate::Color {
-        sys::control::lv_background(self.hwnd)
+        sys::control::lv_background(self.control.hwnd())
     }
 
     /// Reads back a cell's text (which re-enters the owner-data path). Useful
     /// for tests and for accessibility.
     pub fn cell_text(&self, item: usize, column: usize) -> String {
-        sys::control::lv_item_text(self.hwnd, item as i32, column as i32)
+        sys::control::lv_item_text(self.control.hwnd(), item as i32, column as i32)
     }
 
     /// Selects and focuses `row`.
     pub fn select(&self, row: usize) {
-        sys::control::lv_select(self.hwnd, row as i32);
+        sys::control::lv_select(self.control.hwnd(), row as i32);
     }
 }
 
-impl Drop for ListView {
+impl<M> AsControl for ListView<M> {
+    fn control(&self) -> &Control {
+        &self.control
+    }
+}
+
+impl<M> Drop for ListView<M> {
     fn drop(&mut self) {
         // Remove the header subclass before the window (and its header) go away.
         self.header_subclass = None;
-        registry::unregister(self.hwnd);
-        sys::window::destroy(self.hwnd);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::controls::listview::ListViewTheme;
-    use crate::geometry::Rect;
-    use crate::message::{LResult, Message};
-    use crate::theme::Theme;
-    use crate::units::dip;
-    use crate::window::{Window, WindowClass, WindowExStyle, WindowHandler, WindowStyle};
-
-    struct NullHandler;
-
-    impl WindowHandler for NullHandler {
-        fn message(&self, _window: &Window, _message: Message) -> Option<LResult> {
-            None
-        }
-    }
-
-    struct Empty;
-
-    impl ListSource for Empty {
-        fn item_count(&self) -> usize {
-            0
-        }
-
-        fn text(&self, _item: usize, _column: usize) -> String {
-            String::new()
-        }
-    }
-
-    /// Assorted text that has historically tripped up the ANSI/UTF-16 boundary:
-    /// CJK, emoji beyond the BMP, combining marks, RTL, flags and a long run.
-    const WEIRD: &[&str] = &[
-        "日本語のアルバム",
-        "🎵 Émoji 🎶 𝄞",
-        "Ω≈ç√∫˜µ≤≥÷",
-        "العربية − Ελληνικά − עברית",
-        "e\u{301}\u{327} combining",
-        "𝔘𝔫𝔦𝔠𝔬𝔡𝔢 𝕗𝕒𝕟𝕔𝕪",
-        "🇫🇷🇯🇵 flags",
-        "NUL-free\u{200b}zero-width",
-    ];
-
-    struct UnicodeSource {
-        long: String,
-    }
-
-    impl ListSource for UnicodeSource {
-        fn item_count(&self) -> usize {
-            WEIRD.len() + 1
-        }
-
-        fn text(&self, item: usize, column: usize) -> String {
-            if item == WEIRD.len() {
-                return if column == 0 {
-                    self.long.clone()
-                } else {
-                    String::new()
-                };
-            }
-            if column == 0 {
-                WEIRD[item].to_string()
-            } else {
-                format!("{} / {column}", WEIRD[item])
-            }
-        }
-    }
-
-    fn make_list(source: Box<dyn ListSource>) -> Option<(Window, ListView)> {
-        let theme = Theme::dark();
-        let class = WindowClass::register("win32ui.unicodetest", theme.background).ok()?;
-        let window = Window::create(
-            class,
-            None,
-            WindowStyle::overlapped(),
-            WindowExStyle::new(),
-            Rect::new(0, 0, 800, 600),
-            "unicode test",
-            NullHandler,
-        )
-        .ok()?;
-        let list = ListView::new(
-            window.hwnd(),
-            1,
-            Rect::new(0, 0, 700, 500),
-            &[
-                Column::new("Title", dip(300.0)),
-                Column::new("Artist", dip(200.0)),
-            ],
-            source,
-            ListViewTheme::from_theme(&theme),
-            96,
-        )
-        .ok()?;
-        Some((window, list))
-    }
-
-    #[test]
-    fn unicode_cell_text_round_trips() {
-        let long = "長".repeat(400);
-        let Some((window, list)) = make_list(Box::new(UnicodeSource { long: long.clone() })) else {
-            return;
-        };
-        for (index, expected) in WEIRD.iter().enumerate() {
-            assert_eq!(&list.cell_text(index, 0), expected, "row {index}");
-        }
-        assert_eq!(list.cell_text(0, 1), format!("{} / 1", WEIRD[0]));
-        assert_eq!(list.cell_text(WEIRD.len(), 0), long);
-        window.destroy();
-    }
-
-    #[test]
-    fn background_colour_is_applied() {
-        let theme = Theme::dark();
-        let Ok(class) = WindowClass::register("win32ui.listtest", theme.background) else {
-            return;
-        };
-        let Ok(window) = Window::create(
-            class,
-            None,
-            WindowStyle::overlapped(),
-            WindowExStyle::new(),
-            Rect::new(0, 0, 400, 300),
-            "list test",
-            NullHandler,
-        ) else {
-            return;
-        };
-        let Ok(list) = ListView::new(
-            window.hwnd(),
-            1,
-            Rect::new(0, 0, 200, 200),
-            &[Column::new("A", dip(80.0))],
-            Box::new(Empty),
-            ListViewTheme::from_theme(&theme),
-            96,
-        ) else {
-            return;
-        };
-        assert_eq!(list.background_color(), theme.background);
-        window.destroy();
+        registry::unregister(self.control.hwnd());
+        registry::unregister_app_events(self.control.hwnd());
     }
 }

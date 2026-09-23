@@ -1,49 +1,50 @@
 #![forbid(unsafe_code)]
 
 //! An owner-drawn toolbar: a child window that paints a row of buttons itself
-//! (background, hover/pressed states, icon and label) and reports clicks to
-//! its parent as ordinary `WM_COMMAND`s.
+//! (background, hover/pressed states, icon and label) and maps clicks to the
+//! app's `Msg` through each item's `on_click` closure.
 
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use crate::app::Ui;
 use crate::color::Color;
+use crate::controls::control::{AsControl, Control};
 use crate::error::Result;
 use crate::gdi::{Bitmap, Font, Paint, TextFormat};
 use crate::geometry::{Point, Rect};
-use crate::hwnd::Hwnd;
 use crate::message::{Message, MouseButton};
 use crate::sys;
 use crate::theme::Theme;
 use crate::units::dip;
 use crate::window::{Window, WindowClass, WindowExStyle, WindowHandler, WindowStyle};
 
-const WM_COMMAND: u32 = 0x0111;
-const BN_CLICKED: u16 = 0;
-
 /// One toolbar button.
-pub struct ToolbarItem {
-    /// Identifier reported back through `WM_COMMAND`.
-    pub id: u16,
-    /// Button label.
-    pub label: String,
-    /// Optional icon, drawn to the left of the label.
-    pub icon: Option<Bitmap>,
+pub struct ToolbarItem<M> {
+    label: String,
+    icon: Option<Bitmap>,
+    on_click: Option<Box<dyn Fn() -> Option<M>>>,
 }
 
-impl ToolbarItem {
+impl<M> ToolbarItem<M> {
     /// A button with a label and no icon.
-    pub fn new(id: u16, label: impl Into<String>) -> ToolbarItem {
+    pub fn new(label: impl Into<String>) -> ToolbarItem<M> {
         ToolbarItem {
-            id,
             label: label.into(),
             icon: None,
+            on_click: None,
         }
     }
 
     /// Adds an icon.
-    pub fn with_icon(mut self, icon: Bitmap) -> ToolbarItem {
+    pub fn with_icon(mut self, icon: Bitmap) -> ToolbarItem<M> {
         self.icon = Some(icon);
+        self
+    }
+
+    /// Maps a click on this button to an app message.
+    pub fn on_click(mut self, f: impl Fn() -> Option<M> + 'static) -> ToolbarItem<M> {
+        self.on_click = Some(Box::new(f));
         self
     }
 }
@@ -79,9 +80,8 @@ impl ToolbarTheme {
     }
 }
 
-struct ToolbarState {
-    parent: Hwnd,
-    items: Vec<ToolbarItem>,
+struct ToolbarState<M> {
+    items: Vec<ToolbarItem<M>>,
     theme: ToolbarTheme,
     font: Font,
     dpi: u32,
@@ -91,10 +91,11 @@ struct ToolbarState {
     height: i32,
     hover: Option<usize>,
     pressed: Option<usize>,
+    ui: Ui<M>,
 }
 
-impl ToolbarState {
-    fn new(parent: Hwnd, items: Vec<ToolbarItem>, theme: ToolbarTheme, dpi: u32) -> Result<Self> {
+impl<M> ToolbarState<M> {
+    fn new(items: Vec<ToolbarItem<M>>, theme: ToolbarTheme, dpi: u32, ui: Ui<M>) -> Result<Self> {
         let font = Font::system_ui(dpi)?;
         let padding = dip(10.0).to_px(dpi).value();
         let icon = dip(16.0).to_px(dpi).value();
@@ -111,7 +112,6 @@ impl ToolbarState {
             .collect();
 
         let mut state = ToolbarState {
-            parent,
             items,
             theme,
             font,
@@ -122,6 +122,7 @@ impl ToolbarState {
             height,
             hover: None,
             pressed: None,
+            ui,
         };
         state.layout(0);
         Ok(state)
@@ -198,11 +199,26 @@ impl ToolbarState {
     }
 }
 
-struct ToolbarHandler {
-    state: Rc<RefCell<ToolbarState>>,
+struct ToolbarHandler<M> {
+    state: Rc<RefCell<ToolbarState<M>>>,
 }
 
-impl WindowHandler for ToolbarHandler {
+impl<M: 'static> ToolbarHandler<M> {
+    fn fire_click(&self, index: usize) {
+        let state = self.state.borrow();
+        let Some(item) = state.items.get(index) else {
+            return;
+        };
+        let Some(on_click) = &item.on_click else {
+            return;
+        };
+        if let Some(msg) = on_click() {
+            state.ui.emit(msg);
+        }
+    }
+}
+
+impl<M: 'static> WindowHandler for ToolbarHandler<M> {
     fn message(&self, window: &Window, message: Message) -> Option<isize> {
         match message {
             Message::Paint => {
@@ -241,19 +257,17 @@ impl WindowHandler for ToolbarHandler {
                 y,
                 button: MouseButton::Left,
             } => {
-                let id = {
+                let clicked = {
                     let mut state = self.state.borrow_mut();
                     let pressed = state.pressed.take();
                     let hit = state.hit_test(x, y);
                     match (pressed, hit) {
-                        (Some(pressed), Some(hit)) if pressed == hit => {
-                            state.items.get(hit).map(|item| item.id)
-                        }
+                        (Some(pressed), Some(hit)) if pressed == hit => Some(hit),
                         _ => None,
                     }
                 };
-                if let Some(id) = id {
-                    self.send_click(window.hwnd(), id);
+                if let Some(index) = clicked {
+                    self.fire_click(index);
                 }
                 window.invalidate();
                 Some(0)
@@ -263,49 +277,46 @@ impl WindowHandler for ToolbarHandler {
     }
 }
 
-impl ToolbarHandler {
-    fn send_click(&self, toolbar: Hwnd, id: u16) {
-        let parent = self.state.borrow().parent;
-        let wparam = id as usize | ((BN_CLICKED as usize) << 16);
-        sys::window::send_message(parent, WM_COMMAND, wparam, toolbar.raw() as isize);
-    }
-}
-
 /// An owner-drawn toolbar control.
-pub struct Toolbar {
+pub struct Toolbar<M> {
     window: Window,
-    state: Rc<RefCell<ToolbarState>>,
+    control: Control,
+    state: Rc<RefCell<ToolbarState<M>>>,
 }
 
-impl Toolbar {
-    /// Creates the toolbar as a child of `parent`.
+impl<M: 'static> Toolbar<M> {
+    /// Creates the toolbar as a child of the window behind `ui`.
     pub fn new(
-        parent: Hwnd,
-        items: Vec<ToolbarItem>,
+        ui: &mut Ui<M>,
+        items: Vec<ToolbarItem<M>>,
         theme: ToolbarTheme,
-        dpi: u32,
-    ) -> Result<Toolbar> {
-        let state = Rc::new(RefCell::new(ToolbarState::new(parent, items, theme, dpi)?));
-        let class = WindowClass::register("emusic.toolbar", theme.background)?;
+    ) -> Result<Toolbar<M>> {
+        let state = Rc::new(RefCell::new(ToolbarState::new(
+            items,
+            theme,
+            ui.dpi(),
+            ui.clone(),
+        )?));
+        let class = WindowClass::register("win32ui.toolbar", theme.background)?;
         let handler = ToolbarHandler {
             state: Rc::clone(&state),
         };
         let bounds = Rect::new(0, 0, 0, state.borrow().height());
         let window = Window::create(
             class,
-            Some(parent),
+            Some(ui.hwnd()),
             WindowStyle::new().child().visible(),
             WindowExStyle::new(),
             bounds,
             "",
             handler,
         )?;
-        Ok(Toolbar { window, state })
-    }
-
-    /// The control handle.
-    pub fn hwnd(&self) -> Hwnd {
-        self.window.hwnd()
+        let control = Control::borrowed(window.hwnd(), bounds);
+        Ok(Toolbar {
+            window,
+            control,
+            state,
+        })
     }
 
     /// The toolbar's natural height.
@@ -313,13 +324,14 @@ impl Toolbar {
         self.state.borrow().height()
     }
 
-    /// Moves/resizes the toolbar.
-    pub fn set_bounds(&self, bounds: Rect) {
-        self.window.set_bounds(bounds);
-    }
-
     /// Schedules a repaint.
     pub fn invalidate(&self) {
         self.window.invalidate();
+    }
+}
+
+impl<M> AsControl for Toolbar<M> {
+    fn control(&self) -> &Control {
+        &self.control
     }
 }

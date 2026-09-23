@@ -44,6 +44,7 @@
 // that dependants (e.g. a cross-platform workspace) can still `cargo check`.
 #![cfg(windows)]
 
+mod app;
 mod capture;
 mod color;
 mod error;
@@ -60,6 +61,7 @@ pub mod gdi;
 pub mod looper;
 mod sys;
 
+pub use app::{App, Ui, WindowSpec, run_app};
 pub use capture::RgbaImage;
 pub use color::Color;
 pub use error::{Error, Result, Win32Error};
@@ -77,6 +79,7 @@ pub use window::{
     WindowStyle, monitor_work_areas,
 };
 
+pub use controls::control::{AsControl, Control, ControlExt, HasText};
 pub use controls::label::Label;
 pub use controls::listview::{
     Column, ListSource, ListView, ListViewEvent, ListViewTheme, SortDirection,
@@ -90,13 +93,14 @@ pub use looper::{quit, run, run_modal};
 /// Everything a frontend typically needs, in one `use`.
 pub mod prelude {
     pub use crate::{
-        Color, Column, Command, CommandNotification, CursorShape, Dip, Dock, DockLayout, Error,
-        HitTest, Hwnd, Icon, Insets, Key, LResult, Label, ListSource, ListView, ListViewEvent,
-        ListViewTheme, Message, MinMaxInfo, Modifiers, MouseButton, Notify, Placement, Point, Px,
-        Rect, Result, RgbaImage, ShowState, SortDirection, Stack, StackDirection, StackSlot,
-        StatusBar, StatusBarTheme, Theme, TimerId, Toolbar, ToolbarItem, ToolbarTheme, TreeEntry,
-        TreeSource, TreeView, TreeViewEvent, Win32Error, Window, WindowClass, WindowExStyle,
-        WindowHandler, WindowStyle, dip, monitor_work_areas,
+        App, AsControl, Color, Column, Command, CommandNotification, Control, ControlExt,
+        CursorShape, Dip, Dock, DockLayout, Error, HasText, HitTest, Hwnd, Icon, Insets, Key,
+        LResult, Label, ListSource, ListView, ListViewEvent, ListViewTheme, Message, MinMaxInfo,
+        Modifiers, MouseButton, Notify, Placement, Point, Px, Rect, Result, RgbaImage, ShowState,
+        SortDirection, Stack, StackDirection, StackSlot, StatusBar, StatusBarTheme, Theme, TimerId,
+        Toolbar, ToolbarItem, ToolbarTheme, TreeEntry, TreeSource, TreeView, TreeViewEvent, Ui,
+        Win32Error, Window, WindowClass, WindowExStyle, WindowHandler, WindowSpec, WindowStyle,
+        dip, monitor_work_areas, run_app,
     };
     pub use crate::{gdi, looper, quit, run, run_modal};
 }
