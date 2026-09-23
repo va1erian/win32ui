@@ -10,9 +10,11 @@ use crate::controls::menu::Menu;
 use crate::error::Result;
 use crate::geometry::{Point, Rect};
 use crate::hwnd::Hwnd;
+use crate::layout::Insets;
 use crate::message::TimerId;
 use crate::sys;
 use crate::theme::Theme;
+use crate::units::{Px, dip};
 
 use super::core::Core;
 use super::layout::Layout;
@@ -79,6 +81,21 @@ impl<M: 'static> Ui<M> {
     /// area. See [`WindowSpec::backdrop`](super::WindowSpec::backdrop).
     pub fn backdrop_active(&self) -> bool {
         crate::theme::backdrop_active(self.core.hwnd())
+    }
+
+    /// How much room the caption buttons need on the right of an extended title
+    /// bar, in design units, so a `title_bar` layout item can leave it free.
+    /// Empty on a standard title bar. Re-queried when the window's DPI changes.
+    pub fn caption_inset(&self) -> Insets {
+        let hwnd = self.core.hwnd();
+        let buttons = crate::window::nc::caption_inset(hwnd);
+        if buttons.is_empty() {
+            return Insets::all(dip(0.0));
+        }
+        let client = sys::window::client_rect(hwnd);
+        let right = (client.right - buttons.left).max(0);
+        let dpi = sys::dpi::window_dpi(hwnd);
+        Insets::new(dip(0.0), dip(0.0), Px(right).to_dip(dpi), dip(0.0))
     }
 
     /// Switches the window and every widget created through it to `theme`,

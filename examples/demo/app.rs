@@ -52,10 +52,10 @@ pub(crate) fn main() {
         Ok("acrylic") => Backdrop::Acrylic,
         _ => Backdrop::None,
     };
-    let title_bar = if std::env::var("WIN32UI_DEMO_TITLEBAR").as_deref() == Ok("colored") {
-        TitleBar::Colored
-    } else {
-        TitleBar::Standard
+    let title_bar = match std::env::var("WIN32UI_DEMO_TITLEBAR").as_deref() {
+        Ok("colored") => TitleBar::Colored,
+        Ok("extended") => TitleBar::Extended,
+        _ => TitleBar::Standard,
     };
     let result = win32ui::run_app(
         WindowSpec::new("win32ui demo")

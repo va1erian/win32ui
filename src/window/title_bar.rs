@@ -17,4 +17,9 @@ pub enum TitleBar {
     /// and friends; Windows 11 only). Falls back to the system colours when
     /// unsupported or in high-contrast mode.
     Colored,
+    /// The caption is removed and the strip becomes part of the client area, so
+    /// the app's widgets can sit in it. The system still draws the min/max/close
+    /// buttons — and so keeps snap layouts — and the resize borders stay native.
+    /// The caption buttons' inset is [`Ui::caption_inset`](crate::Ui::caption_inset).
+    Extended,
 }

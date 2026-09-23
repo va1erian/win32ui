@@ -131,6 +131,9 @@ impl<A: App> WindowHandler for AppHandler<A> {
             // The window owns the layout: a resize re-runs the tree so the
             // application never has to handle `WM_SIZE`.
             Message::Size { .. } if self.core.has_layout() => {
+                // The caption buttons move with the window (and when it is
+                // maximized), so re-read the inset before laying out.
+                sys::nc::refresh_caption_inset(window.hwnd());
                 self.core.relayout();
                 Some(0)
             }
@@ -139,6 +142,9 @@ impl<A: App> WindowHandler for AppHandler<A> {
                     sys::window::move_window(window.hwnd(), suggested);
                 }
                 self.core.relayout_with_dpi(dpi);
+                // The caption buttons move with the DPI, so the inset is
+                // re-read for the new scale.
+                sys::nc::refresh_caption_inset(window.hwnd());
                 Some(0)
             }
             _ => None,

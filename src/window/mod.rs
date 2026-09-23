@@ -6,6 +6,7 @@
 mod backdrop;
 mod icon;
 mod modal;
+pub(crate) mod nc;
 mod ops;
 mod placement;
 mod size;
