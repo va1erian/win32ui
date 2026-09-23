@@ -140,9 +140,15 @@ src/
 
 `Window::create` boxes the caller's `WindowHandler` into a thin
 `*mut Box<dyn WindowHandler>` and stashes it in `GWLP_USERDATA` on
-`WM_NCCREATE`; the shared `window_proc` (in `sys::window`) decodes each raw
-message into a typed `Message` and calls the handler. The box is reclaimed
-once, on `WM_NCDESTROY`.
+`WM_NCCREATE`; the shared `window_proc` (in `sys::dispatch`) decodes each raw
+message into a typed `Message` and calls the handler. The handler is shared
+(`&self`), so a synchronous message that arrives while the handler is already
+on the stack — a `ListView::select()` notification, a `WM_SIZE` from a call
+inside the handler, a modal loop — is still delivered rather than dropped;
+mutable state lives in `Cell`/`RefCell` fields. The box is reclaimed once, on
+`WM_NCDESTROY`; if the window was destroyed from inside its own handler, the
+free is deferred until the outermost dispatch for that window returns, so the
+handler cannot be freed while a caller still holds `&` to it.
 
 Common controls send their "self-contained" notifications (`LVN_GETDISPINFO`,
 `NM_CUSTOMDRAW`, `TVN_ITEMEXPANDING`, …) to their **parent**, not to

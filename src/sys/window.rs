@@ -1,21 +1,17 @@
-//! Window classes, creation, the shared window procedure, and per-window
-//! operations.
+//! Window classes, creation, and per-window operations.
 
-use core::cell::{Cell, RefCell};
+use core::cell::Cell;
 use core::ffi::c_void;
-use std::collections::HashSet;
-use std::panic::{AssertUnwindSafe, catch_unwind};
 
-use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM};
+use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, WPARAM};
 use windows::Win32::Graphics::Gdi::{HBRUSH, InvalidateRect, UpdateWindow};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Shell::SUBCLASSPROC;
 use windows::Win32::UI::WindowsAndMessaging::{
-    CREATESTRUCTW, CreateWindowExW, DefWindowProcW, DestroyWindow, GWLP_USERDATA, GetClientRect,
-    GetWindowLongPtrW, GetWindowRect, HCURSOR, HMENU, IDC_ARROW, KillTimer, LoadCursorW,
-    MoveWindow, RegisterClassExW, SW_HIDE, SW_SHOW, SW_SHOWMAXIMIZED, SW_SHOWMINIMIZED, SetTimer,
-    SetWindowLongPtrW, SetWindowTextW, ShowWindow, UnregisterClassW, WINDOW_EX_STYLE, WINDOW_STYLE,
-    WM_NCCREATE, WM_NCDESTROY, WM_NOTIFY, WNDCLASSEXW,
+    CreateWindowExW, DestroyWindow, GetClientRect, GetWindowRect, HCURSOR, HMENU, IDC_ARROW,
+    KillTimer, LoadCursorW, MoveWindow, RegisterClassExW, SW_HIDE, SW_SHOW, SW_SHOWMAXIMIZED,
+    SW_SHOWMINIMIZED, SetTimer, SetWindowTextW, ShowWindow, UnregisterClassW, WINDOW_EX_STYLE,
+    WINDOW_STYLE, WNDCLASSEXW,
 };
 use windows::core::{HSTRING, PCWSTR};
 
@@ -24,7 +20,7 @@ use crate::geometry::Rect;
 use crate::hwnd::Hwnd;
 use crate::window::WindowHandler;
 
-use super::{hwnd_from, raw_hwnd, win32, win32_error};
+use super::{raw_hwnd, win32, win32_error};
 
 /// How a window should be shown by [`show`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -54,7 +50,7 @@ fn arrow_cursor() -> Result<HCURSOR> {
 pub(crate) fn register_class(name: &[u16], display: &str, background: HBRUSH) -> Result<()> {
     let class = WNDCLASSEXW {
         cbSize: size_of::<WNDCLASSEXW>() as u32,
-        lpfnWndProc: Some(window_proc),
+        lpfnWndProc: Some(super::dispatch::window_proc),
         hInstance: module_instance()?,
         hCursor: arrow_cursor()?,
         hbrBackground: background,
@@ -174,107 +170,8 @@ pub(crate) fn create_control(
 }
 
 thread_local! {
-    /// `HWND`s (as `isize`) currently inside [`dispatch`], to detect and
-    /// break reentrant calls into the same handler.
-    static ACTIVE_HANDLERS: RefCell<HashSet<isize>> = RefCell::new(HashSet::new());
-
     /// Source of unique, non-zero `SetTimer` ids for this thread.
     static NEXT_TIMER_ID: Cell<usize> = const { Cell::new(0) };
-}
-
-/// The window procedure shared by every class registered by this crate.
-///
-/// # Safety
-/// Called by Windows with a valid `hwnd` for a window created through
-/// [`create`]; `msg`/`wparam`/`lparam` follow the documented Win32 contract.
-unsafe extern "system" fn window_proc(
-    hwnd: HWND,
-    msg: u32,
-    wparam: WPARAM,
-    lparam: LPARAM,
-) -> LRESULT {
-    if msg == WM_NCCREATE {
-        // SAFETY: for WM_NCCREATE, lparam is a CREATESTRUCTW* owned by the
-        // system for the duration of the call; the handler pointer was boxed
-        // by `create` and is reclaimed exactly once on WM_NCDESTROY.
-        unsafe {
-            let create = &*(lparam.0 as *const CREATESTRUCTW);
-            SetWindowLongPtrW(hwnd, GWLP_USERDATA, create.lpCreateParams as isize);
-        }
-    }
-
-    // SAFETY: reads back the pointer stored above (null for foreign windows).
-    let raw = unsafe { GetWindowLongPtrW(hwnd, GWLP_USERDATA) } as *mut Box<dyn WindowHandler>;
-
-    // Guards against two live `&mut` to the same handler: a message handled
-    // here can synchronously trigger another message to the same window
-    // (e.g. a Win32 call that sends rather than posts). Without this, the
-    // reentrant call would take a second `&mut` to the boxed handler while
-    // the first is still on the stack, which is undefined behaviour.
-    let key = hwnd.0 as isize;
-    let reentrant = ACTIVE_HANDLERS.with(|active| active.borrow().contains(&key));
-
-    let handled = if !raw.is_null() && msg != WM_NCDESTROY && !reentrant {
-        ACTIVE_HANDLERS.with(|active| active.borrow_mut().insert(key));
-        // SAFETY: `raw` was produced by `Box::into_raw` in `create` and is
-        // freed exactly once on WM_NCDESTROY; `reentrant` rules out a second
-        // live `&mut` to the same allocation.
-        let handler: &mut Box<dyn WindowHandler> = unsafe { &mut *raw };
-        // A panic unwinding across this `extern "system"` boundary is
-        // undefined behaviour; isolate it instead of letting it propagate.
-        let result = catch_unwind(AssertUnwindSafe(|| {
-            dispatch(hwnd, msg, wparam, lparam, handler)
-        }))
-        .unwrap_or(None);
-        ACTIVE_HANDLERS.with(|active| active.borrow_mut().remove(&key));
-        result
-    } else {
-        None
-    };
-
-    let result = match handled {
-        Some(value) => LRESULT(value),
-        None => default_proc(hwnd, msg, wparam, lparam),
-    };
-
-    if msg == WM_NCDESTROY && !raw.is_null() {
-        // SAFETY: the window is gone; drop the handler (and anything it owns)
-        // now, exactly once.
-        unsafe {
-            SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
-            drop(Box::from_raw(raw));
-        }
-    }
-    result
-}
-
-/// Default handling for a message the application did not claim.
-fn default_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
-    // SAFETY: `DefWindowProcW` is the documented default for any message a
-    // window procedure does not handle.
-    unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
-}
-
-fn dispatch(
-    hwnd: HWND,
-    msg: u32,
-    wparam: WPARAM,
-    lparam: LPARAM,
-    handler: &mut Box<dyn WindowHandler>,
-) -> Option<isize> {
-    // Registered controls get first refusal on their own notifications
-    // (owner-data requests, custom draw, lazy expansion…).
-    if msg == WM_NOTIFY
-        && let Some((from, _id, code)) = super::message::notify_header(lparam)
-        && let Some(result) =
-            crate::controls::registry::dispatch(hwnd_from(from), code, wparam.0, lparam.0)
-    {
-        return Some(result);
-    }
-
-    let message = super::message::decode(hwnd, msg, wparam, lparam);
-    let window = crate::window::Window::from_raw(hwnd_from(hwnd));
-    handler.message(&window, message)
 }
 
 /// Destroys a window. Errors (e.g. an already-destroyed handle) are ignored.

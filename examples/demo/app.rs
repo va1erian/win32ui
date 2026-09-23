@@ -10,7 +10,7 @@
 mod data;
 mod icons;
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use win32ui::prelude::*;
@@ -67,17 +67,17 @@ struct Track {
 
 struct App {
     theme: Theme,
-    dpi: u32,
-    toolbar: Option<Toolbar>,
-    tree: Option<TreeView>,
+    dpi: Cell<u32>,
+    toolbar: RefCell<Option<Toolbar>>,
+    tree: RefCell<Option<TreeView>>,
     tracks: Rc<Vec<Track>>,
     order: RefCell<Vec<usize>>,
-    list: Option<ListView>,
-    status: Option<StatusBar>,
-    sort_column: Option<usize>,
-    ascending: bool,
-    now_playing: Option<usize>,
-    auto_close: Option<TimerId>,
+    list: RefCell<Option<ListView>>,
+    status: RefCell<Option<StatusBar>>,
+    sort_column: Cell<Option<usize>>,
+    ascending: Cell<bool>,
+    now_playing: Cell<Option<usize>>,
+    auto_close: Cell<Option<TimerId>>,
 }
 
 impl App {
@@ -86,26 +86,26 @@ impl App {
         let order = (0..tracks.len()).collect();
         App {
             theme,
-            dpi: 96,
-            toolbar: None,
-            tree: None,
+            dpi: Cell::new(96),
+            toolbar: RefCell::new(None),
+            tree: RefCell::new(None),
             tracks: Rc::new(tracks),
             order: RefCell::new(order),
-            list: None,
-            status: None,
-            sort_column: None,
-            ascending: true,
-            now_playing: None,
-            auto_close: None,
+            list: RefCell::new(None),
+            status: RefCell::new(None),
+            sort_column: Cell::new(None),
+            ascending: Cell::new(true),
+            now_playing: Cell::new(None),
+            auto_close: Cell::new(None),
         }
     }
 
-    fn setup(&mut self, window: &Window) {
-        self.dpi = window.dpi();
+    fn setup(&self, window: &Window) {
+        self.dpi.set(window.dpi());
         let theme = self.theme;
 
         let toolbar_theme = ToolbarTheme::from_theme(&theme);
-        self.toolbar = Toolbar::new(
+        *self.toolbar.borrow_mut() = Toolbar::new(
             window.hwnd(),
             vec![
                 ToolbarItem::new(TOOLBAR_SCAN, "Scan").with_icon(dot_icon(theme.accent)),
@@ -113,19 +113,19 @@ impl App {
                 ToolbarItem::new(TOOLBAR_REFRESH, "Refresh").with_icon(dot_icon(theme.text_weak)),
             ],
             toolbar_theme,
-            self.dpi,
+            self.dpi.get(),
         )
         .ok();
 
-        self.tree = TreeView::new(
+        *self.tree.borrow_mut() = TreeView::new(
             window.hwnd(),
             ID_TREE,
             Rect::default(),
             Box::new(LibraryTree),
-            self.dpi,
+            self.dpi.get(),
         )
         .ok();
-        if let Some(tree) = &self.tree {
+        if let Some(tree) = self.tree.borrow().as_ref() {
             tree.set_colors(theme.background, theme.text);
         }
 
@@ -142,25 +142,25 @@ impl App {
             Column::new("Last played", 100),
         ];
         let source = self.source();
-        self.list = ListView::new(
+        *self.list.borrow_mut() = ListView::new(
             window.hwnd(),
             ID_LIST,
             Rect::default(),
             &columns,
             source,
             ListViewTheme::from_theme(&theme),
-            self.dpi,
+            self.dpi.get(),
         )
         .ok();
 
-        self.status = StatusBar::new(
+        *self.status.borrow_mut() = StatusBar::new(
             window.hwnd(),
             ID_STATUS,
             StatusBarTheme::from_theme(&theme),
-            self.dpi,
+            self.dpi.get(),
         )
         .ok();
-        if let Some(status) = &self.status {
+        if let Some(status) = self.status.borrow().as_ref() {
             status.set_parts(&[-1]);
             status.set_text(0, "Ready");
         }
@@ -170,14 +170,20 @@ impl App {
         // `WIN32UI_DEMO_AUTOCLOSE_MS` makes the demo quit itself; handy for a
         // headless smoke run of the example.
         if let Ok(millis) = std::env::var("WIN32UI_DEMO_AUTOCLOSE_MS") {
-            self.auto_close = window.set_timer(millis.parse().unwrap_or(1500)).ok();
+            self.auto_close
+                .set(window.set_timer(millis.parse().unwrap_or(1500)).ok());
         }
     }
 
     fn layout(&self, window: &Window) {
         let client = window.client_rect();
-        let dpi = self.dpi;
-        let toolbar_height = self.toolbar.as_ref().map(Toolbar::height).unwrap_or(0);
+        let dpi = self.dpi.get();
+        let toolbar_height = self
+            .toolbar
+            .borrow()
+            .as_ref()
+            .map(Toolbar::height)
+            .unwrap_or(0);
 
         let areas = Dock::new()
             .top_px(toolbar_height)
@@ -188,16 +194,16 @@ impl App {
             .fill(1)
             .split(areas.fill, dpi);
 
-        if let Some(toolbar) = &self.toolbar {
+        if let Some(toolbar) = self.toolbar.borrow().as_ref() {
             toolbar.set_bounds(areas.top.unwrap_or_default());
         }
-        if let Some(tree) = &self.tree {
+        if let Some(tree) = self.tree.borrow().as_ref() {
             tree.set_bounds(columns[0]);
         }
-        if let Some(list) = &self.list {
+        if let Some(list) = self.list.borrow().as_ref() {
             list.set_bounds(columns[1]);
         }
-        if let Some(status) = &self.status {
+        if let Some(status) = self.status.borrow().as_ref() {
             status.set_bounds(areas.bottom.unwrap_or_default());
         }
     }
@@ -206,29 +212,30 @@ impl App {
         Box::new(TrackSource {
             tracks: Rc::clone(&self.tracks),
             order: self.order.borrow().clone(),
-            playing: self.now_playing,
+            playing: self.now_playing.get(),
         })
     }
 
     fn rebuild_list(&self) {
-        let Some(list) = &self.list else {
+        let list = self.list.borrow();
+        let Some(list) = list.as_ref() else {
             return;
         };
         list.set_source(self.source());
-        list.set_playing(self.now_playing);
+        list.set_playing(self.now_playing.get());
     }
 
-    fn sort_by(&mut self, column: usize) {
+    fn sort_by(&self, column: usize) {
         if column == 0 {
             return;
         }
-        if self.sort_column == Some(column) {
-            self.ascending = !self.ascending;
+        if self.sort_column.get() == Some(column) {
+            self.ascending.set(!self.ascending.get());
         } else {
-            self.sort_column = Some(column);
-            self.ascending = true;
+            self.sort_column.set(Some(column));
+            self.ascending.set(true);
         }
-        let ascending = self.ascending;
+        let ascending = self.ascending.get();
         let tracks = Rc::clone(&self.tracks);
         let mut order = self.order.borrow_mut();
         order.sort_by(|&a, &b| {
@@ -256,12 +263,12 @@ impl App {
         });
         drop(order);
 
-        if let Some(list) = &self.list {
+        if let Some(list) = self.list.borrow().as_ref() {
             list.clear_sort_indicator(column);
         }
         self.rebuild_list();
-        if let Some(list) = &self.list {
-            let direction = if self.ascending {
+        if let Some(list) = self.list.borrow().as_ref() {
+            let direction = if self.ascending.get() {
                 SortDirection::Ascending
             } else {
                 SortDirection::Descending
@@ -271,14 +278,14 @@ impl App {
     }
 
     fn set_status(&self, text: &str) {
-        if let Some(status) = &self.status {
+        if let Some(status) = self.status.borrow().as_ref() {
             status.set_text(0, text);
         }
     }
 }
 
 impl WindowHandler for App {
-    fn message(&mut self, window: &Window, message: Message) -> Option<LResult> {
+    fn message(&self, window: &Window, message: Message) -> Option<LResult> {
         match message {
             Message::Create => {
                 self.setup(window);
@@ -289,11 +296,11 @@ impl WindowHandler for App {
                 Some(0)
             }
             Message::DpiChanged { dpi, .. } => {
-                self.dpi = dpi;
+                self.dpi.set(dpi);
                 self.layout(window);
                 Some(0)
             }
-            Message::Timer { id } if self.auto_close == Some(id) => {
+            Message::Timer { id } if self.auto_close.get() == Some(id) => {
                 window.destroy();
                 win32ui::quit(0);
                 Some(0)
@@ -311,7 +318,7 @@ impl WindowHandler for App {
                 match event {
                     ListViewEvent::ColumnClick { column } => self.sort_by(column as usize),
                     ListViewEvent::DoubleClick { item } if item >= 0 => {
-                        self.now_playing = Some(item as usize);
+                        self.now_playing.set(Some(item as usize));
                         self.rebuild_list();
                         let title = self
                             .tracks

@@ -200,7 +200,7 @@ struct ToolbarHandler {
 }
 
 impl WindowHandler for ToolbarHandler {
-    fn message(&mut self, window: &Window, message: Message) -> Option<isize> {
+    fn message(&self, window: &Window, message: Message) -> Option<isize> {
         match message {
             Message::Paint => {
                 if let Some(paint) = Paint::begin(window.hwnd()) {

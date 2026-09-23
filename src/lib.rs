@@ -27,7 +27,7 @@
 //! struct Main;
 //!
 //! impl WindowHandler for Main {
-//!     fn message(&mut self, window: &Window, message: Message) -> Option<LResult> {
+//!     fn message(&self, window: &Window, message: Message) -> Option<LResult> {
 //!         if let Message::Close = message {
 //!             window.destroy();
 //!             win32ui::quit(0);

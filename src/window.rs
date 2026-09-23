@@ -17,9 +17,14 @@ use crate::sys;
 
 /// Receives a window's messages. Return `Some(value)` to mark a message
 /// handled, or `None` to fall through to `DefWindowProcW`.
+///
+/// The method takes `&self`: a handler can be re-entered while it is already
+/// running (a Win32 call inside it can synchronously deliver another message
+/// to the same window). Keep mutable state in `Cell`/`RefCell` fields and
+/// borrow it only for the duration of each access.
 pub trait WindowHandler {
     /// Handles one message for `window`.
-    fn message(&mut self, window: &Window, message: Message) -> Option<LResult>;
+    fn message(&self, window: &Window, message: Message) -> Option<LResult>;
 }
 
 /// A builder for a window's `dwStyle` bits.
