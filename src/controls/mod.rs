@@ -8,6 +8,8 @@ pub mod combobox;
 pub(crate) mod combobox_events;
 pub(crate) mod combobox_model;
 pub mod control;
+pub mod custom;
+pub(crate) mod custom_inner;
 pub mod label;
 pub mod listview;
 pub mod progressbar;
@@ -19,6 +21,7 @@ pub mod toolbar;
 pub mod treeview;
 
 pub use control::{AsControl, Control, ControlExt, HasText};
+pub use custom::{Custom, CustomWidget, Input, WidgetCx};
 pub use listview::ListViewTheme;
 pub use progressbar_theme::ProgressBarTheme;
 

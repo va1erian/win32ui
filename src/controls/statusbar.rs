@@ -4,22 +4,18 @@
 //!
 //! The native `msctls_statusbar32` can't be given a dark palette (it exposes
 //! no text-colour API), so this is a small custom child window that paints its
-//! parts itself, matching the egui frontend.
-
-use std::cell::RefCell;
-use std::rc::Rc;
+//! parts itself. It is a [`CustomWidget`](crate::CustomWidget), so it shares
+//! the crate's single owner-draw pattern with the toolbar and user widgets.
 
 use crate::app::Ui;
 use crate::color::Color;
 use crate::controls::control::{AsControl, Control};
+use crate::controls::custom::{Custom, CustomWidget};
 use crate::error::Result;
-use crate::gdi::{Font, Paint, TextFormat};
-use crate::geometry::Rect;
-use crate::message::Message;
-use crate::sys;
+use crate::gdi::{Canvas, Font, TextFormat};
+use crate::geometry::{Rect, Size};
 use crate::theme::{Theme, Themed};
 use crate::units::dip;
-use crate::window::{Window, WindowClass, WindowExStyle, WindowHandler, WindowStyle};
 
 /// Colours for the status bar.
 #[derive(Clone, Copy, Debug)]
@@ -44,50 +40,45 @@ impl StatusBarTheme {
     }
 }
 
-struct StatusBarState {
+/// The mutable state behind a [`StatusBar`], shared with the child window.
+struct StatusBarWidget {
     parts: Vec<i32>,
     texts: Vec<String>,
-    theme: StatusBarTheme,
     font: Font,
-    bounds: Rect,
+    height: i32,
 }
 
-impl StatusBarState {
-    fn part_edges(&self) -> Vec<i32> {
+impl StatusBarWidget {
+    fn part_edges(&self, bounds: Rect) -> Vec<i32> {
         self.parts
             .iter()
-            .map(|edge| if *edge < 0 { self.bounds.right } else { *edge })
+            .map(|edge| if *edge < 0 { bounds.right } else { *edge })
             .collect()
     }
 
-    fn draw(&self, canvas: &crate::gdi::Canvas) {
-        canvas.fill_rect(self.bounds, self.theme.background);
+    fn draw(&self, canvas: &Canvas, bounds: Rect, theme: &StatusBarTheme) {
+        canvas.fill_rect(bounds, theme.background);
         canvas.fill_rect(
-            Rect::new(
-                self.bounds.left,
-                self.bounds.top,
-                self.bounds.right,
-                self.bounds.top + 1,
-            ),
-            self.theme.border,
+            Rect::new(bounds.left, bounds.top, bounds.right, bounds.top + 1),
+            theme.border,
         );
 
-        let mut left = self.bounds.left;
-        for (index, &right) in self.part_edges().iter().enumerate() {
+        let mut left = bounds.left;
+        for (index, &right) in self.part_edges(bounds).iter().enumerate() {
             if index > 0 && right > left {
                 canvas.fill_rect(
-                    Rect::new(left, self.bounds.top + 3, left + 1, self.bounds.bottom - 3),
-                    self.theme.border,
+                    Rect::new(left, bounds.top + 3, left + 1, bounds.bottom - 3),
+                    theme.border,
                 );
             }
             let text = self.texts.get(index).map(String::as_str).unwrap_or("");
             if !text.is_empty() {
-                let cell = Rect::new(left + 8, self.bounds.top, right - 4, self.bounds.bottom);
+                let cell = Rect::new(left + 8, bounds.top, right - 4, bounds.bottom);
                 canvas.with_font(&self.font, |canvas| {
                     canvas.draw_text(
                         cell,
                         text,
-                        self.theme.text,
+                        theme.text,
                         TextFormat::left()
                             .single_line()
                             .vcenter()
@@ -101,123 +92,70 @@ impl StatusBarState {
     }
 }
 
-struct StatusBarHandler {
-    state: Rc<RefCell<StatusBarState>>,
-}
+impl CustomWidget for StatusBarWidget {
+    /// The status bar raises no events.
+    type Event = ();
 
-impl WindowHandler for StatusBarHandler {
-    fn message(&self, window: &Window, message: Message) -> Option<isize> {
-        match message {
-            Message::Paint => {
-                if let Some(paint) = Paint::begin(window.hwnd()) {
-                    self.state.borrow().draw(paint.canvas());
-                }
-                Some(0)
-            }
-            Message::Size { width, height } => {
-                self.state.borrow_mut().bounds = Rect::new(0, 0, width, height);
-                Some(0)
-            }
-            _ => None,
-        }
+    fn paint(&self, canvas: &Canvas, bounds: Rect, theme: &Theme) {
+        let theme = StatusBarTheme::from_theme(theme);
+        self.draw(canvas, bounds, &theme);
+    }
+
+    fn preferred_size(&self, _dpi: u32) -> Option<Size> {
+        Some(Size::new(0, self.height))
     }
 }
 
 /// An owner-drawn status bar with parts and text.
-pub struct StatusBar {
-    window: Window,
-    control: Control,
-    state: Rc<RefCell<StatusBarState>>,
+pub struct StatusBar<M: 'static> {
+    custom: Custom<StatusBarWidget, M>,
 }
 
-impl StatusBar {
+impl<M: 'static> StatusBar<M> {
     /// Creates the bar as a child of the window behind `ui`, adopting `ui`'s
     /// theme. Use [`Themed::apply_theme`] for a one-off override.
-    pub fn new<M: 'static>(ui: &mut Ui<M>) -> Result<StatusBar> {
-        let theme = StatusBarTheme::from_theme(&ui.theme());
+    pub fn new(ui: &mut Ui<M>) -> Result<StatusBar<M>> {
         let dpi = ui.dpi();
-        let font = Font::system_ui(dpi)?;
         let height = dip(22.0).to_px(dpi).value();
-        let state = Rc::new(RefCell::new(StatusBarState {
+        let widget = StatusBarWidget {
             parts: vec![-1],
             texts: Vec::new(),
-            theme,
-            font,
-            bounds: Rect::new(0, 0, 0, height),
-        }));
-        let class = WindowClass::register("win32ui.statusbar", theme.background)?;
-        let handler = StatusBarHandler {
-            state: Rc::clone(&state),
+            font: Font::system_ui(dpi)?,
+            height,
         };
-        let window = Window::create(
-            class,
-            Some(ui.hwnd()),
-            WindowStyle::new().child().visible(),
-            WindowExStyle::new(),
-            Rect::new(0, 0, 0, height),
-            "",
-            handler,
-        )?;
-        let control = Control::borrowed(window.hwnd(), Rect::new(0, 0, 0, height));
-        {
-            let weak = Rc::downgrade(&state);
-            let hwnd = control.hwnd();
-            let parent = ui.hwnd();
-            crate::theme::register_themed(
-                parent,
-                hwnd,
-                Rc::new(move |applied| {
-                    if let Some(state) = weak.upgrade() {
-                        state.borrow_mut().theme = StatusBarTheme::from_theme(applied);
-                        sys::set_class_background(hwnd, applied.surface);
-                        sys::window::invalidate(hwnd);
-                    }
-                }),
-            );
-        }
-        Ok(StatusBar {
-            window,
-            control,
-            state,
-        })
+        let custom = Custom::new(ui, widget)?;
+        Ok(StatusBar { custom })
     }
 
     /// Splits the bar into parts whose right edges are given in client
     /// coordinates. Use a negative edge (e.g. `-1`) for "extend to the right".
     pub fn set_parts(&self, edges: &[i32]) {
-        self.state.borrow_mut().parts = edges.to_vec();
-        self.window.invalidate();
+        self.custom.widget().borrow_mut().parts = edges.to_vec();
+        self.custom.invalidate();
     }
 
     /// Sets the text shown in one part.
     pub fn set_text(&self, part: usize, text: &str) {
         {
-            let mut state = self.state.borrow_mut();
-            if state.texts.len() <= part {
-                state.texts.resize(part + 1, String::new());
+            let widget = self.custom.widget();
+            let mut widget = widget.borrow_mut();
+            if widget.texts.len() <= part {
+                widget.texts.resize(part + 1, String::new());
             }
-            state.texts[part] = text.to_string();
+            widget.texts[part] = text.to_string();
         }
-        self.window.invalidate();
+        self.custom.invalidate();
     }
 }
 
-impl AsControl for StatusBar {
+impl<M: 'static> AsControl for StatusBar<M> {
     fn control(&self) -> &Control {
-        &self.control
+        self.custom.control()
     }
 }
 
-impl Themed for StatusBar {
+impl<M: 'static> Themed for StatusBar<M> {
     fn apply_theme(&self, theme: &Theme) {
-        self.state.borrow_mut().theme = StatusBarTheme::from_theme(theme);
-        sys::set_class_background(self.control.hwnd(), theme.surface);
-        self.window.invalidate();
-    }
-}
-
-impl Drop for StatusBar {
-    fn drop(&mut self) {
-        crate::theme::unregister_themed(self.control.hwnd());
+        self.custom.apply_theme(theme);
     }
 }
