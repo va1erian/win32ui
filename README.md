@@ -109,7 +109,8 @@ already retained), and closures that capture shared mutable app state.
 | Layout tree (`column!`/`row!`, `fill`/`width`, relayout on resize/DPI) | exists |
 | Theming foundation: tokens, `Themed`, live switching, central `WM_CTLCOLOR*` | #30 |
 | Owner-drawn `ProgressBar` (range/value/state/marquee), typed `TaskDialog` | exist (#18) |
-| Edit, buttons, ComboBox, tabs, menus, tooltips, split/scroll | #11–#17 |
+| `Edit` (single/multi-line, password) and `ComboBox` | exist (#12, #14) |
+| Buttons, tabs, menus, tooltips, split/scroll | #11, #13, #15–#17 |
 | Direct2D shapes, clips and transforms (`d2d`, anti-aliased); `ProgressBar` draws with it (GDI fallback) | exists (#22) |
 | DirectWrite text, gradients, bitmaps, rounded clips, colour emoji | #22 follow-up |
 
@@ -132,7 +133,7 @@ src/
   gdi/            RAII `Font` / `Brush` / `Pen` / `Bitmap`, `Paint`, `Canvas`
   d2d/            anti-aliased Direct2D `D2dSurface` / `D2dCanvas` for any `HWND`
   controls/       `ListView`, `TreeView`, `Toolbar`, `StatusBar`, `Label`,
-                  `ProgressBar`, `TaskDialog`
+                  `Edit`, `ProgressBar`, `TaskDialog`
   controls/control.rs   `Control`, `AsControl`, `ControlExt`, `HasText`
   controls/registry.rs  routes a control's own notifications back to it
   sys/            ALL `unsafe` lives here; every block has a `// SAFETY:` note

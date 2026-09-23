@@ -11,6 +11,7 @@
 mod data;
 mod icons;
 mod screenshot;
+mod search;
 mod swatch;
 
 use std::rc::Rc;
@@ -114,6 +115,9 @@ pub(crate) fn main() {
             .select(&SortKey::Title)
             .on_select(|key| Some(Msg::SortChanged(*key)));
 
+            let (search_label, search) = search::build(ui).expect("search");
+            search.focus();
+
             let progress = ProgressBar::new(ui)
                 .expect("progress")
                 .range(0..=100)
@@ -138,7 +142,15 @@ pub(crate) fn main() {
                     row![sort_label.width(dip(60.0)), sort.width(dip(180.0))].height(dip(30.0)),
                     progress.height(dip(8.0)),
                     swatch.height(dip(24.0)),
-                    row![tree.width(dip(220.0)), list.fill(1)].fill(1),
+                    row![
+                        tree.width(dip(220.0)),
+                        column![
+                            row![search_label.width(dip(60.0)), search.fill(1)].height(dip(28.0)),
+                            list.fill(1),
+                        ]
+                        .fill(1),
+                    ]
+                    .fill(1),
                     status,
                 ]
                 .spacing(dip(4.0)),
@@ -152,6 +164,8 @@ pub(crate) fn main() {
                 progress,
                 sort_combo: sort,
                 _sort_label: sort_label,
+                _search: search,
+                _search_label: search_label,
                 swatch,
                 tracks,
                 order,
@@ -248,6 +262,7 @@ enum Msg {
     Copy,
     Tick(u64),
     SortChanged(SortKey),
+    Search(String),
     OpenCombo,
     SwatchClicked,
     Quit,
@@ -289,6 +304,8 @@ struct App {
     progress: ProgressBar,
     sort_combo: ComboBox<SortKey, Msg>,
     _sort_label: Label,
+    _search: Edit<Msg>,
+    _search_label: Label,
     swatch: Custom<Swatch, Msg>,
     tracks: Rc<Vec<Track>>,
     order: Vec<usize>,
@@ -457,6 +474,7 @@ impl win32ui::App for App {
             Msg::SortChanged(key) => {
                 self.set_status(&format!("Sorted by {}", key.label()));
             }
+            Msg::Search(query) => search::apply(self, &query),
             Msg::OpenCombo => self.sort_combo.show_drop_down(true),
             Msg::AutoClose => {
                 screenshot::capture_if_requested(ui);
