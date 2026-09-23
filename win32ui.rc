@@ -1,0 +1,6 @@
+#include <winres.h>
+
+// Common Controls v6 + per-monitor-v2 DPI for the example binaries. The
+// manifest is what gives controls the modern themed look; without it Windows
+// falls back to the v5 (Win9x-style) common controls.
+CREATEPROCESS_MANIFEST_RESOURCE_ID RT_MANIFEST "win32ui.manifest"
