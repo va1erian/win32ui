@@ -1,40 +1,85 @@
 #![forbid(unsafe_code)]
 
-//! A virtual, owner-drawn report [`ListView`].
+//! A virtual, owner-drawn report [`ListView`] over a typed [`ListModel`].
 //!
 //! The control is created with `LVS_OWNERDATA`, so it never stores the rows
-//! itself: cell text is requested lazily through [`ListSource`], and row
-//! colours/backgrounds are supplied through `NM_CUSTOMDRAW`. Both hooks are
-//! handled inside the owner-draw plumbing and never reach the application;
-//! only the meaningful events surface, mapped to the app's `Msg`.
+//! itself: cell text is requested lazily through column accessors that borrow
+//! `&str` from the row, and row colours/backgrounds are supplied through
+//! `NM_CUSTOMDRAW`. Both hooks are handled inside the owner-draw plumbing and
+//! never reach the application; only the meaningful events surface, mapped to
+//! the app's `Msg` through the closures given at construction.
+//!
+//! ```rust
+//! use win32ui::prelude::*;
+//!
+//! struct Mail {
+//!     sender: String,
+//!     subject: String,
+//! }
+//!
+//! struct Mailbox {
+//!     mails: Vec<Mail>,
+//! }
+//!
+//! impl ListModel for Mailbox {
+//!     type Item = Mail;
+//!
+//!     fn len(&self) -> usize {
+//!         self.mails.len()
+//!     }
+//!
+//!     fn get(&self, index: usize) -> Option<&Mail> {
+//!         self.mails.get(index)
+//!     }
+//! }
+//!
+//! enum Msg {
+//!     Selected(Vec<usize>),
+//!     Open(usize),
+//! }
+//!
+//! fn build(ui: &mut Ui<Msg>, model: Mailbox) -> win32ui::Result<ListView<Mail, Msg>> {
+//!     let list = ListView::new(ui)?
+//!         .column("From", dip(180.0), |row: &Mail| row.sender.as_str())
+//!         .column("Subject", Fill, |row: &Mail| row.subject.as_str())
+//!         .multi_select(true)
+//!         .on_select(|rows| Some(Msg::Selected(rows.to_vec())))
+//!         .on_activate(|row| Some(Msg::Open(row)));
+//!     list.set_model(model);
+//!     Ok(list)
+//! }
+//! ```
 
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use windows::Win32::UI::Controls::LVS_SINGLESEL;
+
 use crate::app::Ui;
 use crate::controls::control::{AsControl, Control};
+use crate::controls::listview::draw::{ListViewInner, StretchHandler};
+use crate::controls::listview::events::{ListViewEvents, install_mapper};
+use crate::controls::listview::header::HeaderDrawer;
 use crate::controls::registry::{self, ControlEvents};
 use crate::controls::{create_child, next_id, style};
 use crate::error::Result;
 use crate::gdi::Font;
 use crate::geometry::Rect;
 use crate::hwnd::Hwnd;
-use crate::message::{Key, Message, Modifiers, Notify};
+use crate::message::{Key, Modifiers};
 use crate::sys;
 use crate::theme::{Theme, Themed};
+use crate::units::Dip;
 
+mod api;
 mod draw;
 pub(crate) mod events;
 mod header;
 mod model;
 mod theme;
 
-use self::draw::ListViewInner;
-use self::events::ListViewEvents;
-use self::header::HeaderDrawer;
-
 pub use self::events::ListViewEvent;
-pub use self::model::{Column, ListSource, SortDirection};
+pub use self::model::{Column, ColumnWidth, Fill, ListModel, SortDirection};
 pub use self::theme::ListViewTheme;
 
 const LVS_REPORT: u32 = 0x0000_0001;
@@ -43,25 +88,30 @@ const LVS_OWNERDATA: u32 = 0x0000_1000;
 const LVS_EX_FULLROWSELECT: u32 = 0x0000_0020;
 const LVS_EX_DOUBLEBUFFER: u32 = 0x0001_0000;
 
-/// A virtual report list view.
-/// A virtual report list view.
-pub struct ListView<M> {
+/// A virtual report list view over rows of type `T`, mapping its events to
+/// the app's `Msg`.
+///
+/// Create it with [`new`](ListView::new), add columns with
+/// [`column`](ListView::column), hand it a [`ListModel`] with
+/// [`set_model`](ListView::set_model), and place it in the layout tree — the
+/// window owns its bounds, so no rectangle is needed here.
+pub struct ListView<T, M> {
     control: Control,
     header: Hwnd,
-    inner: Rc<RefCell<ListViewInner>>,
-    header_subclass: Option<sys::listview::HeaderSubclass>,
+    inner: Rc<RefCell<ListViewInner<T>>>,
+    header_subclass: Option<sys::listview_header::HeaderSubclass>,
+    size_subclass: Option<sys::listview_header::SizeSubclass>,
     events: Rc<RefCell<ListViewEvents<M>>>,
+    sink: Ui<M>,
 }
 
-impl<M: 'static> ListView<M> {
+impl<T: 'static, M: 'static> ListView<T, M> {
     /// Creates the control as a child of the window behind `ui`, adopting
     /// `ui`'s theme. Use [`Themed::apply_theme`] for a one-off override.
-    pub fn new(
-        ui: &mut Ui<M>,
-        bounds: Rect,
-        columns: &[Column],
-        source: Box<dyn ListSource>,
-    ) -> Result<ListView<M>> {
+    ///
+    /// The list starts single-select with no columns and no rows; the
+    /// builders below shape it before it is placed in the layout.
+    pub fn new(ui: &mut Ui<M>) -> Result<ListView<T, M>> {
         let dpi = ui.dpi();
         let window = ui.hwnd();
         let theme = ListViewTheme::from_theme(&ui.theme());
@@ -72,29 +122,21 @@ impl<M: 'static> ListView<M> {
             | style::WS_VSCROLL
             | LVS_REPORT
             | LVS_SHOWSELALWAYS
-            | LVS_OWNERDATA;
+            | LVS_OWNERDATA
+            | LVS_SINGLESEL;
         let hwnd = create_child(
             "ListView",
             "SysListView32",
-            ui.hwnd(),
+            window,
             style,
             style::WS_EX_CLIENTEDGE,
             next_id(),
-            bounds,
+            Rect::default(),
         )?;
 
         sys::listview::lv_set_extended_style(hwnd, LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
         sys::listview::lv_set_colors(hwnd, theme.background, theme.text);
-        for (index, column) in columns.iter().enumerate() {
-            sys::listview::lv_insert_column(
-                hwnd,
-                index as i32,
-                &column.title,
-                column.width.to_px(dpi).value(),
-                column.align_right,
-            );
-        }
-        sys::listview::lv_set_item_count(hwnd, source.item_count());
+        sys::listview::lv_set_item_count(hwnd, 0);
 
         // Match the egui frontend's font/row height, opt the control and its
         // header into the theme's visual style, and owner-draw the header.
@@ -112,12 +154,15 @@ impl<M: 'static> ListView<M> {
         }
 
         let inner = Rc::new(RefCell::new(ListViewInner {
-            source,
+            model: None,
             theme,
-            columns: columns.to_vec(),
+            columns: Vec::new(),
             font,
             playing: None,
             sort: None,
+            dpi,
+            last_selection: Vec::new(),
+            selection_muted: false,
         }));
         let control_events: Rc<RefCell<dyn ControlEvents>> = inner.clone();
         registry::register(hwnd, control_events);
@@ -125,49 +170,22 @@ impl<M: 'static> ListView<M> {
         let header_subclass = if header.is_null() {
             None
         } else {
-            sys::listview::HeaderSubclass::install(
+            sys::listview_header::HeaderSubclass::install(
                 hwnd,
                 header,
-                Box::new(HeaderDrawer::new(Rc::clone(&inner))),
+                Box::new(HeaderDrawer::new(hwnd, Rc::clone(&inner))),
             )
         };
+        let size_subclass = sys::listview_header::SizeSubclass::install(
+            hwnd,
+            Box::new(StretchHandler {
+                view: hwnd,
+                inner: Rc::clone(&inner),
+            }),
+        );
 
         let events = Rc::new(RefCell::new(ListViewEvents::new()));
-        let sink = ui.clone();
-        let events_for_mapper = events.clone();
-        let mapper: Rc<dyn Fn(&Message) -> bool> = Rc::new(move |message| {
-            let Message::Notify(Notify::ListView { event, .. }) = message else {
-                return false;
-            };
-            let msg = {
-                let events = events_for_mapper.borrow();
-                match *event {
-                    ListViewEvent::ItemChanged {
-                        item,
-                        selected: true,
-                    } if item >= 0 => events.on_select.as_ref().and_then(|f| f(item as usize)),
-                    ListViewEvent::DoubleClick { item } if item >= 0 => {
-                        events.on_activate.as_ref().and_then(|f| f(item as usize))
-                    }
-                    ListViewEvent::ReturnKey { item } if item >= 0 => {
-                        events.on_activate.as_ref().and_then(|f| f(item as usize))
-                    }
-                    ListViewEvent::RightClick { item } if item >= 0 => {
-                        events.on_context.as_ref().and_then(|f| f(item as usize))
-                    }
-                    ListViewEvent::KeyDown { key, modifiers } => events
-                        .on_key
-                        .as_ref()
-                        .and_then(|f| f(Key::from_code(key), modifiers)),
-                    _ => None,
-                }
-            };
-            if let Some(msg) = msg {
-                sink.emit(msg);
-            }
-            true
-        });
-        registry::register_app_events(hwnd, mapper);
+        install_mapper(Rc::clone(&inner), Rc::clone(&events), hwnd, ui.clone());
 
         {
             let weak = Rc::downgrade(&inner);
@@ -203,105 +221,108 @@ impl<M: 'static> ListView<M> {
         }
 
         Ok(ListView {
-            control: Control::own(hwnd, bounds),
+            control: Control::own(hwnd, Rect::default()),
             header,
             inner,
             header_subclass,
+            size_subclass,
             events,
+            sink: ui.clone(),
         })
     }
 
-    /// Maps a selection change to a message.
-    pub fn on_select(self, f: impl Fn(usize) -> Option<M> + 'static) -> ListView<M> {
+    /// Adds a left-aligned column showing `text(row)`.
+    pub fn column(
+        self,
+        title: impl Into<String>,
+        width: impl Into<ColumnWidth>,
+        text: impl for<'a> Fn(&'a T) -> &'a str + 'static,
+    ) -> ListView<T, M> {
+        self.push_column(Column::new(title, width, text));
+        self
+    }
+
+    /// Adds a right-aligned column (numbers, durations) showing `text(row)`.
+    pub fn column_right(
+        self,
+        title: impl Into<String>,
+        width: impl Into<ColumnWidth>,
+        text: impl for<'a> Fn(&'a T) -> &'a str + 'static,
+    ) -> ListView<T, M> {
+        self.push_column(Column::right(title, width, text));
+        self
+    }
+
+    fn push_column(&self, column: Column<T>) {
+        let view = self.control.hwnd();
+        let index = self.inner.borrow().columns.len();
+        // Fixed columns convert their design width now; `Fill` columns take a
+        // placeholder until the restretch below (or the first `WM_SIZE`)
+        // shares out the leftover client width.
+        let fixed = match column.width {
+            ColumnWidth::Fixed(width) => width.to_px(self.inner.borrow().dpi).value(),
+            ColumnWidth::Fill => Dip::new(64.0).to_px(self.inner.borrow().dpi).value(),
+        };
+        sys::listview::lv_insert_column(
+            view,
+            index as i32,
+            &column.title,
+            fixed,
+            column.align_right,
+        );
+        self.inner.borrow_mut().columns.push(column);
+        self.inner.borrow().restretch(view);
+    }
+
+    /// Enables or disables multi-select (`LVS_SINGLESEL` off or on). The list
+    /// starts single-select.
+    pub fn multi_select(self, multi: bool) -> ListView<T, M> {
+        sys::listview::lv_set_single_select(self.control.hwnd(), !multi);
+        self
+    }
+
+    /// Maps a selection change to a message. The slice holds every selected
+    /// row, ascending — empty when the selection was cleared.
+    pub fn on_select(self, f: impl Fn(&[usize]) -> Option<M> + 'static) -> ListView<T, M> {
         self.events.borrow_mut().on_select = Some(Box::new(f));
         self
     }
 
     /// Maps a double-click or Enter (activation) to a message.
-    pub fn on_activate(self, f: impl Fn(usize) -> Option<M> + 'static) -> ListView<M> {
+    pub fn on_activate(self, f: impl Fn(usize) -> Option<M> + 'static) -> ListView<T, M> {
         self.events.borrow_mut().on_activate = Some(Box::new(f));
         self
     }
 
     /// Maps a right-click to a message.
-    pub fn on_context(self, f: impl Fn(usize) -> Option<M> + 'static) -> ListView<M> {
+    pub fn on_context(self, f: impl Fn(usize) -> Option<M> + 'static) -> ListView<T, M> {
         self.events.borrow_mut().on_context = Some(Box::new(f));
+        self
+    }
+
+    /// Maps a header click to a message. The app sorts (or asks for a sort)
+    /// and shows the arrow with
+    /// [`set_sort_indicator`](ListView::set_sort_indicator).
+    pub fn on_sort(self, f: impl Fn(usize) -> Option<M> + 'static) -> ListView<T, M> {
+        self.events.borrow_mut().on_sort = Some(Box::new(f));
         self
     }
 
     /// Maps a key pressed while the list has focus to a message, together with
     /// the modifier state at that moment.
-    pub fn on_key(self, f: impl Fn(Key, Modifiers) -> Option<M> + 'static) -> ListView<M> {
+    pub fn on_key(self, f: impl Fn(Key, Modifiers) -> Option<M> + 'static) -> ListView<T, M> {
         self.events.borrow_mut().on_key = Some(Box::new(f));
         self
     }
-
-    /// Updates the number of virtual rows after the source changed.
-    pub fn set_item_count(&self, count: usize) {
-        sys::listview::lv_set_item_count(self.control.hwnd(), count);
-    }
-
-    /// Replaces the data source and refreshes the view.
-    pub fn set_source(&self, source: Box<dyn ListSource>) {
-        self.inner.borrow_mut().source = source;
-        sys::listview::lv_set_item_count(
-            self.control.hwnd(),
-            self.inner.borrow().source.item_count(),
-        );
-        sys::window::invalidate(self.control.hwnd());
-    }
-
-    /// Marks `row` as the now-playing row (highlighted during custom draw).
-    pub fn set_playing(&self, row: Option<usize>) {
-        self.inner.borrow_mut().playing = row;
-        sys::window::invalidate(self.control.hwnd());
-    }
-
-    /// Shows a sort arrow on `column`.
-    pub fn set_sort_indicator(&self, column: usize, direction: SortDirection) {
-        self.inner.borrow_mut().sort = Some((column, direction == SortDirection::Ascending));
-        sys::window::invalidate(self.header);
-    }
-
-    /// Removes the sort arrow from `column`.
-    pub fn clear_sort_indicator(&self, column: usize) {
-        let mut inner = self.inner.borrow_mut();
-        if inner.sort.map(|(sorted, _)| sorted) == Some(column) {
-            inner.sort = None;
-        }
-        drop(inner);
-        sys::window::invalidate(self.header);
-    }
-
-    /// The first selected row, if any.
-    pub fn selected(&self) -> Option<usize> {
-        sys::listview::lv_selected(self.control.hwnd()).map(|index| index as usize)
-    }
-
-    /// The control's background colour.
-    pub fn background_color(&self) -> crate::Color {
-        sys::listview::lv_background(self.control.hwnd())
-    }
-
-    /// Reads back a cell's text (which re-enters the owner-data path). Useful
-    /// for tests and for accessibility.
-    pub fn cell_text(&self, item: usize, column: usize) -> String {
-        sys::listview::lv_item_text(self.control.hwnd(), item as i32, column as i32)
-    }
-
-    /// Selects and focuses `row`.
-    pub fn select(&self, row: usize) {
-        sys::listview::lv_select(self.control.hwnd(), row as i32);
-    }
 }
 
-impl<M> AsControl for ListView<M> {
+impl<T, M> AsControl for ListView<T, M> {
     fn control(&self) -> &Control {
         &self.control
     }
 }
 
-impl<M> Themed for ListView<M> {
+impl<T, M> Themed for ListView<T, M> {
     fn apply_theme(&self, theme: &Theme) {
         self.inner.borrow_mut().theme = ListViewTheme::from_theme(theme);
         let applied = self.inner.borrow().theme;
@@ -323,10 +344,11 @@ impl<M> Themed for ListView<M> {
     }
 }
 
-impl<M> Drop for ListView<M> {
+impl<T, M> Drop for ListView<T, M> {
     fn drop(&mut self) {
-        // Remove the header subclass before the window (and its header) go away.
+        // Remove the subclasses before the window (and its header) go away.
         self.header_subclass = None;
+        self.size_subclass = None;
         registry::unregister(self.control.hwnd());
         registry::unregister_app_events(self.control.hwnd());
         crate::theme::unregister_themed(self.control.hwnd());

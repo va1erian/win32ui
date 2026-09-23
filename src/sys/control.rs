@@ -48,18 +48,35 @@ pub(crate) fn send(hwnd: Hwnd, msg: u32, wparam: usize, lparam: isize) -> isize 
     }
 }
 
+/// Copies `value` into the sender-owned UTF-16 buffer as a NUL-terminated
+/// string, truncating at a `char` boundary when it does not fit.
+///
+/// Nothing is allocated: each `char` encodes to at most two units, copied
+/// straight into the destination. The hot paths (`LVN_GETDISPINFO`) must not
+/// allocate per cell, so callers pass text borrowed from the row.
 pub(crate) fn write_wide(destination: *mut u16, capacity: i32, value: &str) {
     if destination.is_null() || capacity <= 0 {
         return;
     }
-    let wide: Vec<u16> = value.encode_utf16().collect();
     let capacity = capacity as usize;
-    let count = wide.len().min(capacity - 1);
-    // SAFETY: the destination points at `capacity` writable u16s owned by the
-    // sender; `count + 1 <= capacity` and the source is a live slice.
+    let mut written = 0usize;
+    let mut encoded = [0u16; 2];
+    for ch in value.chars() {
+        let units = ch.encode_utf16(&mut encoded);
+        if written + units.len() >= capacity {
+            break;
+        }
+        // SAFETY: `written + units.len() < capacity`, so the range lies inside
+        // the `capacity` writable units owned by the sender.
+        unsafe {
+            std::ptr::copy_nonoverlapping(units.as_ptr(), destination.add(written), units.len());
+        }
+        written += units.len();
+    }
+    // SAFETY: `written <= capacity - 1`, so the terminator lands inside the
+    // sender's buffer.
     unsafe {
-        std::ptr::copy_nonoverlapping(wide.as_ptr(), destination, count);
-        *destination.add(count) = 0;
+        *destination.add(written) = 0;
     }
 }
 

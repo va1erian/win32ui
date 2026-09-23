@@ -8,7 +8,7 @@ mod common;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use common::{TestRows, run_app_with_watchdog};
+use common::{TestRow, run_app_with_watchdog, test_rows};
 use win32ui::prelude::*;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -65,11 +65,11 @@ fn messages_arrive_in_order() {
 enum SelMsg {
     Start,
     Select,
-    Selected(usize),
+    Selected(Vec<usize>),
 }
 
 struct SelectApp {
-    list: Option<ListView<SelMsg>>,
+    list: Option<ListView<TestRow, SelMsg>>,
     log: Rc<RefCell<Vec<SelMsg>>>,
     in_update: bool,
     reentered: Rc<Cell<bool>>,
@@ -113,14 +113,15 @@ fn select_during_update_is_not_nested() {
     let reentered_for_make = Rc::clone(&reentered);
     let list_created_for_make = Rc::clone(&list_created);
     let Some(run) = run_app_with_watchdog("win32ui.app.select", move |ui| {
-        let list = ListView::new(
-            ui,
-            Rect::new(0, 0, 200, 200),
-            &[Column::new("A", dip(80.0))],
-            Box::new(TestRows),
-        )
-        .ok()
-        .map(|list| list.on_select(|item| Some(SelMsg::Selected(item))));
+        let list = ListView::new(ui)
+            .map(|list| {
+                list.column("A", dip(80.0), |row: &TestRow| row.label.as_str())
+                    .on_select(|rows| Some(SelMsg::Selected(rows.to_vec())))
+            })
+            .ok();
+        if let Some(list) = &list {
+            list.set_model(test_rows());
+        }
         list_created_for_make.set(list.is_some());
         ui.emit(SelMsg::Start);
         SelectApp {
@@ -140,7 +141,7 @@ fn select_during_update_is_not_nested() {
     assert!(!reentered.get(), "update was re-entered");
     assert_eq!(
         *log.borrow(),
-        vec![SelMsg::Start, SelMsg::Select, SelMsg::Selected(0)],
+        vec![SelMsg::Start, SelMsg::Select, SelMsg::Selected(vec![0])],
         "the selection message did not arrive after Select returned"
     );
 }
@@ -164,12 +165,8 @@ fn accelerators_and_tab_stop_survive_the_run() {
     let Some(run) = run_app_with_watchdog("win32ui.app.accel", move |ui| {
         ui.accelerator(Shortcut::ctrl(Key::Q), || Some(()));
         ui.accelerator(Shortcut::new(Key::F5, Modifiers::NONE), || None);
-        if let Ok(list) = ListView::new(
-            ui,
-            Rect::new(0, 0, 200, 200),
-            &[Column::new("A", dip(80.0))],
-            Box::new(TestRows),
-        ) {
+        if let Ok(list) = ListView::<TestRow, ()>::new(ui) {
+            let list = list.column("A", dip(80.0), |row: &TestRow| row.label.as_str());
             list.set_tab_stop(false);
             list.set_tab_stop(true);
         }
@@ -183,7 +180,7 @@ fn accelerators_and_tab_stop_survive_the_run() {
 }
 
 struct DropApp {
-    list: Option<ListView<DropMsg>>,
+    list: Option<ListView<TestRow, DropMsg>>,
     list_hwnd: Option<Hwnd>,
     list_alive_after_drop: Rc<Cell<bool>>,
 }
@@ -224,13 +221,9 @@ fn dropping_a_widget_destroys_it() {
     let alive_for_make = Rc::clone(&list_alive_after_drop);
     let created_for_make = Rc::clone(&created);
     let Some(run) = run_app_with_watchdog("win32ui.app.drop", move |ui| {
-        let list = ListView::new(
-            ui,
-            Rect::new(0, 0, 200, 200),
-            &[Column::new("A", dip(80.0))],
-            Box::new(TestRows),
-        )
-        .ok();
+        let list = ListView::new(ui)
+            .map(|list| list.column("A", dip(80.0), |row: &TestRow| row.label.as_str()))
+            .ok();
         let list_hwnd = list.as_ref().map(|list| list.hwnd());
         created_for_make.set(list.is_some());
         ui.emit(DropMsg::Start);

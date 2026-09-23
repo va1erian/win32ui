@@ -2,10 +2,17 @@
 
 //! The owner-draw plumbing behind [`ListView`](super::ListView): the virtual
 //! (owner-data) cell source and the row custom draw.
+//!
+//! Both hooks borrow from the model for the duration of the call — cell text
+//! is a `&str` out of the row — so scrolling and repainting allocate nothing
+//! per cell.
+
+use std::cell::RefCell;
+use std::rc::Rc;
 
 use windows::Win32::UI::Controls::{LVN_GETDISPINFO, NM_CUSTOMDRAW};
 
-use crate::controls::listview::model::{Column, ListSource};
+use crate::controls::listview::model::{Column, ColumnWidth, ListModel};
 use crate::controls::listview::theme::ListViewTheme;
 use crate::controls::registry::{ControlEvents, ControlKind};
 use crate::gdi::{Brush, Canvas, Font, TextFormat};
@@ -17,17 +24,24 @@ use crate::sys;
 const CDDS_PREPAINT: u32 = 0x0000_0001;
 const CDDS_ITEMPREPAINT: u32 = 0x0001_0001;
 
-pub(crate) struct ListViewInner {
-    pub(crate) source: Box<dyn ListSource>,
+pub(crate) struct ListViewInner<T> {
+    pub(crate) model: Option<Box<dyn ListModel<Item = T>>>,
     pub(crate) theme: ListViewTheme,
-    pub(crate) columns: Vec<Column>,
+    pub(crate) columns: Vec<Column<T>>,
     pub(crate) font: Font,
     pub(crate) playing: Option<usize>,
     /// `(column, ascending)` for the header sort arrow.
     pub(crate) sort: Option<(usize, bool)>,
+    pub(crate) dpi: u32,
+    /// The selection last reported to the app; notifications that leave it
+    /// unchanged emit nothing.
+    pub(crate) last_selection: Vec<usize>,
+    /// While set, selection notifications are swallowed: a programmatic
+    /// change reports its own single event instead.
+    pub(crate) selection_muted: bool,
 }
 
-impl ControlEvents for ListViewInner {
+impl<T: 'static> ControlEvents for ListViewInner<T> {
     fn kind(&self) -> ControlKind {
         ControlKind::ListView
     }
@@ -40,7 +54,7 @@ impl ControlEvents for ListViewInner {
         lparam: isize,
     ) -> Option<isize> {
         if code == LVN_GETDISPINFO {
-            let text = sys::listview::lv_disp_info(lparam, |item, sub| self.cell(item, sub));
+            let text = sys::listview::lv_disp_info_str(lparam, |item, sub| self.cell(item, sub));
             return Some(text);
         }
         if code == NM_CUSTOMDRAW {
@@ -52,12 +66,43 @@ impl ControlEvents for ListViewInner {
     }
 }
 
-impl ListViewInner {
-    fn cell(&self, item: i32, column: i32) -> String {
+impl<T> ListViewInner<T> {
+    /// The cell's text borrowed from the row, or `None` for an empty cell.
+    fn cell(&self, item: i32, column: i32) -> Option<&str> {
         if item < 0 || column < 0 {
-            return String::new();
+            return None;
         }
-        self.source.text(item as usize, column as usize)
+        let row = self.model.as_ref()?.get(item as usize)?;
+        let spec = self.columns.get(column as usize)?;
+        Some((spec.text)(row))
+    }
+
+    /// Stretches the `Fill` columns over whatever client width the fixed
+    /// columns leave behind, sharing it evenly. Fixed columns keep their
+    /// current width, so a header drag the user just finished is honoured.
+    pub(crate) fn restretch(&self, view: Hwnd) {
+        let fills = self
+            .columns
+            .iter()
+            .filter(|column| column.width == ColumnWidth::Fill)
+            .count();
+        if fills == 0 {
+            return;
+        }
+        let client = sys::window::client_rect(view).width();
+        let fixed: i32 = self
+            .columns
+            .iter()
+            .enumerate()
+            .filter(|(_, column)| column.width != ColumnWidth::Fill)
+            .map(|(index, _)| sys::listview::lv_column_width(view, index))
+            .sum();
+        let each = (client - fixed).max(0) / fills as i32;
+        for (index, column) in self.columns.iter().enumerate() {
+            if column.width == ColumnWidth::Fill {
+                sys::listview::lv_set_column_width(view, index, each);
+            }
+        }
     }
 
     fn custom_draw(
@@ -104,7 +149,7 @@ impl ListViewInner {
                 if cell.is_empty() {
                     continue;
                 }
-                let text = self.source.text(item as usize, column);
+                let text = self.cell(item, column as i32).unwrap_or("");
                 let format = if spec.align_right {
                     TextFormat::left().right()
                 } else {
@@ -113,7 +158,7 @@ impl ListViewInner {
                 let text_rect = Rect::new(cell.left + 4, cell.top, cell.right - 4, cell.bottom);
                 canvas.draw_text(
                     text_rect,
-                    &text,
+                    text,
                     text_color,
                     format.single_line().vcenter().end_ellipsis().no_prefix(),
                 );
@@ -134,5 +179,22 @@ impl ListViewInner {
         }
 
         sys::listview::CustomDrawResult::SkipDefault
+    }
+}
+
+/// Restretches a list view's `Fill` columns whenever its client size changes.
+pub(crate) struct StretchHandler<T> {
+    pub(crate) view: Hwnd,
+    pub(crate) inner: Rc<RefCell<ListViewInner<T>>>,
+}
+
+impl<T> sys::listview_header::SizeHandler for StretchHandler<T> {
+    fn on_size(&self) {
+        // A resize never nests inside another borrow of the same state, but a
+        // `try_borrow` keeps a surprise nesting from panicking across the
+        // subclass boundary; the next resize then repairs the widths.
+        if let Ok(inner) = self.inner.try_borrow() {
+            inner.restretch(self.view);
+        }
     }
 }

@@ -9,6 +9,7 @@ use std::rc::Rc;
 use crate::controls::listview::draw::ListViewInner;
 use crate::gdi::{Brush, Canvas, TextFormat};
 use crate::geometry::Rect;
+use crate::hwnd::Hwnd;
 use crate::sys;
 
 // `CDDS_*` stage codes, from `commctrl.h`.
@@ -16,18 +17,19 @@ const CDDS_PREPAINT: u32 = 0x0000_0001;
 const CDDS_ITEMPREPAINT: u32 = 0x0001_0001;
 
 /// Paints the list view's header in the app's colours.
-pub(crate) struct HeaderDrawer {
-    inner: Rc<RefCell<ListViewInner>>,
+pub(crate) struct HeaderDrawer<T> {
+    view: Hwnd,
+    inner: Rc<RefCell<ListViewInner<T>>>,
 }
 
-impl HeaderDrawer {
-    pub(crate) fn new(inner: Rc<RefCell<ListViewInner>>) -> HeaderDrawer {
-        HeaderDrawer { inner }
+impl<T> HeaderDrawer<T> {
+    pub(crate) fn new(view: Hwnd, inner: Rc<RefCell<ListViewInner<T>>>) -> HeaderDrawer<T> {
+        HeaderDrawer { view, inner }
     }
 }
 
-impl sys::listview::HeaderPainter for HeaderDrawer {
-    fn draw_header(&self, draw: &sys::listview::HeaderDraw) -> Option<isize> {
+impl<T> sys::listview_header::HeaderPainter for HeaderDrawer<T> {
+    fn draw_header(&self, draw: &sys::listview_header::HeaderDraw) -> Option<isize> {
         let inner = self.inner.borrow();
         if draw.stage == CDDS_PREPAINT {
             Canvas::new(draw.hdc).fill_rect(draw.rect, inner.theme.header_background);
@@ -94,5 +96,25 @@ impl sys::listview::HeaderPainter for HeaderDrawer {
 
         // We painted the whole item.
         Some(4)
+    }
+
+    fn allow_resize(&self, item: i32) -> bool {
+        if item < 0 {
+            return true;
+        }
+        self.inner
+            .borrow()
+            .columns
+            .get(item as usize)
+            .map(|column| column.resizable)
+            .unwrap_or(true)
+    }
+
+    fn end_track(&self) {
+        // The drag is applied; give the freed or claimed space to the `Fill`
+        // columns, if any.
+        if let Ok(inner) = self.inner.try_borrow() {
+            inner.restretch(self.view);
+        }
     }
 }
