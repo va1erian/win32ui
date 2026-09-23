@@ -2,12 +2,42 @@
 
 //! Crate-wide error type. Library crates use `thiserror`, per AGENTS.md.
 
+/// A failed Win32 call, kept as an owned `(HRESULT, message)` pair so the
+/// public API never names the `windows` crate's error type.
+#[derive(Clone, Debug, thiserror::Error)]
+#[error("Win32 error 0x{code:08X}: {message}")]
+pub struct Win32Error {
+    code: i32,
+    message: String,
+}
+
+impl Win32Error {
+    /// Builds an error from a raw `HRESULT` code and the system message that
+    /// describes it. `sys` performs the conversion from `windows::core::Error`.
+    pub(crate) fn new(code: i32, message: impl Into<String>) -> Win32Error {
+        Win32Error {
+            code,
+            message: message.into(),
+        }
+    }
+
+    /// The raw `HRESULT` code.
+    pub fn code(&self) -> i32 {
+        self.code
+    }
+
+    /// The system message describing the code.
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+}
+
 /// Things that can go wrong while talking to Win32.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     /// A Win32 call returned an error status.
     #[error("Win32 call failed: {0}")]
-    Win32(#[from] windows::core::Error),
+    Win32(#[from] Win32Error),
 
     /// `RegisterClassExW` failed; the window name is included for context.
     #[error("window class `{name}` could not be registered")]
@@ -18,7 +48,7 @@ pub enum Error {
     CreateWindow {
         class: String,
         #[source]
-        source: windows::core::Error,
+        source: Win32Error,
     },
 
     /// A common control could not be created.

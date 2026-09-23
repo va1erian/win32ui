@@ -39,6 +39,10 @@
 //!
 //! The full working program lives in `examples/demo.rs`.
 
+// The crate is Win32-only. On other targets it compiles to an empty crate so
+// that dependants (e.g. a cross-platform workspace) can still `cargo check`.
+#![cfg(windows)]
+
 mod color;
 mod error;
 mod geometry;
@@ -54,7 +58,7 @@ pub mod looper;
 mod sys;
 
 pub use color::Color;
-pub use error::{Error, Result};
+pub use error::{Error, Result, Win32Error};
 pub use geometry::{Point, Rect, Size};
 pub use hwnd::Hwnd;
 pub use layout::{Dock, DockLayout, Insets, Stack, StackDirection, StackSlot};
@@ -79,8 +83,8 @@ pub mod prelude {
         LResult, Label, ListSource, ListView, ListViewEvent, ListViewTheme, Message, MouseButton,
         Notify, Point, Rect, Result, SortDirection, Stack, StackDirection, StackSlot, StatusBar,
         StatusBarTheme, Theme, TimerId, Toolbar, ToolbarItem, ToolbarTheme, TreeEntry, TreeSource,
-        TreeView, TreeViewEvent, Window, WindowClass, WindowExStyle, WindowHandler, WindowStyle,
-        dpi_scale,
+        TreeView, TreeViewEvent, Win32Error, Window, WindowClass, WindowExStyle, WindowHandler,
+        WindowStyle, dpi_scale,
     };
     pub use crate::{gdi, looper, quit, run};
 }
