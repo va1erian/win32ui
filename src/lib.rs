@@ -110,23 +110,26 @@ pub use controls::treeview::{TreeEntry, TreeSource, TreeView, TreeViewEvent};
 pub use looper::{quit, run, run_modal};
 
 /// Everything a frontend typically needs, in one `use`.
+///
+/// Each module owns its own list in `prelude`, so adding a public item is a
+/// one-line change in the module that defines it.
 pub mod prelude {
-    pub use crate::{
-        App, AsControl, Backdrop, Button, CheckBox, Color, Column, ColumnWidth, ComboBox, Command,
-        CommandNotification, Control, ControlExt, CursorShape, Custom, CustomWidget, Dip, Dock,
-        DockLayout, Edit, Error, Fill, GroupBox, HasText, HitTest, Hwnd, Icon, Input, Insets,
-        IntoLayoutItem, Key, LResult, Label, Layout, LayoutExt, LayoutItem, ListModel, ListView,
-        ListViewEvent, ListViewTheme, Menu, Message, MinMaxInfo, Modifiers, MouseButton, Notify,
-        Placement, Point, ProgressBar, ProgressBarTheme, ProgressState, Proxy, Px, RadioGroup,
-        RadioOption, Rect, Renderer, Result, RgbaImage, ScrollView, Shortcut, ShortcutParseError,
-        ShowState, SortDirection, Split, Stack, StackDirection, StackSlot, StatusBar,
-        StatusBarTheme, Tabs, TaskDialog, TaskDialogIcon, Theme, Themed, TimerId, TitleBar,
-        Toolbar, ToolbarItem, ToolbarTheme, TreeEntry, TreeSource, TreeView, TreeViewEvent, Ui,
-        WidgetCx, Win32Error, Window, WindowClass, WindowExStyle, WindowHandle, WindowHandler,
-        WindowSpec, WindowStyle, column, dip, monitor_work_areas, row, run_app, split_col,
-        split_row, tabs,
-    };
-    pub use crate::{clipboard, gdi, looper, quit, run, run_modal};
+    pub use crate::accel::prelude::*;
+    pub use crate::app::prelude::*;
+    pub use crate::capture::prelude::*;
+    pub use crate::color::prelude::*;
+    pub use crate::controls::prelude::*;
+    pub use crate::error::prelude::*;
+    pub use crate::geometry::prelude::*;
+    pub use crate::hwnd::prelude::*;
+    pub use crate::layout::prelude::*;
+    pub use crate::looper::prelude::*;
+    pub use crate::message::prelude::*;
+    pub use crate::theme::prelude::*;
+    pub use crate::units::prelude::*;
+    pub use crate::window::prelude::*;
+
+    pub use crate::{clipboard, gdi, looper};
 }
 
 /// Performs one-time process initialisation: per-monitor-v2 DPI awareness and

@@ -264,3 +264,8 @@ fn key_from_token(token: &str) -> Option<Key> {
         .find(|(_, names)| names.iter().any(|name| name.eq_ignore_ascii_case(token)))
         .map(|(key, _)| *key)
 }
+
+/// The accelerator types a frontend usually needs.
+pub mod prelude {
+    pub use super::{Shortcut, ShortcutParseError};
+}

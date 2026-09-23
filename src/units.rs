@@ -111,6 +111,11 @@ impl Sub for Px {
     }
 }
 
+/// The length-unit types a frontend usually needs.
+pub mod prelude {
+    pub use super::{Dip, Px, dip};
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

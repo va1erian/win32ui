@@ -369,3 +369,11 @@ impl Drop for Window {
         }
     }
 }
+
+/// The window types a frontend usually needs.
+pub mod prelude {
+    pub use super::{
+        Backdrop, CursorShape, Icon, Placement, ShowState, TitleBar, Window, WindowClass,
+        WindowExStyle, WindowHandler, WindowStyle, monitor_work_areas,
+    };
+}

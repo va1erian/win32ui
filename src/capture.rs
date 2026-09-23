@@ -54,3 +54,8 @@ impl Window {
         })
     }
 }
+
+/// The captured-image type a frontend usually needs.
+pub mod prelude {
+    pub use super::RgbaImage;
+}

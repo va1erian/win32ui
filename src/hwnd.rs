@@ -38,3 +38,8 @@ impl std::fmt::Debug for Hwnd {
         write!(f, "Hwnd(0x{:x})", self.0)
     }
 }
+
+/// The handle type a frontend usually needs.
+pub mod prelude {
+    pub use super::Hwnd;
+}
