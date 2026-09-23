@@ -181,23 +181,27 @@ impl App {
         let client = window.client_rect();
         let dpi = self.dpi;
         let toolbar_height = self.toolbar.as_ref().map(Toolbar::height).unwrap_or(0);
-        let status_height = dpi_scale(22, dpi);
 
-        let (toolbar_rect, rest) = client.split_top(toolbar_height);
-        let (middle, status_rect) = rest.split_bottom(status_height);
-        let (tree_rect, list_rect) = middle.split_left(dpi_scale(220, dpi));
+        let areas = Dock::new()
+            .top_px(toolbar_height)
+            .bottom(22)
+            .split(client, dpi);
+        let columns = Stack::horizontal()
+            .fixed(220)
+            .fill(1)
+            .split(areas.fill, dpi);
 
         if let Some(toolbar) = &self.toolbar {
-            toolbar.set_bounds(toolbar_rect);
+            toolbar.set_bounds(areas.top.unwrap_or_default());
         }
         if let Some(tree) = &self.tree {
-            tree.set_bounds(tree_rect);
+            tree.set_bounds(columns[0]);
         }
         if let Some(list) = &self.list {
-            list.set_bounds(list_rect);
+            list.set_bounds(columns[1]);
         }
         if let Some(status) = &self.status {
-            status.set_bounds(status_rect);
+            status.set_bounds(areas.bottom.unwrap_or_default());
         }
     }
 
