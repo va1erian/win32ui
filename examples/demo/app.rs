@@ -99,6 +99,20 @@ pub(crate) fn main() {
             status.set_parts(&[-1]);
             status.set_text(0, "Ready");
 
+            let sort_label = Label::new(ui, Rect::default(), "Sort by").expect("label");
+            let sort = ComboBox::new(
+                ui,
+                [
+                    ("Title", SortKey::Title),
+                    ("Artist", SortKey::Artist),
+                    ("Album", SortKey::Album),
+                    ("Year", SortKey::Year),
+                ],
+            )
+            .expect("combo")
+            .select(&SortKey::Title)
+            .on_select(|key| Some(Msg::SortChanged(*key)));
+
             let progress = ProgressBar::new(ui)
                 .expect("progress")
                 .range(0..=100)
@@ -114,6 +128,7 @@ pub(crate) fn main() {
             ui.set_layout(
                 column![
                     toolbar,
+                    row![sort_label.width(dip(60.0)), sort.width(dip(180.0))].height(dip(30.0)),
                     progress.height(dip(8.0)),
                     row![tree.width(dip(220.0)), list.fill(1)].fill(1),
                     status,
@@ -127,6 +142,8 @@ pub(crate) fn main() {
                 list,
                 status,
                 progress,
+                sort,
+                _sort_label: sort_label,
                 tracks,
                 order,
                 column_count: columns.len(),
@@ -149,12 +166,23 @@ pub(crate) fn main() {
             });
 
             // `WIN32UI_DEMO_AUTOCLOSE_MS` makes the demo quit itself; handy for
-            // a headless smoke run of the example.
-            if let Ok(millis) = std::env::var("WIN32UI_DEMO_AUTOCLOSE_MS") {
-                let auto_close = ui.set_timer(millis.parse().unwrap_or(2000)).ok();
+            // a headless smoke run of the example. `WIN32UI_DEMO_COMBO_OPEN`
+            // drops the combo box's list down before the screenshot is taken.
+            let auto_close = std::env::var("WIN32UI_DEMO_AUTOCLOSE_MS")
+                .ok()
+                .and_then(|millis| millis.parse().ok())
+                .and_then(|millis| ui.set_timer(millis).ok());
+            let combo_open = if std::env::var("WIN32UI_DEMO_COMBO_OPEN").is_ok() {
+                ui.set_timer(1000).ok()
+            } else {
+                None
+            };
+            if auto_close.is_some() || combo_open.is_some() {
                 ui.on_timer(move |id| {
                     if Some(id) == auto_close {
                         Some(Msg::AutoClose)
+                    } else if Some(id) == combo_open {
+                        Some(Msg::OpenCombo)
                     } else {
                         None
                     }
@@ -202,8 +230,30 @@ enum Msg {
     Select(usize),
     Copy,
     Tick(u64),
+    SortChanged(SortKey),
+    OpenCombo,
     Quit,
     AutoClose,
+}
+
+/// The sort keys the demo's combo box holds as typed values.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SortKey {
+    Title,
+    Artist,
+    Album,
+    Year,
+}
+
+impl SortKey {
+    fn label(self) -> &'static str {
+        match self {
+            SortKey::Title => "Title",
+            SortKey::Artist => "Artist",
+            SortKey::Album => "Album",
+            SortKey::Year => "Year",
+        }
+    }
 }
 
 /// The typed choices the demo's task dialog can return.
@@ -219,6 +269,8 @@ struct App {
     list: ListView<Msg>,
     status: StatusBar,
     progress: ProgressBar,
+    sort: ComboBox<SortKey, Msg>,
+    _sort_label: Label,
     tracks: Rc<Vec<Track>>,
     order: Vec<usize>,
     column_count: usize,
@@ -327,6 +379,10 @@ impl win32ui::App for App {
                 },
             },
             Msg::Quit => ui.quit(),
+            Msg::SortChanged(key) => {
+                self.set_status(&format!("Sorted by {}", key.label()));
+            }
+            Msg::OpenCombo => self.sort.show_drop_down(true),
             Msg::AutoClose => {
                 screenshot::capture_if_requested(ui);
                 ui.quit();

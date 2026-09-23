@@ -17,6 +17,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WM_GETMINMAXINFO, WM_NCCREATE, WM_NCDESTROY, WM_NOTIFY,
 };
 
+use crate::message::{Command, Message};
 use crate::window::WindowHandler;
 
 use super::{hwnd_from, message};
@@ -218,6 +219,18 @@ fn deliver(
     // A message may be suppressed (the first half of a `WM_CHAR` surrogate
     // pair), in which case the handler is not called.
     let message = message::decode(hwnd, msg, wparam, lparam)?;
+    // A `WM_COMMAND` from a child control is first offered to that control's
+    // widget-layer mapper (as `WM_NOTIFY` is above), so a combo's
+    // `CBN_SELCHANGE` reaches the app as a typed message without the app
+    // knowing the control's numeric id.
+    if let Message::Command(Command {
+        control: Some(control),
+        ..
+    }) = &message
+        && crate::controls::registry::dispatch_app_event(*control, &message)
+    {
+        return Some(0);
+    }
     let window = crate::window::Window::from_raw(hwnd_from(hwnd));
     handler.message(&window, message)
 }

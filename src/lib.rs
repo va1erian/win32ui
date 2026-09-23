@@ -82,6 +82,7 @@ pub use window::{
     WindowStyle, monitor_work_areas,
 };
 
+pub use controls::combobox::ComboBox;
 pub use controls::control::{AsControl, Control, ControlExt, HasText};
 pub use controls::label::Label;
 pub use controls::listview::{
@@ -99,7 +100,7 @@ pub use looper::{quit, run, run_modal};
 /// Everything a frontend typically needs, in one `use`.
 pub mod prelude {
     pub use crate::{
-        App, AsControl, Color, Column, Command, CommandNotification, Control, ControlExt,
+        App, AsControl, Color, Column, ComboBox, Command, CommandNotification, Control, ControlExt,
         CursorShape, Dip, Dock, DockLayout, Error, HasText, HitTest, Hwnd, Icon, Insets,
         IntoLayoutItem, Key, LResult, Label, Layout, LayoutExt, LayoutItem, ListSource, ListView,
         ListViewEvent, ListViewTheme, Message, MinMaxInfo, Modifiers, MouseButton, Notify,
