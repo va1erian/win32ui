@@ -8,6 +8,7 @@ use crate::sys::d2d::text::{FontRequest, TextFactory};
 
 use super::family;
 use super::font::Font;
+use super::rich::{RichLayout, Span};
 
 /// How narrow or wide a face is (CSS `font-stretch`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -156,5 +157,17 @@ impl TextSystem {
         let font = Font::new(self.shared.factory.clone(), spec.clone(), resolved);
         fonts.insert(key, font.clone());
         Ok(font)
+    }
+
+    /// Lays `spans` out as one wrapped, flowing line in `spec`, the same font
+    /// the spans inherit their family and default size from. A convenience over
+    /// [`Font::rich_layout`] for callers that do not keep a font.
+    pub fn rich_layout(
+        &self,
+        spec: &FontSpec,
+        spans: &[Span],
+        max_width: f32,
+    ) -> Result<RichLayout> {
+        self.font(spec)?.rich_layout(spans, max_width)
     }
 }

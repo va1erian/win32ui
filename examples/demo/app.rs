@@ -15,6 +15,7 @@
 mod data;
 mod dialogs;
 mod document;
+mod flow_text;
 mod library;
 mod menus;
 mod options;
@@ -34,6 +35,7 @@ use win32ui::prelude::*;
 use win32ui::{column, row, tabs};
 
 use self::document::DocumentWidget;
+use self::flow_text::Flow;
 use self::library::{Library, SortKey};
 use self::options::{Options, ThemeChoice};
 use self::secondary::PrefsMsg;
@@ -109,18 +111,20 @@ pub(crate) fn main() {
             // mapping the scroll offset to `Msg::DocumentScrolled`.
             let document = document::build(ui);
 
-            // The three big views live in one tab node — a draggable
-            // tree/list, the Direct2D primitives and the document — so the
+            // The demo's views live in one tab node — a draggable tree/list,
+            // the Direct2D primitives, the document and the sliders — so the
             // window stays compact. `tabs!` pages layout subtrees; each page is
             // shown and hidden automatically and reports its index as a `Msg`.
             let library_page = library.page();
             let sliders = Sliders::build(ui);
             let sliders_page = sliders.page();
+            let flow = Flow::build(ui);
             let views = tabs![
                 ("Library", library_page),
                 ("Primitives", primitives),
                 ("Document", document),
                 ("Sliders", sliders_page),
+                ("Flow", flow.page()),
             ]
             // `WIN32UI_DEMO_TAB=3` opens the Sliders tab for a screenshot run.
             .selected(env_dip("WIN32UI_DEMO_TAB", 0.0) as usize)
@@ -167,6 +171,7 @@ pub(crate) fn main() {
                 primitives,
                 options,
                 sliders,
+                flow,
                 prefs: None,
             };
 
@@ -272,6 +277,7 @@ enum Msg {
     AutoClose,
     TabsPage(usize),
     Slider(slider::SliderMsg),
+    Flow(flow_text::FlowMsg),
 }
 
 struct App {
@@ -288,6 +294,7 @@ struct App {
     primitives: Custom<primitives::PrimitivesPanel, Msg>,
     options: Options,
     sliders: Sliders,
+    flow: Flow,
     prefs: Option<WindowHandle<PrefsMsg>>,
 }
 
@@ -312,6 +319,9 @@ impl win32ui::App for App {
             return;
         }
         if self.sliders.update(&msg, &self.status) {
+            return;
+        }
+        if self.flow.update(&msg, &self.status) {
             return;
         }
         match msg {
