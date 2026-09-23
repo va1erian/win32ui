@@ -16,7 +16,10 @@ impl Window {
     pub fn set_theme(&self, theme: Theme) {
         crate::theme::set_window_theme(self.hwnd(), theme);
         sys::set_titlebar_dark(self.hwnd(), theme.is_dark);
-        sys::set_class_background(self.hwnd(), theme.background);
+        sys::set_class_background(
+            self.hwnd(),
+            crate::theme::window_background(self.hwnd(), theme),
+        );
         crate::theme::retheme_children(self.hwnd(), &theme);
         sys::window::invalidate(self.hwnd());
     }
@@ -24,5 +27,11 @@ impl Window {
     /// The window's current theme, or [`Theme::light`] when none was set.
     pub fn theme(&self) -> Theme {
         crate::theme::window_theme(self.hwnd())
+    }
+
+    /// Whether DWM is drawing a backdrop material behind this window's client
+    /// area. See [`WindowSpec::backdrop`](crate::WindowSpec::backdrop).
+    pub fn backdrop_active(&self) -> bool {
+        crate::theme::backdrop_active(self.hwnd())
     }
 }

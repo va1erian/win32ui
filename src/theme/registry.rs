@@ -12,6 +12,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+use crate::color::Color;
 use crate::hwnd::Hwnd;
 
 use super::tokens::Theme;
@@ -22,6 +23,9 @@ type ApplyTheme = Rc<dyn Fn(&Theme)>;
 #[derive(Default)]
 struct WindowEntry {
     theme: Option<Theme>,
+    /// Whether DWM is drawing a backdrop material behind this window's client
+    /// area, so the class background must stay transparent black.
+    backdrop_active: bool,
     children: Vec<(usize, ApplyTheme)>,
 }
 
@@ -44,6 +48,37 @@ pub(crate) fn window_theme(window: Hwnd) -> Theme {
             .and_then(|entry| entry.theme)
             .unwrap_or_else(Theme::light)
     })
+}
+
+/// Records whether `window` has an active backdrop material.
+pub(crate) fn set_backdrop_active(window: Hwnd, active: bool) {
+    WINDOWS.with(|map| {
+        map.borrow_mut()
+            .entry(window.raw())
+            .or_default()
+            .backdrop_active = active;
+    });
+}
+
+/// Whether `window` has an active backdrop material.
+pub(crate) fn backdrop_active(window: Hwnd) -> bool {
+    WINDOWS.with(|map| {
+        map.borrow()
+            .get(&window.raw())
+            .is_some_and(|entry| entry.backdrop_active)
+    })
+}
+
+/// The class background a window should paint: transparent black when its
+/// backdrop is active (DWM shows the material through it), otherwise the
+/// theme's background. GDI has no alpha, so black is the documented
+/// extended-frame "glass" colour.
+pub(crate) fn window_background(window: Hwnd, theme: Theme) -> Color {
+    if backdrop_active(window) {
+        Color::rgb(0, 0, 0)
+    } else {
+        theme.background
+    }
 }
 
 /// Registers `child` (created under `window`) with its re-theme callback.
@@ -76,7 +111,7 @@ pub(crate) fn unregister_child(child: Hwnd) -> bool {
             if entry.children.len() != before {
                 removed = true;
             }
-            if entry.children.is_empty() && entry.theme.is_none() {
+            if entry.children.is_empty() && entry.theme.is_none() && !entry.backdrop_active {
                 empty.push(*window);
             }
         }

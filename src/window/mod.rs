@@ -3,16 +3,20 @@
 //! Safe window handles: [`WindowClass`] registration, the [`Window`] wrapper
 //! and the [`WindowHandler`] trait that receives typed [`Message`]s.
 
+mod backdrop;
 mod icon;
 mod modal;
 mod ops;
 mod placement;
 mod size;
 mod theme;
+mod title_bar;
 
+pub use backdrop::Backdrop;
 pub use icon::Icon;
 pub use ops::CursorShape;
 pub use placement::{Placement, ShowState, monitor_work_areas};
+pub use title_bar::TitleBar;
 
 use std::sync::atomic::{AtomicU64, Ordering};
 

@@ -75,6 +75,12 @@ impl<M: 'static> Ui<M> {
         self.core.theme()
     }
 
+    /// Whether DWM is drawing a backdrop material behind this window's client
+    /// area. See [`WindowSpec::backdrop`](super::WindowSpec::backdrop).
+    pub fn backdrop_active(&self) -> bool {
+        crate::theme::backdrop_active(self.core.hwnd())
+    }
+
     /// Switches the window and every widget created through it to `theme`,
     /// live. Widgets re-derive their colours, update their native parts and
     /// repaint; nothing is recreated.
@@ -82,7 +88,13 @@ impl<M: 'static> Ui<M> {
         self.core.set_theme_value(theme);
         crate::theme::set_window_theme(self.core.hwnd(), theme);
         sys::set_titlebar_dark(self.core.hwnd(), theme.is_dark);
-        sys::set_class_background(self.core.hwnd(), theme.background);
+        sys::set_class_background(
+            self.core.hwnd(),
+            crate::theme::window_background(self.core.hwnd(), theme),
+        );
+        if self.core.title_bar() == crate::window::TitleBar::Colored {
+            sys::apply_caption_colors(self.core.hwnd(), &theme);
+        }
         crate::theme::retheme_children(self.core.hwnd(), &theme);
         // Owner-drawn menus must switch between native and themed items live.
         if let Some(menu) = self.core.menu_bar()
