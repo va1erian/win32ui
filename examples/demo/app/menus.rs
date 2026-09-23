@@ -39,6 +39,7 @@ pub(super) fn context() -> Menu<Msg> {
     Menu::new()
         .item("&Play", None, || Msg::ContextPlay)
         .checked_item("&Loop", None, true, || Msg::ContextPlay)
+        .radio_item("&Shuffle", None, true, || Msg::ContextPlay)
         .disabled_item("&Transcode", None, || Msg::Refresh)
         .separator()
         .submenu(

@@ -4,18 +4,37 @@ use core::ffi::c_void;
 
 use windows::Win32::Foundation::POINT;
 use windows::Win32::Graphics::Gdi::HBRUSH;
+use windows::Win32::UI::HiDpi::GetSystemMetricsForDpi;
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CheckMenuItem, CreateMenu, CreatePopupMenu, DestroyMenu, DrawMenuBar,
     GetCursorPos, HMENU, MENU_ITEM_FLAGS, MENUINFO, MF_BYCOMMAND, MF_CHECKED, MF_GRAYED,
-    MF_OWNERDRAW, MF_POPUP, MF_SEPARATOR, MF_STRING, MFT_RADIOCHECK, MIM_BACKGROUND, SetMenu,
-    SetMenuInfo, TPM_LEFTALIGN, TPM_RETURNCMD, TPM_RIGHTBUTTON, TPM_TOPALIGN, TrackPopupMenuEx,
+    MF_OWNERDRAW, MF_POPUP, MF_SEPARATOR, MF_STRING, MFT_RADIOCHECK, MIM_BACKGROUND, SM_CYMENU,
+    SetMenu, SetMenuInfo, TPM_LEFTALIGN, TPM_RETURNCMD, TPM_RIGHTBUTTON, TPM_TOPALIGN,
+    TrackPopupMenuEx,
 };
 use windows::core::PCWSTR;
 
 use crate::geometry::Point;
 use crate::hwnd::Hwnd;
+use crate::units::dip;
 
 use super::raw_hwnd;
+
+/// The native menu bar item height and per-side horizontal padding, in device
+/// pixels, at `dpi`.
+///
+/// Owner-drawn bar items report their own size (`WM_MEASUREITEM`). The height
+/// is the documented `SM_CYMENU` metric (`WinUser.h` via the `windows` crate).
+/// The native bar also adds its own padding around a bar item, so the measured
+/// width only needs a small symmetric pad: 4 design units per side matches the
+/// item spacing of the native light bar (using the font height and a larger
+/// pad made the dark bar far taller and wider than light; #67).
+pub(crate) fn bar_item_metrics(dpi: u32) -> (i32, i32) {
+    // SAFETY: `GetSystemMetricsForDpi` takes a metric index and a DPI value; no
+    // pointers.
+    let height = unsafe { GetSystemMetricsForDpi(SM_CYMENU, dpi) };
+    (height.max(1), dip(4.0).to_px(dpi).value().max(1))
+}
 
 /// Creates an empty menu bar.
 pub(crate) fn create_bar() -> isize {
@@ -122,6 +141,11 @@ pub(crate) fn check_item(menu: isize, command: u16, checked: bool, radio: bool) 
 
 /// Sets the menu's background brush (documented `SetMenuInfo`), so the gaps
 /// between owner-drawn items are themed too.
+///
+/// The one-pixel highlight the system draws along the bottom of a menu bar is
+/// *not* covered by `MIM_BACKGROUND`: it is part of the system menu frame and
+/// changing it needs the undocumented `WM_UAHDRAWMENU`. It is therefore left
+/// in place (#67).
 pub(crate) fn set_background(menu: isize, brush: HBRUSH) {
     let info = MENUINFO {
         cbSize: size_of::<MENUINFO>() as u32,
