@@ -43,6 +43,8 @@ use self::slider::Sliders;
 use self::swatch::Swatch;
 
 pub(crate) fn main() {
+    // Keeps the real pointer out of a screen capture and restores it on exit.
+    let _pointer = screenshot::park_pointer_if_requested();
     // `WIN32UI_DEMO_THEME` / `WIN32UI_DEMO_WIDTH` / `WIN32UI_DEMO_HEIGHT` let a
     // screenshot run pick the palette and the window size without editing code.
     let initial = std::env::var("WIN32UI_DEMO_THEME").unwrap_or_else(|_| "dark".to_string());
@@ -207,6 +209,11 @@ pub(crate) fn main() {
             } else {
                 None
             };
+            // A screen capture needs the window active (DWM draws the backdrop and
+            // the caption buttons differently otherwise), so it is raised first.
+            let foreground = std::env::var("WIN32UI_DEMO_SCREENSHOT_SCREEN")
+                .ok()
+                .and_then(|_| ui.set_timer(500).ok());
             // `WIN32UI_DEMO_CONTEXT_OPEN` shows the list's context popup so a
             // dark (owner-drawn) menu can be inspected.
             let context_open = if std::env::var("WIN32UI_DEMO_CONTEXT_OPEN").is_ok() {
@@ -214,7 +221,11 @@ pub(crate) fn main() {
             } else {
                 None
             };
-            if auto_close.is_some() || combo_open.is_some() || context_open.is_some() {
+            if auto_close.is_some()
+                || combo_open.is_some()
+                || context_open.is_some()
+                || foreground.is_some()
+            {
                 ui.on_timer(move |id| {
                     if Some(id) == auto_close {
                         Some(Msg::AutoClose)
@@ -222,6 +233,8 @@ pub(crate) fn main() {
                         Some(Msg::OpenCombo)
                     } else if Some(id) == context_open {
                         Some(Msg::ShowListMenu)
+                    } else if Some(id) == foreground {
+                        Some(Msg::Foreground)
                     } else {
                         None
                     }
@@ -288,6 +301,7 @@ enum Msg {
     ContextDelete,
     Quit,
     AutoClose,
+    Foreground,
     TabsPage(usize),
     Slider(slider::SliderMsg),
     Flow(flow_text::FlowMsg),
@@ -391,6 +405,7 @@ impl win32ui::App for App {
                 ui.quit();
             }
             Msg::Quit => ui.quit(),
+            Msg::Foreground => ui.set_foreground(),
             Msg::TabsPage(page) => self.set_status(&format!("Tab page {page}")),
             Msg::AutoClose => {
                 screenshot::capture_if_requested(ui);

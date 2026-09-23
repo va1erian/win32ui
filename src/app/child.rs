@@ -131,14 +131,17 @@ where
     // set; a rejected call (unsupported Windows, high contrast, transparency
     // off) leaves the solid theme background.
     core.set_title_bar(spec.title_bar_kind());
-    let backdrop_active = sys::apply_backdrop(window.hwnd(), spec.backdrop_kind(), theme.is_dark);
-    crate::theme::set_backdrop_active(window.hwnd(), backdrop_active);
+    let mut backdrop_active =
+        sys::apply_backdrop(window.hwnd(), spec.backdrop_kind(), theme.is_dark);
     if spec.title_bar_kind() == TitleBar::Colored {
         sys::apply_caption_colors(window.hwnd(), &theme);
     }
     if spec.title_bar_kind() == TitleBar::Extended {
-        sys::nc::enable_extended(window.hwnd());
+        // The material only shows through an extended frame.
+        backdrop_active &= sys::nc::enable_extended(window.hwnd());
+        sys::apply_extended_colors(window.hwnd(), &theme, backdrop_active);
     }
+    crate::theme::set_backdrop_active(window.hwnd(), backdrop_active);
     // Tab/Shift+Tab move between the window's focusable children, handled by
     // `IsDialogMessageW` in the pump.
     sys::looper::enable_dialog_nav(window.hwnd());

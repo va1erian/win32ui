@@ -262,13 +262,18 @@ Controls theme themselves; the app never handles `NM_CUSTOMDRAW`,
   the standard caption (`WM_NCCALCSIZE`) while keeping the native resize
   borders, and routes `WM_NCHITTEST` through `DwmDefWindowProc` first so the
   min/max/close buttons — and with them Windows 11 snap layouts — keep working.
-  The frame is extended over the caption strip only
-  (`DwmExtendFrameIntoClientArea` with a top margin), so DWM draws the caption
-  buttons there and a backdrop material shows through that strip while the rest
-  of the client stays an ordinary opaque surface. The strip is erased to black
-  (DWM's "glass" colour) only when the backdrop is active; the menu bar keeps
-  its non-client strip below the removed caption, and the demo reserves the
-  strip with `Ui::title_bar_height()` so content never sits under the buttons.
+  A restored window's client starts at its top edge, so the caption strip is
+  client area (the top resize band is hit-tested by the crate); a maximized
+  window is inset by the frame it overhangs the monitor with. The frame is
+  extended over that strip only (`DwmExtendFrameIntoClientArea` with a top
+  margin), so DWM draws the caption buttons there and a backdrop material shows
+  through it while the rest of the client stays an ordinary opaque surface. The
+  strip is erased to black (DWM's "glass" colour). The strip's caption colour is
+  set to none when the material is active — otherwise "show accent colour on
+  title bars" paints the accent over it — and to `Theme::background` when not.
+  The menu bar stays non-client, drawn by the system just below the strip; the
+  window's erase leaves that band alone, and the demo reserves strip and menu
+  with `Ui::title_bar_height()` so content never sits under either.
   The free strip drags, widgets marked with
   `ControlExt::set_caption_interactive` accept clicks, and
   `Ui::caption_inset()` reserves the button area. Content painted over the
