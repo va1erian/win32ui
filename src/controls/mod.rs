@@ -10,13 +10,17 @@ pub mod listview;
 pub(crate) mod listview_events;
 pub(crate) mod listview_inner;
 pub mod listview_theme;
+pub mod progressbar;
+pub mod progressbar_theme;
 pub(crate) mod registry;
 pub mod statusbar;
+pub mod taskdialog;
 pub mod toolbar;
 pub mod treeview;
 
 pub use control::{AsControl, Control, ControlExt, HasText};
 pub use listview_theme::ListViewTheme;
+pub use progressbar_theme::ProgressBarTheme;
 
 use crate::error::{Error, Result};
 use crate::geometry::Rect;

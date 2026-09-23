@@ -70,6 +70,16 @@ pub enum Error {
     /// A control was used before common controls were initialised.
     #[error("common controls were not initialised")]
     ControlsUnavailable,
+
+    /// Task dialogs need Common Controls v6, which requires an application
+    /// manifest requesting it; the loaded `comctl32.dll` does not export
+    /// `TaskDialogIndirect`.
+    #[error("task dialogs require Common Controls v6 (add the v6 application manifest)")]
+    TaskDialogUnavailable,
+
+    /// A task dialog was configured in a way that cannot be shown.
+    #[error("invalid task dialog: {0}")]
+    TaskDialog(String),
 }
 
 /// Convenience alias used throughout the crate.
