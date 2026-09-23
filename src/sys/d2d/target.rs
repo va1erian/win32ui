@@ -18,6 +18,8 @@ use crate::error::Result;
 use crate::hwnd::Hwnd;
 use crate::sys::{raw_hwnd, win32_error};
 
+mod draw_text;
+
 use super::{EndDraw, dash_style, factory, is_target_lost};
 
 /// A brush and the optional dash style to stroke with.

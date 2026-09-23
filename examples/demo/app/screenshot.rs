@@ -27,7 +27,7 @@ pub(crate) fn capture_if_requested<M: 'static>(ui: &Ui<M>) {
     }
 }
 
-fn write_screenshot(
+pub(super) fn write_screenshot(
     image: &RgbaImage,
     path: &Path,
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {

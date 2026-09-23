@@ -18,7 +18,11 @@
 mod canvas;
 mod geometry;
 mod surface;
+mod text;
 
 pub use canvas::D2dCanvas;
 pub use geometry::{BASE_DPI, DashStyle, PointF, RectF, Stroke, clamp_radius, pixels_to_dips};
 pub use surface::D2dSurface;
+pub use text::{
+    Font, FontMetrics, FontSpec, FontStretch, HitTest, Layout, LineMetrics, TextSystem,
+};

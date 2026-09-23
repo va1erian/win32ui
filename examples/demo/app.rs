@@ -14,6 +14,7 @@ mod screenshot;
 mod search;
 mod secondary;
 mod swatch;
+mod text_specimen;
 
 use std::rc::Rc;
 
@@ -44,6 +45,7 @@ pub(crate) fn main() {
             .theme(theme),
         |ui| {
             let theme = ui.theme();
+            text_specimen::open_if_requested(theme, ui.dpi());
 
             let toolbar = Toolbar::new(
                 ui,

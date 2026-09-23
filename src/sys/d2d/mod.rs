@@ -4,6 +4,7 @@
 //! objects are apartment-bound, so the factory is cached per (UI) thread.
 
 mod target;
+pub(crate) mod text;
 
 pub(crate) use target::Target;
 
