@@ -177,6 +177,7 @@ pub(crate) unsafe extern "system" fn window_proc(
         super::window_ext::forget_track_limits(hwnd_from(hwnd));
         super::looper::forget_keyboard(hwnd_from(hwnd));
         crate::theme::forget_window_theme(hwnd_from(hwnd));
+        crate::controls::tooltip::forget_window(hwnd_from(hwnd));
         crate::window::nc::forget_window(hwnd_from(hwnd));
     }
 

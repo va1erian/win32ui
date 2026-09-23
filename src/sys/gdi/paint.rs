@@ -258,6 +258,11 @@ pub(crate) fn line(hdc: HDC, from: Point, to: Point) {
 
 /// Draws text inside `rect`, returning the drawn height.
 pub(crate) fn draw_text(hdc: HDC, rect: Rect, text: &str, color: Color, format: u32) -> i32 {
+    // `DrawTextW` faults on an empty buffer: the slice is passed as a
+    // (dangling) `PCWSTR` with a zero length, which user32 dereferences.
+    if text.is_empty() {
+        return 0;
+    }
     let mut wide: Vec<u16> = text.encode_utf16().collect();
     let mut raw = RECT {
         left: rect.left,

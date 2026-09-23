@@ -45,12 +45,17 @@ impl CustomWidget for Swatch {
     }
 
     fn input(&self, input: Input, cx: &mut WidgetCx<SwatchEvent>) {
-        if let Input::MouseUp {
-            button: MouseButton::Left,
-            ..
-        } = input
-        {
-            cx.emit(SwatchEvent::Clicked);
+        match input {
+            Input::MouseUp {
+                button: MouseButton::Left,
+                ..
+            } => cx.emit(SwatchEvent::Clicked),
+            // A region tooltip over the whole swatch, declared by the widget
+            // itself (the shared tooltip is created lazily on first use).
+            Input::MouseMove { .. } => {
+                cx.set_tooltip_region(cx.bounds(), "Click to cycle the colour");
+            }
+            _ => {}
         }
     }
 

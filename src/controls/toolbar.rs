@@ -11,6 +11,7 @@
 
 use std::cell::Cell;
 
+use crate::accel::Shortcut;
 use crate::app::Ui;
 use crate::color::Color;
 use crate::controls::control::{AsControl, Control};
@@ -28,6 +29,8 @@ use crate::units::dip;
 pub struct ToolbarItem<M> {
     label: String,
     icon: Option<ToolbarIcon>,
+    tooltip: Option<String>,
+    shortcut: Option<Shortcut>,
     on_click: Option<Box<dyn Fn() -> Option<M>>>,
 }
 
@@ -37,6 +40,8 @@ impl<M> ToolbarItem<M> {
         ToolbarItem {
             label: label.into(),
             icon: None,
+            tooltip: None,
+            shortcut: None,
             on_click: None,
         }
     }
@@ -47,10 +52,34 @@ impl<M> ToolbarItem<M> {
         self
     }
 
+    /// Sets the tooltip shown while the pointer rests on this button.
+    pub fn tooltip(mut self, text: impl Into<String>) -> ToolbarItem<M> {
+        self.tooltip = Some(text.into());
+        self
+    }
+
+    /// Records the button's shortcut. It is shown after the tooltip text — the
+    /// same [`Shortcut`] display text a menu shows — so the button and its menu
+    /// item agree; register the accelerator yourself (the menu bar does).
+    pub fn shortcut(mut self, shortcut: Shortcut) -> ToolbarItem<M> {
+        self.shortcut = Some(shortcut);
+        self
+    }
+
     /// Maps a click on this button to an app message.
     pub fn on_click(mut self, f: impl Fn() -> Option<M> + 'static) -> ToolbarItem<M> {
         self.on_click = Some(Box::new(f));
         self
+    }
+
+    /// The tooltip this button should show: its text, its shortcut, or both.
+    fn tooltip_text(&self) -> Option<String> {
+        match (&self.tooltip, self.shortcut) {
+            (Some(text), Some(shortcut)) => Some(format!("{text} ({shortcut})")),
+            (Some(text), None) => Some(text.clone()),
+            (None, Some(shortcut)) => Some(shortcut.to_string()),
+            (None, None) => None,
+        }
     }
 }
 
@@ -143,6 +172,20 @@ impl<M> ToolbarWidget<M> {
     fn hit_test(&self, x: i32, y: i32) -> Option<usize> {
         let point = Point::new(x, y);
         self.rects().iter().position(|rect| rect.contains(point))
+    }
+
+    /// One `(index, rect, text)` per button that has a tooltip, so `Toolbar`
+    /// can add them as region tools to the window's shared tooltip.
+    fn tooltip_regions(&self) -> Vec<(usize, Rect, String)> {
+        let rects = self.rects();
+        self.items
+            .iter()
+            .enumerate()
+            .filter_map(|(index, item)| {
+                let text = item.tooltip_text()?;
+                Some((index, *rects.get(index)?, text))
+            })
+            .collect()
     }
 
     /// The rectangle the label is drawn in: the full button height (so the text
@@ -269,7 +312,13 @@ impl<M: 'static> Toolbar<M> {
     /// `ui`'s theme. Use [`Themed::apply_theme`] for a one-off override.
     pub fn new(ui: &mut Ui<M>, items: Vec<ToolbarItem<M>>) -> Result<Toolbar<M>> {
         let widget = ToolbarWidget::new(items, ui.dpi())?;
+        let regions = widget.tooltip_regions();
         let custom = Custom::new(ui, widget)?;
+        // Each button is a region on the toolbar's one shared tooltip.
+        let hwnd = custom.control().hwnd();
+        for (index, rect, text) in regions {
+            crate::controls::tooltip::set_region_tooltip(hwnd, index, rect, &text);
+        }
         let shared = custom.widget();
         let custom = custom.on_event(move |index| {
             let state = shared.borrow();

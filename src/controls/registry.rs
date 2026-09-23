@@ -22,6 +22,7 @@ use crate::message::Message;
 pub(crate) enum ControlKind {
     ListView,
     TreeView,
+    Tooltip,
 }
 
 /// Implemented by control state that wants first refusal on its own
