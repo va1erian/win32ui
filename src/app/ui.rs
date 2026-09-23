@@ -6,8 +6,9 @@ use std::rc::Rc;
 
 use crate::accel::Shortcut;
 use crate::capture::RgbaImage;
+use crate::controls::menu::Menu;
 use crate::error::Result;
-use crate::geometry::Rect;
+use crate::geometry::{Point, Rect};
 use crate::hwnd::Hwnd;
 use crate::message::TimerId;
 use crate::sys;
@@ -77,6 +78,13 @@ impl<M: 'static> Ui<M> {
         sys::set_titlebar_dark(self.core.hwnd(), theme.is_dark);
         sys::set_class_background(self.core.hwnd(), theme.background);
         crate::theme::retheme_children(self.core.hwnd(), &theme);
+        // Owner-drawn menus must switch between native and themed items live.
+        if let Some(menu) = self.core.menu_bar()
+            && menu.is_owner_drawn() != theme.is_dark
+        {
+            let handle = menu.build(true, theme.is_dark, theme.raised);
+            sys::menu::set_bar(self.core.hwnd(), handle);
+        }
         sys::window::invalidate(self.core.hwnd());
     }
 
@@ -125,6 +133,44 @@ impl<M: 'static> Ui<M> {
     /// [`Shortcut`] renders the same text menus and tooltips show.
     pub fn accelerator(&self, shortcut: Shortcut, f: impl Fn() -> Option<M> + 'static) {
         self.core.add_accelerator(shortcut, f);
+    }
+
+    /// Installs `menu` as the window's menu bar. Every enabled item that has a
+    /// [`Shortcut`] is also registered as an accelerator, so menus and
+    /// shortcuts always agree. The window keeps a clone of the menu alive; the
+    /// caller may drop its own handle.
+    pub fn set_menu_bar(&self, menu: Menu<M>) {
+        let theme = self.core.theme();
+        let handle = menu.build(true, theme.is_dark, theme.raised);
+        // Install the menu before `SetMenu`, so the owner-draw measure/draw
+        // messages raised while the bar is first laid out can find it.
+        self.core.install_menu_bar(menu.clone());
+        sys::menu::set_bar(self.core.hwnd(), handle);
+        for (shortcut, action) in menu.shortcuts() {
+            self.core.add_accelerator(shortcut, move || Some(action()));
+        }
+        self.core.relayout();
+    }
+
+    /// Shows `menu` as a context popup at the screen position `at`, then
+    /// delivers the chosen item's message to [`App::update`](super::App::update).
+    /// Get `at` from [`Ui::cursor_position`] or a widget event.
+    pub fn popup(&self, menu: &Menu<M>, at: Point) {
+        let theme = self.core.theme();
+        let handle = menu.build(false, theme.is_dark, theme.raised);
+        let previous = self.core.set_popup(Some(menu.clone()));
+        let command = sys::menu::track_popup(handle, self.core.hwnd(), at);
+        self.core.set_popup(previous);
+        menu.destroy_handle();
+        if let Some(action) = command.and_then(|id| menu.find_action(id)) {
+            self.emit(action());
+        }
+    }
+
+    /// The cursor position, in screen coordinates. Useful as the point for
+    /// [`Ui::popup`].
+    pub fn cursor_position(&self) -> Point {
+        sys::menu::cursor_position()
     }
 
     /// Starts a repeating timer and returns its id.

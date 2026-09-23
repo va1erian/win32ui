@@ -77,6 +77,18 @@ impl<A: App> AppHandler<A> {
 
 impl<A: App> WindowHandler for AppHandler<A> {
     fn message(&self, window: &Window, message: Message) -> Option<LResult> {
+        // Owner-drawn menu items are measured and painted here, on the thread
+        // that owns the menu.
+        if let Message::MeasureItem { menu: true, .. } = &message
+            && self.core.measure_menu_item(&message)
+        {
+            return Some(1);
+        }
+        if let Message::DrawItem { menu: true, .. } = &message
+            && self.core.draw_menu_item(&message)
+        {
+            return Some(1);
+        }
         match message {
             Message::Other { code, .. } if self.core.is_drain(code) => {
                 self.drain();
@@ -101,13 +113,18 @@ impl<A: App> WindowHandler for AppHandler<A> {
                 Some(0)
             }
             // An accelerator is translated into a `WM_COMMAND` with no control
-            // and one of our reserved command ids.
+            // and one of our reserved command ids; a menu bar click arrives the
+            // same way with one of the menu's command ids.
             Message::Command(command) => {
-                if command.control.is_none()
-                    && let Some(msg) = self.core.map_accelerator(command.id)
-                {
-                    self.core.enqueue(msg);
-                    return Some(0);
+                if command.control.is_none() {
+                    if let Some(msg) = self.core.map_accelerator(command.id) {
+                        self.core.enqueue(msg);
+                        return Some(0);
+                    }
+                    if let Some(msg) = self.core.map_menu_command(command.id) {
+                        self.core.enqueue(msg);
+                        return Some(0);
+                    }
                 }
                 None
             }

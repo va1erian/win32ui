@@ -2,6 +2,7 @@
 
 mod draw;
 mod input;
+mod measure;
 mod notify;
 
 use std::cell::Cell;
@@ -28,6 +29,7 @@ use super::hwnd_from;
 use notify::decode_notify;
 
 pub(crate) use draw::{decode_draw, message_id as draw_message_id};
+pub(crate) use measure::{message_id as measure_message_id, set_size as set_measured_size};
 
 /// Name of the message a worker thread posts to wake the UI.
 const WAKE_MESSAGE_NAME: PCWSTR = w!("emusic.win32ui.wake");
@@ -78,12 +80,16 @@ pub(crate) fn notify_header(lparam: LPARAM) -> Option<(HWND, usize, u32)> {
 pub(crate) fn decode(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> Option<Message> {
     // A `MINMAXINFO*` is only valid for the duration of its own message.
     MIN_MAX.with(|slot| slot.set(0));
+    measure::reset();
 
     if msg == WM_GETMINMAXINFO {
         if lparam.0 != 0 {
             MIN_MAX.with(|slot| slot.set(lparam.0));
         }
         return Some(Message::GetMinMaxInfo);
+    }
+    if msg == measure_message_id() {
+        return measure::decode(lparam);
     }
     if msg == WM_SETTINGCHANGE {
         return Some(Message::SettingChange {

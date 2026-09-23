@@ -120,7 +120,7 @@ fn accel_of(shortcut: &Shortcut, command: u16) -> ACCEL {
     }
     ACCEL {
         fVirt: flags,
-        key: shortcut.key().code(),
+        key: shortcut.key_code().code(),
         cmd: command,
     }
 }

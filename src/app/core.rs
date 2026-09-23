@@ -13,9 +13,10 @@ use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
 
 use crate::accel::Shortcut;
+use crate::controls::menu::{Menu, MenuPaint, measure, paint_item};
 use crate::geometry::Rect;
 use crate::hwnd::Hwnd;
-use crate::message::TimerId;
+use crate::message::{Message, TimerId};
 use crate::sys;
 use crate::theme::Theme;
 use crate::window::Window;
@@ -52,6 +53,8 @@ pub(crate) struct Core<M> {
     // lifetime. Only secondary windows set this; the main window in `run_app`
     // keeps its `Window` local.
     _window: RefCell<Option<Window>>,
+    menu_bar: RefCell<Option<Menu<M>>>,
+    menu_popup: RefCell<Option<Menu<M>>>,
 }
 
 impl<M> Core<M> {
@@ -79,6 +82,8 @@ impl<M> Core<M> {
             result: RefCell::new(None),
             quits_loop,
             _window: RefCell::new(None),
+            menu_bar: RefCell::new(None),
+            menu_popup: RefCell::new(None),
         }
     }
 
@@ -266,9 +271,86 @@ impl<M> Core<M> {
     }
 }
 
+impl<M: 'static> Core<M> {
+    /// Installs `menu` as this window's menu bar (keeping a clone alive for
+    /// owner-draw lookups and live re-theming).
+    pub(crate) fn install_menu_bar(&self, menu: Menu<M>) {
+        *self.menu_bar.borrow_mut() = Some(menu);
+    }
+
+    /// The installed menu bar, if any.
+    pub(crate) fn menu_bar(&self) -> Option<Menu<M>> {
+        self.menu_bar.borrow().clone()
+    }
+
+    /// Replaces the active popup menu, returning the previous one so the caller
+    /// can restore it after tracking.
+    pub(crate) fn set_popup(&self, menu: Option<Menu<M>>) -> Option<Menu<M>> {
+        self.menu_popup.replace(menu)
+    }
+
+    /// The menu bar (preferred) or the active popup, for owner-draw lookups.
+    fn active_menu(&self) -> Option<Menu<M>> {
+        self.menu_popup.borrow().clone().or_else(|| self.menu_bar())
+    }
+
+    /// Maps a menu command id (a `WM_COMMAND` with no control, or the id
+    /// returned by `TPM_RETURNCMD`) to its action's message.
+    pub(crate) fn map_menu_command(&self, id: u16) -> Option<M> {
+        let action = self.menu_bar.borrow().as_ref()?.find_action(id)?;
+        Some(action())
+    }
+
+    /// Paints an owner-drawn menu item, if `message` is one of ours.
+    pub(crate) fn draw_menu_item(&self, message: &Message) -> bool {
+        let Message::DrawItem {
+            data,
+            dc,
+            area,
+            state,
+            menu: true,
+            ..
+        } = message
+        else {
+            return false;
+        };
+        let Some(menu) = self.active_menu() else {
+            return false;
+        };
+        let Some(item) = menu.render(*data) else {
+            return false;
+        };
+        let dpi = sys::dpi::window_dpi(self.hwnd.get());
+        let paint = MenuPaint::from_theme(&self.theme.get());
+        paint_item(*dc, *area, *state, &item, &paint, dpi);
+        true
+    }
+
+    /// Reports the measured size for an owner-drawn menu item, if `message` is
+    /// one of ours.
+    pub(crate) fn measure_menu_item(&self, message: &Message) -> bool {
+        let Message::MeasureItem {
+            data, menu: true, ..
+        } = message
+        else {
+            return false;
+        };
+        let Some(menu) = self.active_menu() else {
+            return false;
+        };
+        let Some(item) = menu.render(*data) else {
+            return false;
+        };
+        let dpi = sys::dpi::window_dpi(self.hwnd.get());
+        sys::message::set_measured_size(measure(&item, dpi));
+        true
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::controls::menu::Menu;
     use crate::message::Key;
 
     #[test]
@@ -287,5 +369,21 @@ mod tests {
             None,
             "a control id is not a shortcut"
         );
+    }
+
+    #[test]
+    fn menu_commands_map_to_messages() {
+        let core: Core<u32> = Core::new(Theme::light());
+        let menu = Menu::new()
+            .item("First", None, || 7)
+            .item("Second", None, || 9);
+        let ids = menu.command_ids();
+        assert_eq!(ids.len(), 2);
+
+        assert_eq!(core.map_menu_command(ids[0]), None, "no menu installed");
+        core.install_menu_bar(menu);
+        assert_eq!(core.map_menu_command(ids[0]), Some(7));
+        assert_eq!(core.map_menu_command(ids[1]), Some(9));
+        assert_eq!(core.map_menu_command(0xFFFF), None);
     }
 }

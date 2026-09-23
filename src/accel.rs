@@ -31,6 +31,11 @@ impl Shortcut {
         Shortcut { key, modifiers }
     }
 
+    /// A bare key with no modifiers (e.g. `Delete`).
+    pub const fn key(key: Key) -> Shortcut {
+        Shortcut::new(key, Modifiers::NONE)
+    }
+
     /// `Ctrl+key`.
     pub const fn ctrl(key: Key) -> Shortcut {
         Shortcut::new(
@@ -108,7 +113,7 @@ impl Shortcut {
     }
 
     /// The shortcut's key.
-    pub const fn key(self) -> Key {
+    pub const fn key_code(self) -> Key {
         self.key
     }
 
