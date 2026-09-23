@@ -13,12 +13,15 @@
 mod d2d;
 mod scroll;
 
+pub(crate) use d2d::RendererState;
+pub(crate) use scroll::{CustomScroll, WHEEL_NOTCH_DIP};
+
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use crate::app::Ui;
 use crate::controls::control::{AsControl, Control};
-use crate::controls::custom_inner::{CustomHandler, CustomShared, Renderer};
+use crate::controls::custom_inner::{CustomHandler, CustomShared};
 use crate::d2d::{D2dCanvas, RectF};
 use crate::error::Result;
 use crate::gdi::Canvas;
@@ -27,7 +30,22 @@ use crate::hwnd::Hwnd;
 use crate::message::{Key, Message, Modifiers, MouseButton};
 use crate::sys;
 use crate::theme::{Theme, Themed};
+use crate::units::Dip;
 use crate::window::{CursorShape, Window, WindowClass, WindowExStyle, WindowStyle};
+
+/// How a custom widget paints itself.
+///
+/// The default ([`Renderer::Gdi`]) draws with [`CustomWidget::paint`] into a
+/// GDI [`Canvas`]. A widget that needs anti-aliasing opts into
+/// [`Renderer::Direct2D`] and draws with [`CustomWidget::paint_d2d`] instead.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Renderer {
+    /// Paint with GDI through [`CustomWidget::paint`].
+    #[default]
+    Gdi,
+    /// Paint with Direct2D through [`CustomWidget::paint_d2d`].
+    Direct2D,
+}
 
 /// An input event delivered to a [`CustomWidget`].
 ///
@@ -182,10 +200,18 @@ pub trait CustomWidget: 'static {
     /// semantic tokens so live light/dark switching just works.
     fn paint(&self, canvas: &Canvas, bounds: Rect, theme: &Theme);
 
-    /// Paints the widget with Direct2D instead of GDI, when it can. `bounds`
-    /// is the client area in device-independent pixels. The default does
-    /// nothing, so the widget stays on the GDI [`paint`](CustomWidget::paint).
-    fn paint_d2d(&self, _canvas: &mut D2dCanvas, _bounds: RectF, _theme: &Theme) {}
+    /// Which renderer paints the widget. The default is GDI; opt into
+    /// Direct2D and implement [`CustomWidget::paint_d2d`] for anti-aliased
+    /// shapes and alpha.
+    fn renderer(&self) -> Renderer {
+        Renderer::Gdi
+    }
+
+    /// Paints the widget with Direct2D. `bounds` (device-independent pixels)
+    /// is the widget's visible viewport at the origin; when the widget is
+    /// hosted with [`Custom::with_vscroll`], the canvas is already translated
+    /// by the scroll offset, so draw the document in its own coordinates.
+    fn paint_d2d(&self, _canvas: &mut D2dCanvas<'_>, _bounds: RectF, _theme: &Theme) {}
 
     /// Handles one input event. The default ignores everything.
     fn input(&self, _input: Input, _cx: &mut WidgetCx<Self::Event>) {}
@@ -281,6 +307,7 @@ impl<W: CustomWidget, M: 'static> Custom<W, M> {
         let shared = Rc::new(CustomShared {
             widget: Rc::new(RefCell::new(widget)),
             mapper: RefCell::new(None),
+            scroll: RefCell::new(None),
             ui: ui.clone(),
         });
         let client_bounds = Rc::new(Cell::new(bounds));
@@ -292,7 +319,7 @@ impl<W: CustomWidget, M: 'static> Custom<W, M> {
             shared: Rc::clone(&shared),
             bounds: Rc::clone(&client_bounds),
             emit,
-            renderer: RefCell::new(Renderer::Untried),
+            renderer: RefCell::new(RendererState::Untried),
         };
 
         let class = WindowClass::register("win32ui.custom", background)?;
@@ -315,8 +342,15 @@ impl<W: CustomWidget, M: 'static> Custom<W, M> {
                 parent,
                 hwnd,
                 Rc::new(move |applied| {
-                    if let Some(_shared) = weak.upgrade() {
+                    if let Some(shared) = weak.upgrade() {
                         sys::set_class_background(hwnd, applied.background);
+                        if shared.scroll.borrow().is_some() {
+                            sys::apply_native_theme(
+                                hwnd,
+                                sys::NativeControlKind::Scrollable,
+                                applied.is_dark,
+                            );
+                        }
                         sys::window::invalidate(hwnd);
                     }
                 }),
@@ -335,6 +369,72 @@ impl<W: CustomWidget, M: 'static> Custom<W, M> {
     pub fn on_event(self, f: impl Fn(W::Event) -> Option<M> + 'static) -> Custom<W, M> {
         self.shared.mapper.replace(Some(Box::new(f)));
         self
+    }
+
+    /// Gives the widget a native vertical scrollbar and standard scrolling
+    /// behaviour: thumb tracking, line/page/home/end/arrow/PageUp/PageDown
+    /// keys, and the wheel. The Direct2D canvas is pre-translated by the
+    /// offset, so a `paint_d2d` widget draws its document in its own
+    /// coordinates.
+    pub fn with_vscroll(self) -> Custom<W, M> {
+        let hwnd = self.control.hwnd();
+        let dpi = self.shared.ui.dpi();
+        let notch = crate::units::dip(WHEEL_NOTCH_DIP).to_px(dpi).value();
+        let scroll = Rc::new(CustomScroll::new(hwnd, notch, self.shared.ui.clone()));
+        sys::scroll::enable_vertical(hwnd);
+        sys::window::set_tab_stop(hwnd, true);
+        sys::apply_native_theme(
+            hwnd,
+            sys::NativeControlKind::Scrollable,
+            self.shared.ui.theme().is_dark,
+        );
+        self.shared.scroll.replace(Some(Rc::clone(&scroll)));
+        self
+    }
+
+    /// Maps the scroll offset to an app message whenever the widget scrolls:
+    /// the closure receives the new offset in design units and returns
+    /// `Some(msg)` to raise it, or `None` to ignore it. Only meaningful with
+    /// [`Custom::with_vscroll`].
+    pub fn on_scroll(self, f: impl Fn(Dip) -> Option<M> + 'static) -> Custom<W, M> {
+        if let Some(scroll) = self.shared.scroll.borrow().as_ref() {
+            scroll.set_mapper(f);
+        }
+        self
+    }
+
+    /// Sets the scrollable content height in design units. Only meaningful with
+    /// [`Custom::with_vscroll`].
+    pub fn set_content_height(&self, height: Dip) {
+        if let Some(scroll) = self.shared.scroll.borrow().as_ref() {
+            scroll.set_content_height(height, self.shared.ui.dpi());
+        }
+    }
+
+    /// The current scroll offset in design units, clamped to the content.
+    pub fn scroll_offset(&self) -> Dip {
+        self.shared
+            .scroll
+            .borrow()
+            .as_ref()
+            .map_or(crate::units::dip(0.0), |scroll| {
+                scroll.offset_dip(self.shared.ui.dpi())
+            })
+    }
+
+    /// Scrolls to `offset` design units from the top, clamped to the content.
+    pub fn scroll_to(&self, offset: Dip) {
+        if let Some(scroll) = self.shared.scroll.borrow().as_ref() {
+            scroll.scroll_to(offset, self.shared.ui.dpi());
+        }
+    }
+
+    /// Scrolls the minimum amount so that `rect` — a rectangle in design units
+    /// (device-independent pixels) — is fully visible in the viewport.
+    pub fn scroll_into_view(&self, rect: Rect) {
+        if let Some(scroll) = self.shared.scroll.borrow().as_ref() {
+            scroll.scroll_into_view(rect, self.shared.ui.dpi());
+        }
     }
 
     /// A shared handle to the widget, for app-side mutation between paints.
@@ -365,6 +465,13 @@ impl<W: CustomWidget, M> AsControl for Custom<W, M> {
 impl<W: CustomWidget, M> Themed for Custom<W, M> {
     fn apply_theme(&self, theme: &Theme) {
         sys::set_class_background(self.control.hwnd(), theme.background);
+        if self.shared.scroll.borrow().is_some() {
+            sys::apply_native_theme(
+                self.control.hwnd(),
+                sys::NativeControlKind::Scrollable,
+                theme.is_dark,
+            );
+        }
         self.window.invalidate();
     }
 }

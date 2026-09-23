@@ -114,6 +114,10 @@ impl CustomWidget for PrimitivesPanel {
 
     fn paint(&self, _canvas: &Canvas, _bounds: Rect, _theme: &Theme) {}
 
+    fn renderer(&self) -> Renderer {
+        Renderer::Direct2D
+    }
+
     fn paint_d2d(&self, canvas: &mut D2dCanvas, bounds: RectF, theme: &Theme) {
         canvas.clear(theme.background);
         let left = bounds.left;

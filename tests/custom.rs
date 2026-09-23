@@ -1,4 +1,5 @@
-//! Custom widgets: the event-mapping invariant and `preferred_size`.
+//! Custom widgets: the event-mapping invariant, `preferred_size`, and the
+//! Direct2D paint path.
 //!
 //! The event test mirrors `select_during_update_is_not_nested` in `tests/app.rs`:
 //! an event raised from within `update` (here a `SetFocus` delivered by
@@ -13,7 +14,10 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use common::run_app_with_watchdog;
+use win32ui::Renderer;
 use win32ui::Size;
+use win32ui::column;
+use win32ui::d2d::{D2dCanvas, RectF};
 use win32ui::gdi::Canvas;
 use win32ui::prelude::*;
 
@@ -151,5 +155,72 @@ fn custom_widget_preferred_size_sets_initial_bounds() {
     assert!(
         size_ok.get(),
         "the widget's preferred width did not become its initial bounds"
+    );
+}
+
+const D2D_FILL: Color = Color::rgb(0x40, 0x20, 0x80);
+
+/// A widget that opts into Direct2D and fills its viewport with a solid colour.
+struct D2dWidget;
+
+impl CustomWidget for D2dWidget {
+    type Event = ();
+
+    fn paint(&self, _canvas: &Canvas, _bounds: Rect, _theme: &Theme) {}
+
+    fn renderer(&self) -> Renderer {
+        Renderer::Direct2D
+    }
+
+    fn paint_d2d(&self, canvas: &mut D2dCanvas<'_>, bounds: RectF, theme: &Theme) {
+        canvas.clear(theme.background);
+        canvas.fill_rounded_rect(bounds, bounds.pill_radius(), D2D_FILL);
+    }
+}
+
+struct D2dApp {
+    _widget: Custom<D2dWidget, ()>,
+    image: Rc<RefCell<Option<RgbaImage>>>,
+}
+
+impl App for D2dApp {
+    type Msg = ();
+
+    fn update(&mut self, _msg: (), ui: &mut Ui<()>) {
+        *self.image.borrow_mut() = ui.capture().ok();
+        ui.quit();
+    }
+}
+
+/// A widget that opts into [`Renderer::Direct2D`] paints its fill: a pixel in
+/// the middle of the captured window is the widget's colour.
+#[test]
+fn direct2d_widget_paints_its_fill() {
+    let image = Rc::new(RefCell::new(None));
+    let image_for_make = Rc::clone(&image);
+    let Some(run) = run_app_with_watchdog("win32ui.custom.d2d", move |ui| {
+        let widget = Custom::new(ui, D2dWidget).expect("d2d widget");
+        ui.set_layout(column![widget.fill(1)]);
+        ui.emit(());
+        D2dApp {
+            _widget: widget,
+            image: image_for_make,
+        }
+    }) else {
+        return;
+    };
+
+    assert!(!run.timed_out, "the watchdog fired before the capture");
+    let image = image
+        .borrow_mut()
+        .take()
+        .expect("update never captured or Window::capture failed");
+    let x = image.width / 2;
+    let y = image.height / 2;
+    let pixel = image.pixel(x, y).expect("centre is in bounds");
+    assert_eq!(
+        pixel,
+        [D2D_FILL.r, D2D_FILL.g, D2D_FILL.b, 0xFF],
+        "the Direct2D widget did not paint its fill"
     );
 }
