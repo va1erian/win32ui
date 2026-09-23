@@ -44,6 +44,7 @@
 // that dependants (e.g. a cross-platform workspace) can still `cargo check`.
 #![cfg(windows)]
 
+mod accel;
 mod app;
 mod capture;
 mod color;
@@ -62,6 +63,7 @@ pub mod gdi;
 pub mod looper;
 mod sys;
 
+pub use accel::{Shortcut, ShortcutParseError};
 pub use app::{App, IntoLayoutItem, Layout, LayoutExt, LayoutItem, Proxy, Ui, WindowSpec, run_app};
 pub use capture::RgbaImage;
 pub use color::Color;
@@ -102,11 +104,11 @@ pub mod prelude {
         IntoLayoutItem, Key, LResult, Label, Layout, LayoutExt, LayoutItem, ListSource, ListView,
         ListViewEvent, ListViewTheme, Message, MinMaxInfo, Modifiers, MouseButton, Notify,
         Placement, Point, ProgressBar, ProgressBarTheme, ProgressState, Proxy, Px, Rect, Result,
-        RgbaImage, ShowState, SortDirection, Stack, StackDirection, StackSlot, StatusBar,
-        StatusBarTheme, TaskDialog, TaskDialogIcon, Theme, Themed, TimerId, Toolbar, ToolbarItem,
-        ToolbarTheme, TreeEntry, TreeSource, TreeView, TreeViewEvent, Ui, Win32Error, Window,
-        WindowClass, WindowExStyle, WindowHandler, WindowSpec, WindowStyle, column, dip,
-        monitor_work_areas, row, run_app,
+        RgbaImage, Shortcut, ShortcutParseError, ShowState, SortDirection, Stack, StackDirection,
+        StackSlot, StatusBar, StatusBarTheme, TaskDialog, TaskDialogIcon, Theme, Themed, TimerId,
+        Toolbar, ToolbarItem, ToolbarTheme, TreeEntry, TreeSource, TreeView, TreeViewEvent, Ui,
+        Win32Error, Window, WindowClass, WindowExStyle, WindowHandler, WindowSpec, WindowStyle,
+        column, dip, monitor_work_areas, row, run_app,
     };
     pub use crate::{clipboard, gdi, looper, quit, run, run_modal};
 }

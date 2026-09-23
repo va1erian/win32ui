@@ -11,6 +11,7 @@
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
 
+use crate::accel::Shortcut;
 use crate::geometry::Rect;
 use crate::hwnd::Hwnd;
 use crate::message::TimerId;
@@ -23,6 +24,15 @@ use super::layout::{Layout, Placed};
 type CloseMapper<M> = Box<dyn Fn() -> Option<M>>;
 /// Maps a timer tick to an optional app message.
 type TimerMapper<M> = Box<dyn Fn(TimerId) -> Option<M>>;
+/// Maps an accelerator activation to an optional app message.
+type AccelMapper<M> = Box<dyn Fn() -> Option<M>>;
+
+/// A registered shortcut and the message it raises. The registration order is
+/// the command id assigned to the shortcut in the window's accelerator table.
+struct Accelerator<M> {
+    shortcut: Shortcut,
+    mapper: AccelMapper<M>,
+}
 
 /// The shared, interior-mutable state behind a widget-layer window.
 pub(crate) struct Core<M> {
@@ -31,6 +41,7 @@ pub(crate) struct Core<M> {
     drain: u32,
     on_close: RefCell<Option<CloseMapper<M>>>,
     on_timer: RefCell<Option<TimerMapper<M>>>,
+    accelerators: RefCell<Vec<Accelerator<M>>>,
     theme: Cell<Theme>,
     layout: RefCell<Option<Layout>>,
 }
@@ -43,6 +54,7 @@ impl<M> Core<M> {
             drain: sys::message::drain_message(),
             on_close: RefCell::new(None),
             on_timer: RefCell::new(None),
+            accelerators: RefCell::new(Vec::new()),
             theme: Cell::new(theme),
             layout: RefCell::new(None),
         }
@@ -108,6 +120,40 @@ impl<M> Core<M> {
         self.on_timer.borrow().as_ref().and_then(|f| f(id))
     }
 
+    /// Registers `shortcut` to raise the message its mapper returns, and
+    /// rebuilds the window's accelerator table so the shortcut fires whichever
+    /// widget has focus.
+    pub(crate) fn add_accelerator(&self, shortcut: Shortcut, f: impl Fn() -> Option<M> + 'static) {
+        self.accelerators.borrow_mut().push(Accelerator {
+            shortcut,
+            mapper: Box::new(f),
+        });
+        self.rebuild_accelerators();
+    }
+
+    /// Maps an accelerator command id to a message, if it belongs to one of
+    /// this window's registered shortcuts.
+    pub(crate) fn map_accelerator(&self, id: u16) -> Option<M> {
+        let index = sys::looper::accelerator_index(id)?;
+        let accelerators = self.accelerators.borrow();
+        accelerators.get(index).and_then(|accel| (accel.mapper)())
+    }
+
+    /// Rebuilds the accelerator table from the current registrations.
+    fn rebuild_accelerators(&self) {
+        let hwnd = self.hwnd.get();
+        if hwnd.is_null() {
+            return;
+        }
+        let shortcuts: Vec<Shortcut> = self
+            .accelerators
+            .borrow()
+            .iter()
+            .map(|accelerator| accelerator.shortcut)
+            .collect();
+        let _ = sys::looper::set_accelerators(hwnd, &shortcuts);
+    }
+
     /// The window's current theme.
     pub(crate) fn theme(&self) -> Theme {
         self.theme.get()
@@ -170,5 +216,29 @@ impl<M> Core<M> {
             placed.handle.set_bounds(placed.rect);
         }
         sys::layout::apply(&moves);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::message::Key;
+
+    #[test]
+    fn accelerators_map_their_reserved_command_ids() {
+        // No window is set, so `add_accelerator` skips the table build but
+        // still records the mapper.
+        let core: Core<u32> = Core::new(Theme::light());
+        core.add_accelerator(Shortcut::ctrl(Key::N), || Some(7));
+        core.add_accelerator(Shortcut::ctrl(Key::Q), || None);
+
+        assert_eq!(core.map_accelerator(sys::looper::command_id(0)), Some(7));
+        assert_eq!(core.map_accelerator(sys::looper::command_id(1)), None);
+        assert_eq!(core.map_accelerator(sys::looper::command_id(2)), None);
+        assert_eq!(
+            core.map_accelerator(0),
+            None,
+            "a control id is not a shortcut"
+        );
     }
 }

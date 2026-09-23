@@ -104,6 +104,11 @@ pub(crate) fn main() {
                 .range(0..=100)
                 .value(40);
 
+            // Shortcuts are data and fire whichever widget has focus. `Ctrl+Q`
+            // quits; `Ctrl+T` toggles the theme.
+            ui.accelerator(Shortcut::ctrl(Key::Q), || Some(Msg::Quit));
+            ui.accelerator(Shortcut::ctrl(Key::T), || Some(Msg::ToggleTheme));
+
             // The window owns the layout: it re-runs this tree on every resize
             // and DPI change, so the app never handles `WM_SIZE`.
             ui.set_layout(
@@ -197,6 +202,7 @@ enum Msg {
     Select(usize),
     Copy,
     Tick(u64),
+    Quit,
     AutoClose,
 }
 
@@ -320,6 +326,7 @@ impl win32ui::App for App {
                     Err(error) => self.set_status(&format!("Copy failed: {error}")),
                 },
             },
+            Msg::Quit => ui.quit(),
             Msg::AutoClose => {
                 screenshot::capture_if_requested(ui);
                 ui.quit();

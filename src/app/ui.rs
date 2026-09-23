@@ -4,6 +4,7 @@
 
 use std::rc::Rc;
 
+use crate::accel::Shortcut;
 use crate::capture::RgbaImage;
 use crate::error::Result;
 use crate::geometry::Rect;
@@ -110,6 +111,14 @@ impl<M: 'static> Ui<M> {
     /// Maps a `WM_TIMER` tick to a message. Only one mapping can be installed.
     pub fn on_timer(&self, f: impl Fn(TimerId) -> Option<M> + 'static) {
         self.core.set_on_timer(f);
+    }
+
+    /// Registers a keyboard shortcut. The closure maps an activation to a
+    /// message; returning `None` ignores it. The shortcut fires whichever
+    /// widget has focus. Many shortcuts can be registered; `Display` on the
+    /// [`Shortcut`] renders the same text menus and tooltips show.
+    pub fn accelerator(&self, shortcut: Shortcut, f: impl Fn() -> Option<M> + 'static) {
+        self.core.add_accelerator(shortcut, f);
     }
 
     /// Starts a repeating timer and returns its id.

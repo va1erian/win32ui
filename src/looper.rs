@@ -11,10 +11,10 @@ use crate::sys;
 /// windows being serviced.
 pub fn run() -> i32 {
     loop {
-        match sys::message::pump() {
-            sys::message::Pumped::Message => {}
-            sys::message::Pumped::Quit(code) => return code,
-            sys::message::Pumped::Error => return -1,
+        match sys::looper::pump() {
+            sys::looper::Pumped::Message => {}
+            sys::looper::Pumped::Quit(code) => return code,
+            sys::looper::Pumped::Error => return -1,
         }
     }
 }
@@ -28,19 +28,19 @@ pub fn run() -> i32 {
 /// posted while it runs also ends it.
 pub fn run_modal(window: Hwnd) -> i32 {
     loop {
-        match sys::message::pump() {
-            sys::message::Pumped::Message => {
+        match sys::looper::pump() {
+            sys::looper::Pumped::Message => {
                 if !sys::window::is_window(window) {
                     return 0;
                 }
             }
-            sys::message::Pumped::Quit(code) => return code,
-            sys::message::Pumped::Error => return -1,
+            sys::looper::Pumped::Quit(code) => return code,
+            sys::looper::Pumped::Error => return -1,
         }
     }
 }
 
 /// Asks [`run`] to return with `code` on the calling thread.
 pub fn quit(code: i32) {
-    sys::message::post_quit(code);
+    sys::looper::post_quit(code);
 }

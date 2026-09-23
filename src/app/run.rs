@@ -39,13 +39,16 @@ where
         class,
         None,
         WindowStyle::overlapped().min_max().clip_children(),
-        WindowExStyle::new(),
+        WindowExStyle::new().control_parent(),
         Rect::new(0, 0, width.to_px(dpi).value(), height.to_px(dpi).value()),
         title,
         handler,
     )?;
     core.set_hwnd(window.hwnd());
     window.set_theme(theme);
+    // Tab/Shift+Tab move between the window's focusable children in creation
+    // order, handled by `IsDialogMessageW` in the pump.
+    sys::looper::enable_dialog_nav(window.hwnd());
 
     // Construct the app once the window (and thus `Ui`) exists, then store it
     // where the handler can reach it. Messages raised while `make` runs are
@@ -120,6 +123,17 @@ impl<A: App> WindowHandler for AppHandler<A> {
                     self.core.enqueue(msg);
                 }
                 Some(0)
+            }
+            // An accelerator is translated into a `WM_COMMAND` with no control
+            // and one of our reserved command ids.
+            Message::Command(command) => {
+                if command.control.is_none()
+                    && let Some(msg) = self.core.map_accelerator(command.id)
+                {
+                    self.core.enqueue(msg);
+                    return Some(0);
+                }
+                None
             }
             // The window owns the layout: a resize re-runs the tree so the
             // application never has to handle `WM_SIZE`.
