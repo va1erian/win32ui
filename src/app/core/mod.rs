@@ -13,18 +13,15 @@ use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
 
 use crate::accel::Shortcut;
+use crate::app::layout::Layout;
 use crate::controls::menu::{Menu, MenuPaint, measure, paint_item};
-use crate::geometry::Rect;
 use crate::hwnd::Hwnd;
 use crate::message::{Message, TimerId};
 use crate::sys;
 use crate::theme::Theme;
 use crate::window::{TitleBar, Window};
 
-use super::layout::split;
-use super::layout::tabs;
-use super::layout::{Content, Layout, LayoutItem, Placed};
-use super::ui::Ui;
+mod layout;
 
 /// Maps a close request to an optional app message.
 type CloseMapper<M> = Box<dyn Fn() -> Option<M>>;
@@ -232,91 +229,6 @@ impl<M> Core<M> {
     /// The window's title-bar style.
     pub(crate) fn title_bar(&self) -> TitleBar {
         self.title_bar.get()
-    }
-
-    /// Installs the layout tree, binds any split dividers, and lays it out
-    /// immediately.
-    pub(crate) fn set_layout(&self, layout: Layout, ui: Ui<M>)
-    where
-        M: 'static,
-    {
-        self.bind_splits(&layout, &ui);
-        *self.layout.borrow_mut() = Some(layout);
-        self.relayout();
-    }
-
-    /// Creates the divider window for every split node in `layout`.
-    fn bind_splits(&self, layout: &Layout, ui: &Ui<M>)
-    where
-        M: 'static,
-    {
-        for item in layout.items() {
-            self.bind_item(item, ui);
-        }
-    }
-
-    fn bind_item(&self, item: &LayoutItem, ui: &Ui<M>)
-    where
-        M: 'static,
-    {
-        match item.content() {
-            Content::Nested(nested) => self.bind_splits(nested, ui),
-            Content::Split(node) => {
-                if let Some(window) = split::build_divider(ui, node) {
-                    self.dividers.borrow_mut().push(window);
-                }
-            }
-            Content::Tabs(node) => tabs::build_tabs(ui, node),
-            Content::Widget(_) => {}
-        }
-    }
-
-    /// Whether a layout tree has been installed.
-    pub(crate) fn has_layout(&self) -> bool {
-        self.layout.borrow().is_some()
-    }
-
-    /// Lays the tree out again at the window's current DPI.
-    pub(crate) fn relayout(&self) {
-        let hwnd = self.hwnd.get();
-        if hwnd.is_null() {
-            return;
-        }
-        self.relayout_at(sys::dpi::window_dpi(hwnd));
-    }
-
-    /// Lays the tree out again at `dpi` (used on `WM_DPICHANGED`, where the
-    /// message carries the new value).
-    pub(crate) fn relayout_with_dpi(&self, dpi: u32) {
-        self.relayout_at(dpi);
-    }
-
-    fn relayout_at(&self, dpi: u32) {
-        let hwnd = self.hwnd.get();
-        if hwnd.is_null() {
-            return;
-        }
-        let Some(layout) = self.layout.borrow().clone() else {
-            return;
-        };
-
-        let client = sys::window::client_rect(hwnd);
-        let placed: Vec<Placed> = layout
-            .compute(client, dpi)
-            .into_iter()
-            .filter(|placed| placed.handle.hwnd().is_alive())
-            .collect();
-        let moves: Vec<(Hwnd, Rect)> = placed
-            .iter()
-            .map(|placed| (placed.handle.hwnd(), placed.rect))
-            .collect();
-
-        // Update the widgets' cached bounds before the batched OS move, so the
-        // layout and the widgets agree even if a child handles `WM_SIZE`.
-        for placed in &placed {
-            placed.handle.set_bounds(placed.rect);
-        }
-        sys::layout::apply(&moves);
     }
 }
 
