@@ -21,7 +21,7 @@ use crate::geometry::Rect;
 use crate::hwnd::Hwnd;
 use crate::sys;
 use crate::theme::Theme;
-use crate::window::{Window, WindowClass, WindowExStyle, WindowStyle};
+use crate::window::{TitleBar, Window, WindowClass, WindowExStyle, WindowStyle};
 
 use super::core::Core;
 use super::proxy::Proxy;
@@ -127,6 +127,15 @@ where
     )?;
     core.set_hwnd(window.hwnd());
     window.set_theme(theme);
+    // The material is applied after the theme, so its dark variant is already
+    // set; a rejected call (unsupported Windows, high contrast, transparency
+    // off) leaves the solid theme background.
+    core.set_title_bar(spec.title_bar_kind());
+    let backdrop_active = sys::apply_backdrop(window.hwnd(), spec.backdrop_kind(), theme.is_dark);
+    crate::theme::set_backdrop_active(window.hwnd(), backdrop_active);
+    if spec.title_bar_kind() == TitleBar::Colored {
+        sys::apply_caption_colors(window.hwnd(), &theme);
+    }
     // Tab/Shift+Tab move between the window's focusable children, handled by
     // `IsDialogMessageW` in the pump.
     sys::looper::enable_dialog_nav(window.hwnd());

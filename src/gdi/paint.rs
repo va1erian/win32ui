@@ -121,6 +121,15 @@ impl Canvas {
         }
     }
 
+    /// Fills `rect` with the colour DWM treats as transparent inside an
+    /// extended frame (pure black), so the window's
+    /// [`Backdrop`](crate::Backdrop) material shows through. Only meaningful
+    /// when the window's backdrop is active: a widget that should sit on the
+    /// material paints this as its background instead of an opaque token.
+    pub fn clear_to_backdrop(&self, rect: Rect) {
+        self.fill_rect(rect, Color::rgb(0, 0, 0));
+    }
+
     /// Draws a straight line from `from` to `to`, `width` pixels wide.
     pub fn line(&self, from: Point, to: Point, color: Color, width: i32) {
         if let Some(pen) = cache::pen(color, width.max(1)) {

@@ -43,10 +43,26 @@ pub(crate) fn main() {
     };
     let width = env_dip("WIN32UI_DEMO_WIDTH", 1080.0);
     let height = env_dip("WIN32UI_DEMO_HEIGHT", 680.0);
+    // `WIN32UI_DEMO_BACKDROP=mica|mica-alt|acrylic` and
+    // `WIN32UI_DEMO_TITLEBAR=colored` let a screenshot run exercise the
+    // material and the themed caption without editing code.
+    let backdrop = match std::env::var("WIN32UI_DEMO_BACKDROP").as_deref() {
+        Ok("mica") => Backdrop::Mica,
+        Ok("mica-alt") | Ok("mica_alt") => Backdrop::MicaAlt,
+        Ok("acrylic") => Backdrop::Acrylic,
+        _ => Backdrop::None,
+    };
+    let title_bar = if std::env::var("WIN32UI_DEMO_TITLEBAR").as_deref() == Ok("colored") {
+        TitleBar::Colored
+    } else {
+        TitleBar::Standard
+    };
     let result = win32ui::run_app(
         WindowSpec::new("win32ui demo")
             .size(dip(width), dip(height))
-            .theme(theme),
+            .theme(theme)
+            .backdrop(backdrop)
+            .title_bar(title_bar),
         |ui| {
             let theme = ui.theme();
             text_specimen::open_if_requested(theme, ui.dpi());
@@ -110,7 +126,14 @@ pub(crate) fn main() {
 
             let status = StatusBar::new(ui).expect("status");
             status.set_parts(&[-1]);
-            status.set_text(0, "Ready");
+            status.set_text(
+                0,
+                if ui.backdrop_active() {
+                    "Ready — backdrop active"
+                } else {
+                    "Ready"
+                },
+            );
 
             // A menu bar mapped to `Msg`; enabled items with a shortcut also
             // register that shortcut as an accelerator, so they fire while any

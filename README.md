@@ -118,6 +118,7 @@ already retained), and closures that capture shared mutable app state.
 | `tabs!` paged layout node: native `SysTabControl32`, owner-drawn tabs, pages are layout subtrees | exists (#15) |
 | Tooltips | #17 |
 | Direct2D shapes, clips and transforms (`d2d`, anti-aliased); `ProgressBar` draws with it (GDI fallback) | exists (#22) |
+| Mica/Mica Alt/Acrylic backdrop and themed caption (`Backdrop`, `TitleBar`), GDI fallback | exists (#53 phase 1) |
 | DirectWrite text, gradients, bitmaps, rounded clips, colour emoji | #22 follow-up |
 
 ## Source layout
@@ -133,6 +134,7 @@ src/
   theme.rs        a minimal semantic palette (light/dark)
   message.rs      typed `Message`, `Command`, `Notify`, control events
   window.rs       `WindowClass`, `Window`, `WindowHandler`, style builders
+  window/         `Backdrop`/`TitleBar` (backdrop material and themed caption)
   looper.rs       `run()` / `quit()`
   app/            `App`, `Ui`, the per-window message queue, `run_app`
   app/child.rs    secondary windows: `open_window`, `open_modal`, `WindowHandle`
@@ -244,6 +246,18 @@ Controls theme themselves; the app never handles `NM_CUSTOMDRAW`,
 - **New controls opt in** by implementing `Themed`, painting only from tokens,
   registering with `theme::register_themed`, and adding a demo toggle state plus
   light/dark screenshots to the PR.
+- **Window material.** `WindowSpec::backdrop(Backdrop::Mica | MicaAlt | Acrylic)`
+  asks DWM for the system backdrop (`DWMWA_SYSTEMBACKDROP_TYPE`), and
+  `WindowSpec::title_bar(TitleBar::Colored)` paints the standard caption from
+  theme tokens. Both are best-effort and decided by the documented call's
+  result, never by the OS version: when DWM rejects the attribute (Windows 10,
+  builds before 22621), in high-contrast mode, or when the user disabled
+  transparency effects, the window falls back to the solid `Theme::background`;
+  `Ui::backdrop_active()` reports which path was taken. Extending the material
+  into the client area is deliberately left to the extended-client-area work
+  (issue #53, phase 2): GDI draws text with zero alpha over the glass, so
+  content there has to be painted with Direct2D alpha first.
+  `Canvas::clear_to_backdrop` is the seam for that follow-up.
 
 ## Menus
 

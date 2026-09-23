@@ -4,6 +4,7 @@
 
 use crate::theme::Theme;
 use crate::units::{Dip, dip};
+use crate::window::{Backdrop, TitleBar};
 
 use super::ui::Ui;
 
@@ -30,6 +31,8 @@ pub struct WindowSpec {
     height: Dip,
     theme: Theme,
     theme_explicit: bool,
+    backdrop: Backdrop,
+    title_bar: TitleBar,
 }
 
 impl WindowSpec {
@@ -41,6 +44,8 @@ impl WindowSpec {
             height: dip(480.0),
             theme: Theme::light(),
             theme_explicit: false,
+            backdrop: Backdrop::None,
+            title_bar: TitleBar::Standard,
         }
     }
 
@@ -56,6 +61,33 @@ impl WindowSpec {
         self.theme = theme;
         self.theme_explicit = true;
         self
+    }
+
+    /// The system backdrop material behind the client area.
+    ///
+    /// The material is best-effort: on unsupported Windows, in high-contrast
+    /// mode, or when the user disabled transparency effects, the window falls
+    /// back to its solid [`Theme::background`]. Ask
+    /// [`Ui::backdrop_active`] whether it is active.
+    pub fn backdrop(mut self, backdrop: Backdrop) -> WindowSpec {
+        self.backdrop = backdrop;
+        self
+    }
+
+    /// How the window's title bar is drawn.
+    pub fn title_bar(mut self, title_bar: TitleBar) -> WindowSpec {
+        self.title_bar = title_bar;
+        self
+    }
+
+    /// The requested backdrop material.
+    pub(crate) fn backdrop_kind(&self) -> Backdrop {
+        self.backdrop
+    }
+
+    /// The requested title-bar style.
+    pub(crate) fn title_bar_kind(&self) -> TitleBar {
+        self.title_bar
     }
 
     /// The effective theme: the explicit one if set, otherwise `fallback` (the

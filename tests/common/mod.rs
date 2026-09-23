@@ -128,13 +128,23 @@ where
     A: App + 'static,
     F: FnOnce(&mut Ui<A::Msg>) -> A,
 {
+    run_app_spec_with_watchdog(WindowSpec::new(name).theme(Theme::light()), make)
+}
+
+/// Like [`run_app_with_watchdog`], but with a caller-built [`WindowSpec`], so a
+/// test can exercise spec options such as [`Backdrop`] or [`TitleBar`].
+pub fn run_app_spec_with_watchdog<A, F>(spec: WindowSpec, make: F) -> Option<RunApp>
+where
+    A: App + 'static,
+    F: FnOnce(&mut Ui<A::Msg>) -> A,
+{
     win32ui::init();
 
     let timed_out = Rc::new(Cell::new(false));
     let watchdog = Rc::new(Cell::new(None));
     let timed_out_for_timer = Rc::clone(&timed_out);
     let watchdog_for_timer = Rc::clone(&watchdog);
-    let result = win32ui::run_app(WindowSpec::new(name).theme(Theme::light()), move |ui| {
+    let result = win32ui::run_app(spec, move |ui| {
         let id = ui.set_timer(WATCHDOG_MS).ok();
         watchdog_for_timer.set(id);
         ui.on_timer(move |fired| {

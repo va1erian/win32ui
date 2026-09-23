@@ -19,7 +19,7 @@ use crate::hwnd::Hwnd;
 use crate::message::{Message, TimerId};
 use crate::sys;
 use crate::theme::Theme;
-use crate::window::Window;
+use crate::window::{TitleBar, Window};
 
 use super::layout::split;
 use super::layout::tabs;
@@ -49,6 +49,7 @@ pub(crate) struct Core<M> {
     on_timer: RefCell<Option<TimerMapper<M>>>,
     accelerators: RefCell<Vec<Accelerator<M>>>,
     theme: Cell<Theme>,
+    title_bar: Cell<TitleBar>,
     layout: RefCell<Option<Layout>>,
     /// Split-divider child windows, kept alive for the layout's lifetime.
     dividers: RefCell<Vec<Window>>,
@@ -83,6 +84,7 @@ impl<M> Core<M> {
             on_timer: RefCell::new(None),
             accelerators: RefCell::new(Vec::new()),
             theme: Cell::new(theme),
+            title_bar: Cell::new(TitleBar::Standard),
             layout: RefCell::new(None),
             dividers: RefCell::new(Vec::new()),
             result: RefCell::new(None),
@@ -220,6 +222,16 @@ impl<M> Core<M> {
     /// Records a new theme for the window.
     pub(crate) fn set_theme_value(&self, theme: Theme) {
         self.theme.set(theme);
+    }
+
+    /// Records the window's title-bar style.
+    pub(crate) fn set_title_bar(&self, title_bar: TitleBar) {
+        self.title_bar.set(title_bar);
+    }
+
+    /// The window's title-bar style.
+    pub(crate) fn title_bar(&self) -> TitleBar {
+        self.title_bar.get()
     }
 
     /// Installs the layout tree, binds any split dividers, and lays it out
