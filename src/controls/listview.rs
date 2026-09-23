@@ -543,7 +543,7 @@ mod tests {
     struct NullHandler;
 
     impl WindowHandler for NullHandler {
-        fn message(&mut self, _window: &Window, _message: Message) -> Option<LResult> {
+        fn message(&self, _window: &Window, _message: Message) -> Option<LResult> {
             None
         }
     }
