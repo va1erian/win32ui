@@ -4,11 +4,12 @@
 use core::ffi::c_void;
 use core::ptr::{null_mut, slice_from_raw_parts_mut};
 
-use windows::Win32::Foundation::{COLORREF, HANDLE, HWND, POINT, RECT, SIZE};
+use windows::Win32::Foundation::{COLORREF, POINT, RECT, SIZE};
 use windows::Win32::Graphics::Gdi::{
     BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BeginPaint, BitBlt, CreateCompatibleBitmap,
     CreateCompatibleDC, CreateDIBSection, CreateFontW, CreatePen, CreateSolidBrush, DIB_RGB_COLORS,
-    DRAW_TEXT_FORMAT, DeleteDC, DeleteObject, DrawTextW, EndPaint, GetDC, GetStockObject,
+    DRAW_TEXT_FORMAT, DeleteDC, DeleteObject, DrawTextW, EndPaint, FONT_CHARSET,
+    FONT_CLIP_PRECISION, FONT_OUTPUT_PRECISION, FONT_QUALITY, GetDC, GetStockObject,
     GetTextExtentPoint32W, HBITMAP, HBRUSH, HDC, HFONT, HGDIOBJ, HPEN, NULL_PEN, PAINTSTRUCT,
     PS_SOLID, Polygon, ReleaseDC, SRCCOPY, SelectObject, SetBkMode, SetTextColor, TRANSPARENT,
 };
@@ -19,7 +20,7 @@ use crate::error::{Error, Result};
 use crate::geometry::{Rect, Size};
 use crate::hwnd::Hwnd;
 
-use super::raw_hwnd;
+use super::{raw_hwnd, win32_error};
 
 /// Creates a font for `family` with the given (negative) pixel height.
 pub(crate) fn create_font(family: &str, height: i32, weight: i32) -> Result<HFONT> {
@@ -40,10 +41,10 @@ pub(crate) fn create_font(family: &str, height: i32, weight: i32) -> Result<HFON
             0,
             0,
             0,
-            1,
-            0,
-            0,
-            0,
+            FONT_CHARSET(1),
+            FONT_OUTPUT_PRECISION(0),
+            FONT_CLIP_PRECISION(0),
+            FONT_QUALITY(0),
             0,
             PCWSTR(face.as_ptr()),
         )
@@ -103,16 +104,8 @@ pub(crate) fn create_dib(width: i32, height: i32, rgba: &[u8]) -> Result<HBITMAP
 
     let mut bits: *mut c_void = null_mut();
     // SAFETY: `info` and `bits` are valid for the call and output respectively.
-    let bitmap = unsafe {
-        CreateDIBSection(
-            HDC::default(),
-            &info,
-            DIB_RGB_COLORS,
-            &mut bits,
-            HANDLE::default(),
-            0,
-        )
-    }?;
+    let bitmap = unsafe { CreateDIBSection(None, &info, DIB_RGB_COLORS, &mut bits, None, 0) }
+        .map_err(win32_error)?;
     if bits.is_null() {
         // SAFETY: `bitmap` was just created and is still owned here.
         unsafe {
@@ -180,7 +173,7 @@ pub(crate) fn create_back_buffer(dc: HDC, width: i32, height: i32) -> (HDC, HBIT
     // SAFETY: `dc` is a live DC; the returned handles are tracked by the
     // caller and released in `destroy_back_buffer`.
     unsafe {
-        let memory_dc = CreateCompatibleDC(dc);
+        let memory_dc = CreateCompatibleDC(Some(dc));
         let bitmap = CreateCompatibleBitmap(dc, width.max(1), height.max(1));
         let old = SelectObject(memory_dc, HGDIOBJ(bitmap.0));
         (memory_dc, bitmap, old)
@@ -202,7 +195,7 @@ pub(crate) fn destroy_back_buffer(memory_dc: HDC, bitmap: HBITMAP, old: HGDIOBJ)
 pub(crate) fn blit(dest: HDC, source: HDC, width: i32, height: i32) {
     // SAFETY: both DCs are live and the rectangle is clipped by the caller.
     unsafe {
-        let _ = BitBlt(dest, 0, 0, width, height, source, 0, 0, SRCCOPY);
+        let _ = BitBlt(dest, 0, 0, width, height, Some(source), 0, 0, SRCCOPY);
     }
 }
 
@@ -298,7 +291,7 @@ pub(crate) fn draw_text(hdc: HDC, rect: Rect, text: &str, color: Color, format: 
 pub(crate) fn draw_bitmap(hdc: HDC, bitmap: HBITMAP, source: Size, target: Rect) {
     // SAFETY: all handles are live; `source`/`target` are plain geometry.
     unsafe {
-        let memory_dc = CreateCompatibleDC(hdc);
+        let memory_dc = CreateCompatibleDC(Some(hdc));
         let old = SelectObject(memory_dc, HGDIOBJ(bitmap.0));
         let _ = BitBlt(
             hdc,
@@ -306,7 +299,7 @@ pub(crate) fn draw_bitmap(hdc: HDC, bitmap: HBITMAP, source: Size, target: Rect)
             target.top,
             source.width.min(target.width()),
             source.height.min(target.height()),
-            memory_dc,
+            Some(memory_dc),
             0,
             0,
             SRCCOPY,
@@ -332,7 +325,7 @@ pub(crate) fn text_extent(hdc: HDC, text: &str) -> Size {
 pub(crate) fn measure_text(font: HFONT, text: &str) -> Size {
     // SAFETY: a null window asks for the screen DC, which is always available.
     unsafe {
-        let dc = GetDC(HWND::default());
+        let dc = GetDC(None);
         if dc.0.is_null() {
             return Size::default();
         }
@@ -341,7 +334,7 @@ pub(crate) fn measure_text(font: HFONT, text: &str) -> Size {
         let mut size = SIZE::default();
         let _ = GetTextExtentPoint32W(dc, &wide, &mut size);
         SelectObject(dc, old);
-        let _ = ReleaseDC(HWND::default(), dc);
+        let _ = ReleaseDC(None, dc);
         Size::new(size.cx, size.cy)
     }
 }

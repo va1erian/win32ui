@@ -46,7 +46,15 @@ pub(crate) fn init_common_controls() -> Result<()> {
 fn send(hwnd: Hwnd, msg: u32, wparam: usize, lparam: isize) -> isize {
     // SAFETY: only integer values are forwarded; the caller guarantees any
     // pointer in `lparam` points at a valid struct for the duration.
-    unsafe { SendMessageW(raw_hwnd(hwnd), msg, WPARAM(wparam), LPARAM(lparam)).0 }
+    unsafe {
+        SendMessageW(
+            raw_hwnd(hwnd),
+            msg,
+            Some(WPARAM(wparam)),
+            Some(LPARAM(lparam)),
+        )
+        .0
+    }
 }
 
 fn write_wide(destination: *mut u16, capacity: i32, value: &str) {

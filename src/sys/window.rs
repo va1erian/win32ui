@@ -24,7 +24,7 @@ use crate::geometry::Rect;
 use crate::hwnd::Hwnd;
 use crate::window::WindowHandler;
 
-use super::{hwnd_from, raw_hwnd};
+use super::{hwnd_from, raw_hwnd, win32, win32_error};
 
 /// How a window should be shown by [`show`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -39,7 +39,7 @@ pub(crate) enum ShowKind {
 fn module_instance() -> Result<HINSTANCE> {
     // SAFETY: a null module name asks for the current process's module, which
     // always exists.
-    let module = unsafe { GetModuleHandleW(None) }?;
+    let module = unsafe { GetModuleHandleW(None) }.map_err(win32_error)?;
     Ok(HINSTANCE(module.0))
 }
 
@@ -47,7 +47,7 @@ fn module_instance() -> Result<HINSTANCE> {
 fn arrow_cursor() -> Result<HCURSOR> {
     // SAFETY: `IDC_ARROW` is a system resource constant and a null module name
     // selects the shared system cursor.
-    unsafe { LoadCursorW(None, IDC_ARROW) }.map_err(Error::from)
+    unsafe { LoadCursorW(None, IDC_ARROW) }.map_err(win32_error)
 }
 
 /// Registers a window class whose instances share [`window_proc`].
@@ -78,7 +78,7 @@ pub(crate) fn unregister_class(name: &[u16]) {
         // SAFETY: `name` is the same nul-terminated string used to register the
         // class; unregistering a class with no live windows is allowed.
         unsafe {
-            let _ = UnregisterClassW(PCWSTR(name.as_ptr()), instance);
+            let _ = UnregisterClassW(PCWSTR(name.as_ptr()), Some(instance));
         }
     }
 }
@@ -120,9 +120,9 @@ pub(crate) fn create<H: WindowHandler + 'static>(
             params.bounds.top,
             params.bounds.width(),
             params.bounds.height(),
-            params.parent.map(raw_hwnd).unwrap_or_default(),
-            HMENU(params.menu as *mut c_void),
-            instance,
+            params.parent.map(raw_hwnd),
+            Some(HMENU(params.menu as *mut c_void)),
+            Some(instance),
             Some(raw as *const c_void),
         )
     };
@@ -136,7 +136,7 @@ pub(crate) fn create<H: WindowHandler + 'static>(
             let end = params.class_name.len().saturating_sub(1);
             Err(Error::CreateWindow {
                 class: String::from_utf16_lossy(&params.class_name[..end]),
-                source,
+                source: win32(source),
             })
         }
     }
@@ -164,13 +164,13 @@ pub(crate) fn create_control(
             bounds.top,
             bounds.width(),
             bounds.height(),
-            raw_hwnd(parent),
-            HMENU(id as *mut c_void),
-            module_instance()?,
+            Some(raw_hwnd(parent)),
+            Some(HMENU(id as *mut c_void)),
+            Some(module_instance()?),
             None,
         )
     }
-    .map_err(Error::from)
+    .map_err(win32_error)
 }
 
 thread_local! {
@@ -300,7 +300,7 @@ pub(crate) fn remove_subclass(hwnd: Hwnd, proc: SUBCLASSPROC, id: usize) -> bool
 /// Whether `hwnd` still identifies a live window.
 pub(crate) fn is_window(hwnd: Hwnd) -> bool {
     // SAFETY: `IsWindow` only inspects the handle.
-    unsafe { windows::Win32::UI::WindowsAndMessaging::IsWindow(raw_hwnd(hwnd)).as_bool() }
+    unsafe { windows::Win32::UI::WindowsAndMessaging::IsWindow(Some(raw_hwnd(hwnd))).as_bool() }
 }
 
 /// The client area of `hwnd`, in pixels.
@@ -345,14 +345,14 @@ pub(crate) fn move_window(hwnd: Hwnd, bounds: Rect) {
 pub(crate) fn set_title(hwnd: Hwnd, title: &str) -> Result<()> {
     let title = HSTRING::from(title);
     // SAFETY: `title` outlives the call.
-    unsafe { SetWindowTextW(raw_hwnd(hwnd), &title) }.map_err(Error::from)
+    unsafe { SetWindowTextW(raw_hwnd(hwnd), &title) }.map_err(win32_error)
 }
 
 /// Schedules a full repaint.
 pub(crate) fn invalidate(hwnd: Hwnd) {
     // SAFETY: `None`/true means "erase and repaint the whole client area".
     unsafe {
-        let _ = InvalidateRect(raw_hwnd(hwnd), None, true);
+        let _ = InvalidateRect(Some(raw_hwnd(hwnd)), None, true);
     }
 }
 
@@ -374,9 +374,9 @@ pub(crate) fn show(hwnd: Hwnd, kind: ShowKind) {
 /// Starts a timer, returning its id.
 pub(crate) fn set_timer(hwnd: Hwnd, millis: u32) -> Result<usize> {
     // SAFETY: `None` installs a WM_TIMER message rather than a callback.
-    let id = unsafe { SetTimer(raw_hwnd(hwnd), 0, millis, None) };
+    let id = unsafe { SetTimer(Some(raw_hwnd(hwnd)), 0, millis, None) };
     if id == 0 {
-        Err(Error::Win32(windows::core::Error::from_win32()))
+        Err(win32_error(windows::core::Error::from_thread()))
     } else {
         Ok(id)
     }
@@ -386,7 +386,7 @@ pub(crate) fn set_timer(hwnd: Hwnd, millis: u32) -> Result<usize> {
 pub(crate) fn kill_timer(hwnd: Hwnd, id: usize) {
     // SAFETY: killing an unknown id is a documented no-op.
     unsafe {
-        let _ = KillTimer(raw_hwnd(hwnd), id);
+        let _ = KillTimer(Some(raw_hwnd(hwnd)), id);
     }
 }
 
@@ -395,13 +395,13 @@ pub(crate) fn post_message(hwnd: Hwnd, msg: u32, wparam: usize, lparam: isize) -
     // SAFETY: `PostMessageW` only queues the values.
     unsafe {
         windows::Win32::UI::WindowsAndMessaging::PostMessageW(
-            raw_hwnd(hwnd),
+            Some(raw_hwnd(hwnd)),
             msg,
             WPARAM(wparam),
             LPARAM(lparam),
         )
     }
-    .map_err(Error::from)
+    .map_err(win32_error)
 }
 
 /// Sends a message and waits for its result.
@@ -411,8 +411,8 @@ pub(crate) fn send_message(hwnd: Hwnd, msg: u32, wparam: usize, lparam: isize) -
         windows::Win32::UI::WindowsAndMessaging::SendMessageW(
             raw_hwnd(hwnd),
             msg,
-            WPARAM(wparam),
-            LPARAM(lparam),
+            Some(WPARAM(wparam)),
+            Some(LPARAM(lparam)),
         )
         .0
     }

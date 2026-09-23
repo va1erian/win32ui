@@ -40,7 +40,7 @@ pub(crate) fn pump() -> Pumped {
     let mut msg = MSG::default();
     // SAFETY: `msg` is a valid, aligned out-pointer and `GetMessageW` fully
     // initialises it before returning a positive value.
-    let result = unsafe { GetMessageW(&mut msg, HWND::default(), 0, 0) };
+    let result = unsafe { GetMessageW(&mut msg, None, 0, 0) };
     match result.0 {
         0 => return Pumped::Quit(msg.wParam.0 as i32),
         -1 => return Pumped::Error,

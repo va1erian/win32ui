@@ -7,6 +7,13 @@
 //! cargo run -p win32ui --example demo
 //! ```
 
+// The demo is Win32-only. It lives in a `#[rustfmt::skip]` module so the
+// platform body keeps its original layout; on non-Windows builds an empty
+// `main` keeps `cargo check --all-targets` happy (the library is empty there).
+#[cfg(windows)]
+#[rustfmt::skip]
+mod platform {
+
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -21,7 +28,7 @@ const ID_TREE: usize = 1000;
 const ID_LIST: usize = 1001;
 const ID_STATUS: usize = 1002;
 
-fn main() {
+pub(crate) fn main() {
     win32ui::init();
 
     let theme = Theme::dark();
@@ -525,3 +532,13 @@ fn dot_icon(color: Color) -> Bitmap {
     }
     Bitmap::from_rgba(SIZE, SIZE, &pixels).expect("build a demo icon")
 }
+
+} // mod platform
+
+#[cfg(windows)]
+fn main() {
+    platform::main();
+}
+
+#[cfg(not(windows))]
+fn main() {}

@@ -13,7 +13,7 @@ thiserror = "2"
 [target.'cfg(windows)'.dependencies]
 # Deliberately narrow: one feature group per Win32 namespace actually used, so
 # the generated bindings (and the resulting binary) stay as small as possible.
-windows = { version = "0.58", default-features = false, features = [
+windows = { version = "0.62", default-features = false, features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
     "Win32_System_LibraryLoader",
