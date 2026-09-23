@@ -102,7 +102,11 @@ impl<M> ToolbarWidget<M> {
         let padding = dip(10.0).to_px(dpi).value();
         let icon = dip(16.0).to_px(dpi).value();
         let gap = dip(6.0).to_px(dpi).value();
-        let height = font.pixel_height() + dip(12.0).to_px(dpi).value();
+        // `pixel_height` is the font's em box, not its glyphs; measure the real
+        // line height (ascent + descent) so labels are never clipped. Add a 2dip
+        // button margin and 4dip of text padding on each side.
+        let line_height = sys::gdi::measure_text(font.raw(), "Ag").height;
+        let height = line_height + dip(12.0).to_px(dpi).value();
 
         let widths = items
             .iter()
@@ -140,6 +144,19 @@ impl<M> ToolbarWidget<M> {
         self.rects().iter().position(|rect| rect.contains(point))
     }
 
+    /// The rectangle the label is drawn in: the full button height (so the text
+    /// is vertically centred without clipping ascenders or descenders) with a
+    /// 6dip horizontal inset for padding.
+    fn text_rect(&self, button: Rect) -> Rect {
+        let inset = dip(6.0).to_px(self.dpi).value();
+        Rect::new(
+            button.left + inset,
+            button.top,
+            button.right - inset,
+            button.bottom,
+        )
+    }
+
     fn draw(&self, canvas: &Canvas, bounds: Rect, theme: &ToolbarTheme) {
         canvas.fill_rect(bounds, theme.background);
         let radius = dip(4.0).to_px(self.dpi).value();
@@ -158,10 +175,10 @@ impl<M> ToolbarWidget<M> {
             let button = rect.shrink(dip(2.0).to_px(self.dpi).value());
             canvas.round_rect(button, radius, background, None);
 
-            let mut text_rect = button.shrink(dip(6.0).to_px(self.dpi).value());
+            let inset = dip(6.0).to_px(self.dpi).value();
+            let mut text_rect = self.text_rect(button);
             if let Some(icon) = &self.items[index].icon {
                 let icon_size = icon.size();
-                let inset = dip(6.0).to_px(self.dpi).value();
                 let top = button.top + (button.height() - icon_size.height) / 2;
                 let icon_rect = Rect::new(
                     button.left + inset,
@@ -282,5 +299,28 @@ impl<M: 'static> AsControl for Toolbar<M> {
 impl<M: 'static> Themed for Toolbar<M> {
     fn apply_theme(&self, theme: &Theme) {
         self.custom.apply_theme(theme);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The label rect must span the whole button height so `DrawText`'s
+    /// vertical centring never clips ascenders or descenders (the regression:
+    /// the rect was inset 6dip on every side, shrinking it below the text).
+    #[test]
+    fn text_rect_spans_the_full_button_height() {
+        let widget = ToolbarWidget::<()>::new(vec![ToolbarItem::new("Ag")], 96).unwrap();
+        let button = Rect::new(2, 2, 200, 2 + widget.height - 4);
+        let rect = widget.text_rect(button);
+        assert_eq!(rect.top, button.top, "the label top was inset");
+        assert_eq!(rect.bottom, button.bottom, "the label bottom was inset");
+        assert!(
+            rect.height() >= widget.font.pixel_height(),
+            "the label rect ({}) is shorter than the font ({})",
+            rect.height(),
+            widget.font.pixel_height()
+        );
     }
 }
