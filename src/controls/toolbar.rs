@@ -15,8 +15,9 @@ use crate::app::Ui;
 use crate::color::Color;
 use crate::controls::control::{AsControl, Control};
 use crate::controls::custom::{Custom, CustomWidget, Input, WidgetCx};
+use crate::controls::toolbar_icon::{ToolbarIcon, draw_icon};
 use crate::error::Result;
-use crate::gdi::{Bitmap, Canvas, Font, TextFormat};
+use crate::gdi::{Canvas, Font, TextFormat};
 use crate::geometry::{Point, Rect, Size};
 use crate::message::MouseButton;
 use crate::sys;
@@ -26,7 +27,7 @@ use crate::units::dip;
 /// One toolbar button.
 pub struct ToolbarItem<M> {
     label: String,
-    icon: Option<Bitmap>,
+    icon: Option<ToolbarIcon>,
     on_click: Option<Box<dyn Fn() -> Option<M>>>,
 }
 
@@ -40,8 +41,8 @@ impl<M> ToolbarItem<M> {
         }
     }
 
-    /// Adds an icon.
-    pub fn with_icon(mut self, icon: Bitmap) -> ToolbarItem<M> {
+    /// Adds a vector [`ToolbarIcon`], drawn anti-aliased at the toolbar's DPI.
+    pub fn with_icon(mut self, icon: ToolbarIcon) -> ToolbarItem<M> {
         self.icon = Some(icon);
         self
     }
@@ -177,16 +178,16 @@ impl<M> ToolbarWidget<M> {
 
             let inset = dip(6.0).to_px(self.dpi).value();
             let mut text_rect = self.text_rect(button);
-            if let Some(icon) = &self.items[index].icon {
-                let icon_size = icon.size();
-                let top = button.top + (button.height() - icon_size.height) / 2;
+            if let Some(icon) = self.items[index].icon {
+                let icon_size = dip(16.0).to_px(self.dpi).value();
+                let top = button.top + (button.height() - icon_size) / 2;
                 let icon_rect = Rect::new(
                     button.left + inset,
                     top,
-                    button.left + inset + icon_size.width,
-                    top + icon_size.height,
+                    button.left + inset + icon_size,
+                    top + icon_size,
                 );
-                canvas.draw_bitmap(icon, icon_rect);
+                draw_icon(canvas, icon, icon_rect, theme.text);
                 text_rect.left = icon_rect.right + inset;
             }
             canvas.with_font(&self.font, |canvas| {

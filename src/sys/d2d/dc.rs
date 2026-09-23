@@ -9,7 +9,7 @@ use core::cell::Cell;
 use core::ffi::c_void;
 use std::cell::RefCell;
 
-use windows::Win32::Graphics::Gdi::{GetDeviceCaps, HDC, LOGPIXELSX};
+use windows::Win32::Graphics::Gdi::HDC;
 
 use crate::error::{Error, Result};
 use crate::geometry::Rect;
@@ -45,7 +45,6 @@ pub(crate) fn begin(hdc: isize, rect: Rect) -> Result<()> {
             *slot = None;
             return Err(error);
         }
-        target.set_dpi(dpi(dc) as f32);
         target.begin_draw();
         DRAWING.set(true);
         Ok(())
@@ -79,13 +78,6 @@ pub(crate) fn with<R>(draw: impl FnOnce(&mut Target) -> R) -> Option<R> {
 pub(crate) fn discard() {
     DC_TARGET.with(|cell| *cell.borrow_mut() = None);
     DRAWING.set(false);
-}
-
-/// The device context's dots per inch (96 when it cannot be read).
-fn dpi(hdc: HDC) -> u32 {
-    // SAFETY: `GetDeviceCaps` only reads the DC; a stale handle returns 0.
-    let dpi = unsafe { GetDeviceCaps(Some(hdc), LOGPIXELSX) };
-    if dpi <= 0 { 96 } else { dpi as u32 }
 }
 
 #[cfg(test)]
