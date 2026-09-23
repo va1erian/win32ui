@@ -10,6 +10,7 @@ pub(crate) mod control;
 pub(crate) mod dispatch;
 pub(crate) mod dpi;
 pub(crate) mod gdi;
+pub(crate) mod layout;
 pub(crate) mod message;
 pub(crate) mod theme;
 pub(crate) mod window;

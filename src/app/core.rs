@@ -11,10 +11,13 @@
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
 
+use crate::geometry::Rect;
 use crate::hwnd::Hwnd;
 use crate::message::TimerId;
 use crate::sys;
 use crate::theme::Theme;
+
+use super::layout::{Layout, Placed};
 
 /// Maps a close request to an optional app message.
 type CloseMapper<M> = Box<dyn Fn() -> Option<M>>;
@@ -29,6 +32,7 @@ pub(crate) struct Core<M> {
     on_close: RefCell<Option<CloseMapper<M>>>,
     on_timer: RefCell<Option<TimerMapper<M>>>,
     theme: Cell<Theme>,
+    layout: RefCell<Option<Layout>>,
 }
 
 impl<M> Core<M> {
@@ -40,6 +44,7 @@ impl<M> Core<M> {
             on_close: RefCell::new(None),
             on_timer: RefCell::new(None),
             theme: Cell::new(theme),
+            layout: RefCell::new(None),
         }
     }
 
@@ -111,5 +116,59 @@ impl<M> Core<M> {
     /// Records a new theme for the window.
     pub(crate) fn set_theme_value(&self, theme: Theme) {
         self.theme.set(theme);
+    }
+
+    /// Installs the layout tree and lays it out immediately.
+    pub(crate) fn set_layout(&self, layout: Layout) {
+        *self.layout.borrow_mut() = Some(layout);
+        self.relayout();
+    }
+
+    /// Whether a layout tree has been installed.
+    pub(crate) fn has_layout(&self) -> bool {
+        self.layout.borrow().is_some()
+    }
+
+    /// Lays the tree out again at the window's current DPI.
+    pub(crate) fn relayout(&self) {
+        let hwnd = self.hwnd.get();
+        if hwnd.is_null() {
+            return;
+        }
+        self.relayout_at(sys::dpi::window_dpi(hwnd));
+    }
+
+    /// Lays the tree out again at `dpi` (used on `WM_DPICHANGED`, where the
+    /// message carries the new value).
+    pub(crate) fn relayout_with_dpi(&self, dpi: u32) {
+        self.relayout_at(dpi);
+    }
+
+    fn relayout_at(&self, dpi: u32) {
+        let hwnd = self.hwnd.get();
+        if hwnd.is_null() {
+            return;
+        }
+        let Some(layout) = self.layout.borrow().clone() else {
+            return;
+        };
+
+        let client = sys::window::client_rect(hwnd);
+        let placed: Vec<Placed> = layout
+            .compute(client, dpi)
+            .into_iter()
+            .filter(|placed| placed.handle.hwnd().is_alive())
+            .collect();
+        let moves: Vec<(Hwnd, Rect)> = placed
+            .iter()
+            .map(|placed| (placed.handle.hwnd(), placed.rect))
+            .collect();
+
+        // Update the widgets' cached bounds before the batched OS move, so the
+        // layout and the widgets agree even if a child handles `WM_SIZE`.
+        for placed in &placed {
+            placed.handle.set_bounds(placed.rect);
+        }
+        sys::layout::apply(&moves);
     }
 }

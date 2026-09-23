@@ -61,6 +61,9 @@ win32ui::run_app(WindowSpec::new("Mail"), |ui| {
 })
 ```
 
+`column!` shares its name with a std prelude macro, so the layout macros are
+imported explicitly: `use win32ui::{column, row};`.
+
 The design choices, and why:
 
 - **Events are mapped to the app's own `Msg`, not handled in callbacks.** A
@@ -80,8 +83,9 @@ The design choices, and why:
 - **No control ids.** Widgets are values you hold. Notifications are routed
   internally by `HWND`. (#33)
 - **Layout is a tree the window owns.** `column!`/`row!` with `fill`/`width`,
-  re-laid out on resize and DPI change. The app never handles `WM_SIZE`.
-  (#34, on top of `Dock`/`Stack`)
+  re-laid out on resize and DPI change; the moves are batched with
+  `DeferWindowPos`, so a resize doesn't flicker. The app never handles
+  `WM_SIZE`. (#34, on top of `Dock`/`Stack`)
 - **Typed data, not strings and indices.** `ListView<T>` has typed column
   accessors over a `ListModel`, `TreeView<K>` has a keyed lazy model,
   `ComboBox<T>` and `RadioGroup<T>` return values rather than indices. (#19,
@@ -102,9 +106,9 @@ already retained), and closures that capture shared mutable app state.
 | `Dock`/`Stack` layout arithmetic | exists |
 | Owner-drawn dark `ListView`, `TreeView`, `Toolbar`, `StatusBar`; `Label` | exist (widget-layer API) |
 | Widget layer: `App`/`Ui`, `Msg` mapping, `ControlExt`, `run_app` | exists |
+| Layout tree (`column!`/`row!`, `fill`/`width`, relayout on resize/DPI) | exists |
 | Theming foundation: tokens, `Themed`, live switching, central `WM_CTLCOLOR*` | #30 |
 | Edit, buttons, ComboBox, tabs, menus, tooltips, progress/task dialog, split/scroll | #11–#18 |
-| Layout tree (`column!`/`row!`, `fill`/`width`) | #34 |
 | Direct2D/DirectWrite (anti-aliasing, colour emoji) | #22 |
 
 ## Source layout
@@ -122,6 +126,7 @@ src/
   window.rs       `WindowClass`, `Window`, `WindowHandler`, style builders
   looper.rs       `run()` / `quit()`
   app/            `App`, `Ui`, the per-window message queue, `run_app`
+  app/layout/     the layout tree: `column!`/`row!`, `fill`/`width`, relayout
   gdi/            RAII `Font` / `Brush` / `Pen` / `Bitmap`, `Paint`, `Canvas`
   controls/       `ListView`, `TreeView`, `Toolbar`, `StatusBar`, `Label`
   controls/control.rs   `Control`, `AsControl`, `ControlExt`, `HasText`

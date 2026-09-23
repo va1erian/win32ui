@@ -62,7 +62,7 @@ pub mod gdi;
 pub mod looper;
 mod sys;
 
-pub use app::{App, Ui, WindowSpec, run_app};
+pub use app::{App, IntoLayoutItem, Layout, LayoutExt, LayoutItem, Ui, WindowSpec, run_app};
 pub use capture::RgbaImage;
 pub use color::Color;
 pub use error::{Error, Result, Win32Error};
@@ -95,13 +95,14 @@ pub use looper::{quit, run, run_modal};
 pub mod prelude {
     pub use crate::{
         App, AsControl, Color, Column, Command, CommandNotification, Control, ControlExt,
-        CursorShape, Dip, Dock, DockLayout, Error, HasText, HitTest, Hwnd, Icon, Insets, Key,
-        LResult, Label, ListSource, ListView, ListViewEvent, ListViewTheme, Message, MinMaxInfo,
-        Modifiers, MouseButton, Notify, Placement, Point, Px, Rect, Result, RgbaImage, ShowState,
-        SortDirection, Stack, StackDirection, StackSlot, StatusBar, StatusBarTheme, Theme, Themed,
-        TimerId, Toolbar, ToolbarItem, ToolbarTheme, TreeEntry, TreeSource, TreeView,
-        TreeViewEvent, Ui, Win32Error, Window, WindowClass, WindowExStyle, WindowHandler,
-        WindowSpec, WindowStyle, dip, monitor_work_areas, run_app,
+        CursorShape, Dip, Dock, DockLayout, Error, HasText, HitTest, Hwnd, Icon, Insets,
+        IntoLayoutItem, Key, LResult, Label, Layout, LayoutExt, LayoutItem, ListSource, ListView,
+        ListViewEvent, ListViewTheme, Message, MinMaxInfo, Modifiers, MouseButton, Notify,
+        Placement, Point, Px, Rect, Result, RgbaImage, ShowState, SortDirection, Stack,
+        StackDirection, StackSlot, StatusBar, StatusBarTheme, Theme, Themed, TimerId, Toolbar,
+        ToolbarItem, ToolbarTheme, TreeEntry, TreeSource, TreeView, TreeViewEvent, Ui, Win32Error,
+        Window, WindowClass, WindowExStyle, WindowHandler, WindowSpec, WindowStyle, column, dip,
+        monitor_work_areas, row, run_app,
     };
     pub use crate::{clipboard, gdi, looper, quit, run, run_modal};
 }
