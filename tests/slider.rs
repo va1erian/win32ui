@@ -20,7 +20,8 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetCapture, VK_END, VK_HOME, VK_LEFT, VK_NEXT, VK_PRIOR, VK_RIGHT,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    SendMessageW, WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_PAINT,
+    GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN, SendMessageW, SetCursorPos, WM_KEYDOWN,
+    WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_PAINT,
 };
 
 const MAX: f64 = 1000.0;
@@ -98,7 +99,23 @@ impl Rig {
 /// Runs `script` against a horizontal slider over `0.0..=MAX` in a window,
 /// returning every message the app received. `None` when the session cannot
 /// create windows.
+/// Parks the real pointer in the far corner of the primary screen. These tests
+/// inject their own `WM_MOUSEMOVE`s and count the resulting events; a real pointer
+/// resting over the test window (a CI runner, a developer at the machine) would
+/// add genuine moves and hovers to the log. Harmless when there is no interactive
+/// desktop.
+fn park_real_pointer() {
+    // SAFETY: plain integer arguments; a failure (no interactive desktop) is ignored.
+    unsafe {
+        let _ = SetCursorPos(
+            GetSystemMetrics(SM_CXSCREEN) - 1,
+            GetSystemMetrics(SM_CYSCREEN) - 1,
+        );
+    }
+}
+
 fn run(name: &str, configure: fn(Slider<Msg>) -> Slider<Msg>, script: Script) -> Option<Vec<Msg>> {
+    park_real_pointer();
     let log = Rc::new(RefCell::new(Vec::new()));
     let log_for_make = Rc::clone(&log);
     let run = run_app_with_watchdog(name, move |ui| {
