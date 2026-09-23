@@ -287,6 +287,18 @@ pub(crate) fn set_tab_stop(hwnd: Hwnd, tab_stop: bool) {
     }
 }
 
+/// Re-parents a child window, keeping its coordinates in the new parent.
+pub(crate) fn set_parent(child: Hwnd, parent: Hwnd) {
+    // SAFETY: both handles are live child windows; `SetParent` only changes the
+    // parent linkage and returns the previous parent, which needs no cleanup.
+    unsafe {
+        let _ = windows::Win32::UI::WindowsAndMessaging::SetParent(
+            raw_hwnd(child),
+            Some(raw_hwnd(parent)),
+        );
+    }
+}
+
 /// Sets the keyboard focus to `hwnd`.
 pub(crate) fn set_focus(hwnd: Hwnd) {
     // SAFETY: only the handle is passed; the returned previous focus needs no

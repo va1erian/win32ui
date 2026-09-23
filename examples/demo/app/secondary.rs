@@ -12,6 +12,7 @@ use win32ui::column;
 use win32ui::prelude::*;
 
 use super::screenshot;
+use super::settings::SettingsPage;
 
 /// A non-modal window's message type: its own counter, unrelated to the main
 /// app's `Msg`.
@@ -28,6 +29,10 @@ pub(crate) struct PrefsApp {
     // Kept alive: the toolbar owns its child window and would be destroyed (and
     // vanish) if it were dropped when `new` returns.
     _toolbar: Toolbar<PrefsMsg>,
+    // The settings page is much taller than the window, so it lives in a
+    // `ScrollView`: a native, themed vertical scrollbar scrolls it.
+    _scroll: ScrollView,
+    _settings: Custom<SettingsPage, PrefsMsg>,
 }
 
 impl PrefsApp {
@@ -41,11 +46,20 @@ impl PrefsApp {
             ],
         )
         .expect("prefs toolbar");
-        ui.set_layout(column![toolbar, label.height(dip(28.0))].spacing(dip(8.0)));
+
+        let scroll = ScrollView::new(ui).expect("scroll view");
+        let settings = Custom::new(ui, SettingsPage::new()).expect("settings page");
+        scroll.set_content(&settings);
+        // Start a little way down so a screenshot shows the scrollbar in use.
+        scroll.scroll_to(dip(40.0).to_px(ui.dpi()));
+
+        ui.set_layout(column![toolbar, label.height(dip(28.0)), scroll.fill(1)].spacing(dip(8.0)));
         PrefsApp {
             count: 0,
             label,
             _toolbar: toolbar,
+            _scroll: scroll,
+            _settings: settings,
         }
     }
 }

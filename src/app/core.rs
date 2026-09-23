@@ -21,7 +21,9 @@ use crate::sys;
 use crate::theme::Theme;
 use crate::window::Window;
 
-use super::layout::{Layout, Placed};
+use super::layout::split;
+use super::layout::{Content, Layout, LayoutItem, Placed};
+use super::ui::Ui;
 
 /// Maps a close request to an optional app message.
 type CloseMapper<M> = Box<dyn Fn() -> Option<M>>;
@@ -47,6 +49,8 @@ pub(crate) struct Core<M> {
     accelerators: RefCell<Vec<Accelerator<M>>>,
     theme: Cell<Theme>,
     layout: RefCell<Option<Layout>>,
+    /// Split-divider child windows, kept alive for the layout's lifetime.
+    dividers: RefCell<Vec<Window>>,
     result: RefCell<Option<Box<dyn Any>>>,
     quits_loop: bool,
     // Holds the `Window` (and so its class registration) alive for the window's
@@ -79,6 +83,7 @@ impl<M> Core<M> {
             accelerators: RefCell::new(Vec::new()),
             theme: Cell::new(theme),
             layout: RefCell::new(None),
+            dividers: RefCell::new(Vec::new()),
             result: RefCell::new(None),
             quits_loop,
             _window: RefCell::new(None),
@@ -216,10 +221,40 @@ impl<M> Core<M> {
         self.theme.set(theme);
     }
 
-    /// Installs the layout tree and lays it out immediately.
-    pub(crate) fn set_layout(&self, layout: Layout) {
+    /// Installs the layout tree, binds any split dividers, and lays it out
+    /// immediately.
+    pub(crate) fn set_layout(&self, layout: Layout, ui: Ui<M>)
+    where
+        M: 'static,
+    {
+        self.bind_splits(&layout, &ui);
         *self.layout.borrow_mut() = Some(layout);
         self.relayout();
+    }
+
+    /// Creates the divider window for every split node in `layout`.
+    fn bind_splits(&self, layout: &Layout, ui: &Ui<M>)
+    where
+        M: 'static,
+    {
+        for item in layout.items() {
+            self.bind_item(item, ui);
+        }
+    }
+
+    fn bind_item(&self, item: &LayoutItem, ui: &Ui<M>)
+    where
+        M: 'static,
+    {
+        match item.content() {
+            Content::Nested(nested) => self.bind_splits(nested, ui),
+            Content::Split(node) => {
+                if let Some(window) = split::build_divider(ui, node) {
+                    self.dividers.borrow_mut().push(window);
+                }
+            }
+            Content::Widget(_) => {}
+        }
     }
 
     /// Whether a layout tree has been installed.

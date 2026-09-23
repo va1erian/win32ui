@@ -81,6 +81,8 @@ pub enum Input {
     },
     /// The cursor left the widget.
     MouseLeave,
+    /// Another window took the mouse capture, ending any drag.
+    CaptureChanged,
     /// A key went down.
     KeyDown {
         /// The virtual key.
@@ -131,6 +133,7 @@ impl Input {
                 modifiers,
             },
             Message::MouseLeave => Input::MouseLeave,
+            Message::CaptureChanged => Input::CaptureChanged,
             Message::KeyDown {
                 key,
                 modifiers,

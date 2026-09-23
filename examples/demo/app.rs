@@ -13,6 +13,7 @@ mod icons;
 mod screenshot;
 mod search;
 mod secondary;
+mod settings;
 mod swatch;
 mod text_specimen;
 
@@ -21,7 +22,7 @@ use std::rc::Rc;
 use win32ui::prelude::*;
 // `column!` is also a std prelude macro (an array helper), so the layout macros
 // are imported explicitly to disambiguate.
-use win32ui::{column, row};
+use win32ui::{column, row, split_row};
 
 use self::data::{LibraryTree, TrackModel, generate_tracks};
 use self::icons::dot_icon;
@@ -239,12 +240,20 @@ pub(crate) fn main() {
                     progress.height(dip(8.0)),
                     swatch.height(dip(24.0)),
                     row![
-                        tree.width(dip(220.0)),
-                        column![
-                            row![search_label.width(dip(60.0)), search.fill(1)].height(dip(28.0)),
-                            list.fill(1),
+                        // A draggable split: the tree on the left, the search
+                        // box and list on the right. `on_moved` lets the app
+                        // persist the divider position.
+                        split_row![
+                            tree,
+                            column![
+                                row![search_label.width(dip(60.0)), search.fill(1)]
+                                    .height(dip(28.0)),
+                                list.fill(1),
+                            ]
                         ]
-                        .fill(1),
+                        .position(dip(220.0))
+                        .min(dip(120.0), dip(220.0))
+                        .on_moved(|position| Some(Msg::SplitMoved(position))),
                         options.width(dip(220.0))
                     ]
                     .fill(1),
@@ -276,6 +285,7 @@ pub(crate) fn main() {
                 order,
                 sort: None,
                 now_playing: None,
+                split_position: dip(220.0),
                 prefs: None,
             };
 
@@ -376,6 +386,7 @@ enum Msg {
     Refresh,
     ToggleTheme,
     Clear,
+    SplitMoved(Dip),
     TreeSelect,
     Play(usize),
     Selected(Vec<usize>),
@@ -454,6 +465,7 @@ struct App {
     order: Vec<usize>,
     sort: Option<(usize, bool)>,
     now_playing: Option<usize>,
+    split_position: Dip,
     prefs: Option<WindowHandle<PrefsMsg>>,
 }
 
@@ -591,6 +603,10 @@ impl win32ui::App for App {
                 };
                 ui.set_theme(next);
                 self.set_status(&format!("Theme: {choice:?}"));
+            }
+            Msg::SplitMoved(position) => {
+                self.split_position = position;
+                self.set_status(&format!("Split at {:.0} dip", position.value()));
             }
             Msg::TreeSelect => {
                 let label = self

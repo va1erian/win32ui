@@ -23,6 +23,7 @@ pub mod progressbar;
 pub mod progressbar_theme;
 pub mod radio;
 pub(crate) mod registry;
+pub mod scrollview;
 pub mod statusbar;
 pub mod taskdialog;
 pub mod toolbar;
