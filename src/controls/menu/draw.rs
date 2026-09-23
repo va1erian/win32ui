@@ -134,14 +134,24 @@ pub(crate) fn paint_item(
 
     let selected = state & ODS_SELECTED.0 != 0;
     let disabled = state & ODS_DISABLED.0 != 0 || !item.enabled;
-    canvas.fill_rect(
-        area,
-        if selected {
-            paint.selection
-        } else {
-            paint.background
-        },
-    );
+    if selected {
+        // A rounded, inset highlight, anti-aliased like the glyphs.
+        let inset = dip(2.0).to_px(dpi).value();
+        let radius = dip(4.0).to_px(dpi).value();
+        canvas.round_rect(
+            Rect::new(
+                area.left + inset,
+                area.top + 1,
+                area.right - inset,
+                area.bottom - 1,
+            ),
+            radius,
+            paint.selection,
+            None,
+        );
+    } else {
+        canvas.fill_rect(area, paint.background);
+    }
 
     let text = if disabled {
         paint.text_disabled
