@@ -7,6 +7,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 use windows::Win32::UI::WindowsAndMessaging::{
     GCLP_HCURSOR, IDC_ARROW, IDC_HAND, IDC_IBEAM, IDC_SIZENS, IDC_SIZEWE, IDC_WAIT, IsIconic,
     LoadCursorW, SW_RESTORE, SetClassLongPtrW, SetCursor, SetForegroundWindow, ShowWindow,
+    WM_GETDLGCODE,
 };
 
 use crate::hwnd::Hwnd;
@@ -31,6 +32,15 @@ pub(crate) fn set_foreground(hwnd: Hwnd) {
     unsafe {
         let _ = SetForegroundWindow(raw_hwnd(hwnd));
     }
+}
+
+/// The `DLGC_WANTARROWS` dialog code, from `winuser.h`: the window handles the
+/// arrow keys itself.
+pub(crate) const DLGC_WANTARROWS: isize = 1;
+
+/// Whether `code` is the `WM_GETDLGCODE` message id.
+pub(crate) fn is_get_dlg_code(code: u32) -> bool {
+    code == WM_GETDLGCODE
 }
 
 /// Enables or disables a window.

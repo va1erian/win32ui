@@ -115,6 +115,7 @@ already retained), and closures that capture shared mutable app state.
 | Menus mapped to `Msg`: menu bar, context popups, owner-drawn dark items | exist (#16) |
 | Draggable `split_row!`/`split_col!` layout nodes; themed `ScrollView` (native vertical scrollbar, wheel, `scroll_to`) | exist (#11) |
 | Custom widgets: Direct2D paint path (`CustomWidget::renderer`/`paint_d2d`) and a built-in vertical scroll host (`Custom::with_vscroll`, `scroll_to`, `Scrolled` event) | exist (#64) |
+| `Slider`: Direct2D-painted, `f64` values, sub-pixel thumb, mouse capture, coalesced `on_change` + `on_commit` + `on_hover`, eased hover/press/focus, keyboard and wheel, buffered range, vertical, RTL | exists (#46) |
 | `tabs!` paged layout node: native `SysTabControl32`, owner-drawn tabs, pages are layout subtrees | exists (#15) |
 | Tooltips: `ControlExt::set_tooltip`, region tooltips, toolbar item tooltips, dark owner-draw | exists (#17) |
 | Direct2D shapes, clips and transforms (`d2d`, anti-aliased); `ProgressBar` and the owner-drawn shapes (radio, group box, toolbar, tabs, menus, sort arrow) draw with it (GDI fallback) | exists (#22, #77) |

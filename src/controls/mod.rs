@@ -24,6 +24,7 @@ pub mod progressbar_theme;
 pub mod radio;
 pub(crate) mod registry;
 pub mod scrollview;
+pub mod slider;
 pub mod statusbar;
 pub mod taskdialog;
 pub mod toolbar;
@@ -55,6 +56,7 @@ pub mod prelude {
     pub use super::progressbar_theme::ProgressBarTheme;
     pub use super::radio::{RadioGroup, RadioOption};
     pub use super::scrollview::ScrollView;
+    pub use super::slider::Slider;
     pub use super::statusbar::{StatusBar, StatusBarTheme};
     pub use super::taskdialog::{TaskDialog, TaskDialogIcon};
     pub use super::toolbar::{Toolbar, ToolbarItem, ToolbarTheme};

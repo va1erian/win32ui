@@ -23,6 +23,7 @@ mod screenshot;
 mod search;
 mod secondary;
 mod settings;
+mod slider;
 mod swatch;
 mod text_specimen;
 mod toolbar;
@@ -36,6 +37,7 @@ use self::document::DocumentWidget;
 use self::library::{Library, SortKey};
 use self::options::{Options, ThemeChoice};
 use self::secondary::PrefsMsg;
+use self::slider::Sliders;
 use self::swatch::Swatch;
 
 pub(crate) fn main() {
@@ -112,11 +114,16 @@ pub(crate) fn main() {
             // window stays compact. `tabs!` pages layout subtrees; each page is
             // shown and hidden automatically and reports its index as a `Msg`.
             let library_page = library.page();
+            let sliders = Sliders::build(ui);
+            let sliders_page = sliders.page();
             let views = tabs![
                 ("Library", library_page),
                 ("Primitives", primitives),
                 ("Document", document),
+                ("Sliders", sliders_page),
             ]
+            // `WIN32UI_DEMO_TAB=3` opens the Sliders tab for a screenshot run.
+            .selected(env_dip("WIN32UI_DEMO_TAB", 0.0) as usize)
             .on_change(|page| Some(Msg::TabsPage(page)));
 
             // Options panel: a default push button, a check box, a labelled
@@ -159,6 +166,7 @@ pub(crate) fn main() {
                 document,
                 primitives,
                 options,
+                sliders,
                 prefs: None,
             };
 
@@ -263,6 +271,7 @@ enum Msg {
     Quit,
     AutoClose,
     TabsPage(usize),
+    Slider(slider::SliderMsg),
 }
 
 struct App {
@@ -278,6 +287,7 @@ struct App {
     // The Direct2D primitives panel (kept alive; only captured from).
     primitives: Custom<primitives::PrimitivesPanel, Msg>,
     options: Options,
+    sliders: Sliders,
     prefs: Option<WindowHandle<PrefsMsg>>,
 }
 
@@ -299,6 +309,9 @@ impl win32ui::App for App {
             return;
         }
         if dialogs::update(&msg, ui, &self.status) {
+            return;
+        }
+        if self.sliders.update(&msg, &self.status) {
             return;
         }
         match msg {
