@@ -110,7 +110,8 @@ already retained), and closures that capture shared mutable app state.
 | Theming foundation: tokens, `Themed`, live switching, central `WM_CTLCOLOR*` | #30 |
 | Owner-drawn `ProgressBar` (range/value/state/marquee), typed `TaskDialog` | exist (#18) |
 | Edit, buttons, ComboBox, tabs, menus, tooltips, split/scroll | #11–#17 |
-| Direct2D/DirectWrite (anti-aliasing, colour emoji) | #22 |
+| Direct2D shapes, clips and transforms (`d2d`, anti-aliased); `ProgressBar` draws with it (GDI fallback) | exists (#22) |
+| DirectWrite text, gradients, bitmaps, rounded clips, colour emoji | #22 follow-up |
 
 ## Source layout
 
@@ -129,6 +130,7 @@ src/
   app/            `App`, `Ui`, the per-window message queue, `run_app`
   app/layout/     the layout tree: `column!`/`row!`, `fill`/`width`, relayout
   gdi/            RAII `Font` / `Brush` / `Pen` / `Bitmap`, `Paint`, `Canvas`
+  d2d/            anti-aliased Direct2D `D2dSurface` / `D2dCanvas` for any `HWND`
   controls/       `ListView`, `TreeView`, `Toolbar`, `StatusBar`, `Label`,
                   `ProgressBar`, `TaskDialog`
   controls/control.rs   `Control`, `AsControl`, `ControlExt`, `HasText`
