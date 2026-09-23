@@ -15,23 +15,29 @@ mod screenshot;
 use std::rc::Rc;
 
 use win32ui::prelude::*;
+// `column!` is also a std prelude macro (an array helper), so the layout macros
+// are imported explicitly to disambiguate.
+use win32ui::{column, row};
 
 use self::data::{LibraryTree, TrackSource, generate_tracks};
 use self::icons::dot_icon;
 
 pub(crate) fn main() {
+    // `WIN32UI_DEMO_THEME` / `WIN32UI_DEMO_WIDTH` / `WIN32UI_DEMO_HEIGHT` let a
+    // screenshot run pick the palette and the window size without editing code.
     let initial = std::env::var("WIN32UI_DEMO_THEME").unwrap_or_else(|_| "dark".to_string());
     let theme = if initial.eq_ignore_ascii_case("light") {
         Theme::light()
     } else {
         Theme::dark()
     };
+    let width = env_dip("WIN32UI_DEMO_WIDTH", 1080.0);
+    let height = env_dip("WIN32UI_DEMO_HEIGHT", 680.0);
     let result = win32ui::run_app(
         WindowSpec::new("win32ui demo")
-            .size(dip(1080.0), dip(680.0))
+            .size(dip(width), dip(height))
             .theme(theme),
         |ui| {
-            let dpi = ui.dpi();
             let theme = ui.theme();
 
             let toolbar = Toolbar::new(
@@ -51,7 +57,7 @@ pub(crate) fn main() {
 
             let tree = TreeView::new(ui, Rect::default(), Box::new(LibraryTree))
                 .expect("tree")
-                .on_select(|item| Some(Msg::TreeSelect(item)));
+                .on_select(|_| Some(Msg::TreeSelect));
 
             let columns = [
                 Column::right("#", dip(44.0)),
@@ -92,8 +98,18 @@ pub(crate) fn main() {
             status.set_parts(&[-1]);
             status.set_text(0, "Ready");
 
-            let mut app = App {
-                dpi,
+            // The window owns the layout: it re-runs this tree on every resize
+            // and DPI change, so the app never handles `WM_SIZE`.
+            ui.set_layout(
+                column![
+                    toolbar,
+                    row![tree.width(dip(220.0)), list.fill(1)].fill(1),
+                    status,
+                ]
+                .spacing(dip(4.0)),
+            );
+
+            let app = App {
                 toolbar,
                 tree,
                 list,
@@ -103,7 +119,6 @@ pub(crate) fn main() {
                 column_count: columns.len(),
                 now_playing: None,
             };
-            app.layout(ui);
 
             // `WIN32UI_DEMO_AUTOCLOSE_MS` makes the demo quit itself; handy for
             // a headless smoke run of the example.
@@ -127,6 +142,14 @@ pub(crate) fn main() {
     }
 }
 
+/// A design-value size from an environment variable, or `default`.
+fn env_dip(name: &str, default: f32) -> f32 {
+    std::env::var(name)
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(default)
+}
+
 /// One row of mock library data.
 struct Track {
     title: String,
@@ -145,7 +168,7 @@ enum Msg {
     Shuffle,
     Refresh,
     ToggleTheme,
-    TreeSelect(Option<i64>),
+    TreeSelect,
     Play(usize),
     Select(usize),
     Copy,
@@ -153,7 +176,6 @@ enum Msg {
 }
 
 struct App {
-    dpi: u32,
     toolbar: Toolbar<Msg>,
     tree: TreeView<Msg>,
     list: ListView<Msg>,
@@ -165,26 +187,6 @@ struct App {
 }
 
 impl App {
-    fn layout(&mut self, ui: &Ui<Msg>) {
-        let client = ui.client_rect();
-        let dpi = self.dpi;
-        let toolbar_height = self.toolbar.height();
-
-        let areas = Dock::new()
-            .top_px(Px(toolbar_height))
-            .bottom(dip(22.0))
-            .split(client, dpi);
-        let columns = Stack::horizontal()
-            .fixed(dip(220.0))
-            .fill(1)
-            .split(areas.fill, dpi);
-
-        self.toolbar.set_bounds(areas.top.unwrap_or_default());
-        self.tree.set_bounds(columns[0]);
-        self.list.set_bounds(columns[1]);
-        self.status.set_bounds(areas.bottom.unwrap_or_default());
-    }
-
     fn source(&self) -> Box<dyn ListSource> {
         Box::new(TrackSource {
             tracks: Rc::clone(&self.tracks),
@@ -218,7 +220,10 @@ impl win32ui::App for App {
         match msg {
             Msg::Scan => self.set_status("Scanning… (not wired in this PoC)"),
             Msg::Shuffle => self.set_status("Shuffle requested"),
-            Msg::Refresh => self.set_status("Refreshed"),
+            Msg::Refresh => {
+                self.toolbar.invalidate();
+                self.set_status("Refreshed");
+            }
             Msg::ToggleTheme => {
                 let next = if ui.theme().is_dark {
                     Theme::light()
@@ -228,8 +233,10 @@ impl win32ui::App for App {
                 ui.set_theme(next);
                 self.set_status("Theme switched");
             }
-            Msg::TreeSelect(item) => {
-                let label = item
+            Msg::TreeSelect => {
+                let label = self
+                    .tree
+                    .selected()
                     .map(|id| format!("node {id}"))
                     .unwrap_or_else(|| "nothing".to_string());
                 self.set_status(&format!("Tree selection: {label}"));

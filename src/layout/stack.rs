@@ -4,7 +4,7 @@
 
 use super::Insets;
 use crate::geometry::Rect;
-use crate::units::Dip;
+use crate::units::{Dip, Px};
 
 /// The axis a [`Stack`] lays its slots along.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -16,16 +16,22 @@ pub enum StackDirection {
     Vertical,
 }
 
-/// One slot in a [`Stack`], sized in [`Dip`] design values.
+/// One slot in a [`Stack`], sized in [`Dip`] design values or, for the `*_px`
+/// variants, already-scaled device pixels (used by the layout tree for a
+/// widget's natural size).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum StackSlot {
     /// Exactly `size` design values.
     Fixed(Dip),
+    /// Exactly `size` device pixels.
+    FixedPx(Px),
     /// Shares the leftover space proportionally to `weight`.
     Fill(u32),
     /// At least `size` design values, shrinking proportionally only when the
     /// parent is too small to honour every slot.
     Min(Dip),
+    /// At least `size` device pixels.
+    MinPx(Px),
 }
 
 /// Lays slots along one axis, with spacing between them and optional margins.
@@ -124,7 +130,9 @@ impl Stack {
         for (index, slot) in self.slots.iter().enumerate() {
             match *slot {
                 StackSlot::Fixed(size) => rigid.push((index, size.to_px(dpi).value().max(0))),
+                StackSlot::FixedPx(size) => rigid.push((index, size.value().max(0))),
                 StackSlot::Min(size) => rigid.push((index, size.to_px(dpi).value().max(0))),
+                StackSlot::MinPx(size) => rigid.push((index, size.value().max(0))),
                 StackSlot::Fill(weight) => fills.push((index, weight)),
             }
         }
@@ -266,6 +274,21 @@ mod tests {
             .split(rect, 192);
         assert_eq!(slots[0], Rect::new(0, 0, 20, 100));
         assert_eq!(slots[1], Rect::new(20, 0, 200, 100));
+    }
+
+    /// The `*_px` slots carry a natural size that must not be rescaled, which
+    /// is what lets the layout tree pass a widget's measured height through.
+    #[test]
+    fn stack_pixel_slots_ignore_dpi() {
+        let rect = Rect::new(0, 0, 200, 100);
+        let slots = Stack::horizontal()
+            .push(StackSlot::FixedPx(Px(30)))
+            .push(StackSlot::MinPx(Px(20)))
+            .fill(1)
+            .split(rect, 192);
+        assert_eq!(slots[0], Rect::new(0, 0, 30, 100));
+        assert_eq!(slots[1], Rect::new(30, 0, 50, 100));
+        assert_eq!(slots[2], Rect::new(50, 0, 200, 100));
     }
 
     /// Design values with fractional scaling must still tile the parent

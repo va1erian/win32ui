@@ -4,6 +4,7 @@
 //! exposes it, and the blanket [`ControlExt`] gives every widget shared behaviour.
 
 use std::cell::{Cell, RefCell};
+use std::rc::Rc;
 
 use crate::gdi::Font;
 use crate::geometry::Rect;
@@ -16,10 +17,15 @@ use crate::sys;
 /// A widget built on a custom-drawn [`Window`](crate::Window) (toolbar, status
 /// bar) owns its handle through that window; in that case `Control` borrows the
 /// handle so `AsControl` still exposes it uniformly without a second destroy.
+///
+/// The bounds and visibility are shared (`Rc`) with any layout tree the widget
+/// is placed in, so moving or hiding a widget through the layout keeps this
+/// cached state in sync.
 pub struct Control {
     hwnd: Hwnd,
     owned: bool,
-    bounds: Cell<Rect>,
+    bounds: Rc<Cell<Rect>>,
+    visible: Rc<Cell<bool>>,
     font: RefCell<Option<Font>>,
 }
 
@@ -29,7 +35,8 @@ impl Control {
         Control {
             hwnd,
             owned: true,
-            bounds: Cell::new(bounds),
+            bounds: Rc::new(Cell::new(bounds)),
+            visible: Rc::new(Cell::new(true)),
             font: RefCell::new(None),
         }
     }
@@ -39,7 +46,8 @@ impl Control {
         Control {
             hwnd,
             owned: false,
-            bounds: Cell::new(bounds),
+            bounds: Rc::new(Cell::new(bounds)),
+            visible: Rc::new(Cell::new(true)),
             font: RefCell::new(None),
         }
     }
@@ -47,6 +55,16 @@ impl Control {
     /// The control's handle.
     pub fn hwnd(&self) -> Hwnd {
         self.hwnd
+    }
+
+    /// A shared handle to the cached bounds, used by the layout tree.
+    pub(crate) fn bounds_handle(&self) -> Rc<Cell<Rect>> {
+        Rc::clone(&self.bounds)
+    }
+
+    /// A shared handle to the visibility flag, used by the layout tree.
+    pub(crate) fn visible_handle(&self) -> Rc<Cell<bool>> {
+        Rc::clone(&self.visible)
     }
 }
 
@@ -77,12 +95,19 @@ pub trait ControlExt: AsControl {
 
     /// Shows or hides the widget.
     fn set_visible(&self, visible: bool) {
+        self.control().visible.set(visible);
         let kind = if visible {
             sys::window::ShowKind::Normal
         } else {
             sys::window::ShowKind::Hidden
         };
         sys::window::show(self.control().hwnd, kind);
+    }
+
+    /// Whether the widget is currently shown. A hidden widget takes no space in
+    /// a layout tree.
+    fn is_visible(&self) -> bool {
+        self.control().visible.get()
     }
 
     /// Gives the widget keyboard focus.

@@ -38,7 +38,7 @@ where
     let window = Window::create(
         class,
         None,
-        WindowStyle::overlapped().min_max(),
+        WindowStyle::overlapped().min_max().clip_children(),
         WindowExStyle::new(),
         Rect::new(0, 0, width.to_px(dpi).value(), height.to_px(dpi).value()),
         title,
@@ -119,6 +119,19 @@ impl<A: App> WindowHandler for AppHandler<A> {
                 if let Some(msg) = self.core.map_timer(id) {
                     self.core.enqueue(msg);
                 }
+                Some(0)
+            }
+            // The window owns the layout: a resize re-runs the tree so the
+            // application never has to handle `WM_SIZE`.
+            Message::Size { .. } if self.core.has_layout() => {
+                self.core.relayout();
+                Some(0)
+            }
+            Message::DpiChanged { dpi, suggested } => {
+                if !suggested.is_empty() {
+                    sys::window::move_window(window.hwnd(), suggested);
+                }
+                self.core.relayout_with_dpi(dpi);
                 Some(0)
             }
             _ => None,

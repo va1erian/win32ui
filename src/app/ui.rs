@@ -13,6 +13,7 @@ use crate::sys;
 use crate::theme::Theme;
 
 use super::core::Core;
+use super::layout::Layout;
 
 /// The widget-layer handle to the top-level window.
 ///
@@ -75,6 +76,19 @@ impl<M: 'static> Ui<M> {
     /// is how custom widgets hand events back to the application.
     pub fn emit(&self, msg: M) {
         self.core.enqueue(msg);
+    }
+
+    /// Installs the window's layout tree and lays it out immediately. The tree
+    /// is laid out again automatically whenever the window is resized or its
+    /// DPI changes; the application never sees `WM_SIZE`.
+    pub fn set_layout(&self, layout: Layout) {
+        self.core.set_layout(layout);
+    }
+
+    /// Lays the installed tree out again. Call this after changing something
+    /// the layout depends on, such as a widget's visibility.
+    pub fn relayout(&self) {
+        self.core.relayout();
     }
 
     /// Intercepts the window close request. Returning `Some(msg)` enqueues it

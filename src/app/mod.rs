@@ -7,10 +7,12 @@
 //! raw window messages, and never re-entered.
 
 mod core;
+mod layout;
 mod run;
 mod spec;
 mod ui;
 
+pub use layout::{IntoLayoutItem, Layout, LayoutExt, LayoutItem};
 pub use run::run_app;
 pub use spec::{App, WindowSpec};
 pub use ui::Ui;
