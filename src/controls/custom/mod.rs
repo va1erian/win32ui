@@ -12,9 +12,11 @@
 
 mod d2d;
 mod scroll;
+mod widget;
 
 pub(crate) use d2d::RendererState;
 pub(crate) use scroll::{CustomScroll, WHEEL_NOTCH_DIP};
+pub use widget::{Input, Renderer, WidgetCx};
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -26,163 +28,10 @@ use crate::d2d::{D2dCanvas, RectF};
 use crate::error::Result;
 use crate::gdi::Canvas;
 use crate::geometry::{Rect, Size};
-use crate::hwnd::Hwnd;
-use crate::message::{Key, Message, Modifiers, MouseButton};
 use crate::sys;
 use crate::theme::{Theme, Themed};
 use crate::units::Dip;
-use crate::window::{CursorShape, Window, WindowClass, WindowExStyle, WindowStyle};
-
-/// How a custom widget paints itself.
-///
-/// The default ([`Renderer::Gdi`]) draws with [`CustomWidget::paint`] into a
-/// GDI [`Canvas`]. A widget that needs anti-aliasing opts into
-/// [`Renderer::Direct2D`] and draws with [`CustomWidget::paint_d2d`] instead.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum Renderer {
-    /// Paint with GDI through [`CustomWidget::paint`].
-    #[default]
-    Gdi,
-    /// Paint with Direct2D through [`CustomWidget::paint_d2d`].
-    Direct2D,
-}
-
-/// An input event delivered to a [`CustomWidget`].
-///
-/// This is the widget-layer subset of [`Message`] that a custom widget needs:
-/// mouse, keyboard, focus and hover. The [`Custom`] handler decodes these from
-/// the raw window messages and passes them to [`CustomWidget::input`].
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Input {
-    /// A mouse button went down.
-    MouseDown {
-        /// Cursor x in client coordinates.
-        x: i32,
-        /// Cursor y in client coordinates.
-        y: i32,
-        /// Which button.
-        button: MouseButton,
-    },
-    /// A mouse button was released.
-    MouseUp {
-        /// Cursor x in client coordinates.
-        x: i32,
-        /// Cursor y in client coordinates.
-        y: i32,
-        /// Which button.
-        button: MouseButton,
-    },
-    /// The cursor moved.
-    MouseMove {
-        /// Cursor x in client coordinates.
-        x: i32,
-        /// Cursor y in client coordinates.
-        y: i32,
-    },
-    /// A mouse button was double-clicked.
-    MouseDoubleClick {
-        /// Cursor x in client coordinates.
-        x: i32,
-        /// Cursor y in client coordinates.
-        y: i32,
-        /// Which button.
-        button: MouseButton,
-    },
-    /// The wheel was rolled.
-    MouseWheel {
-        /// Wheel rotation, in multiples of `WHEEL_DELTA`.
-        delta: i16,
-        /// Whether this is a horizontal wheel.
-        horizontal: bool,
-        /// Cursor x in client coordinates.
-        x: i32,
-        /// Cursor y in client coordinates.
-        y: i32,
-        /// Which modifiers were held.
-        modifiers: Modifiers,
-    },
-    /// The cursor left the widget.
-    MouseLeave,
-    /// Another window took the mouse capture, ending any drag.
-    CaptureChanged,
-    /// A key went down.
-    KeyDown {
-        /// The virtual key.
-        key: Key,
-        /// Which modifiers were held.
-        modifiers: Modifiers,
-        /// Auto-repeat count (`1` on the first press).
-        repeat: u16,
-        /// Whether this came from a system key (an Alt combination).
-        system: bool,
-    },
-    /// A key was released.
-    KeyUp {
-        /// The virtual key.
-        key: Key,
-        /// Which modifiers were held.
-        modifiers: Modifiers,
-        /// Whether this came from a system key.
-        system: bool,
-    },
-    /// A translated character.
-    Char(char),
-    /// The widget gained the keyboard focus.
-    SetFocus,
-    /// The widget lost the keyboard focus.
-    KillFocus,
-}
-
-impl Input {
-    /// The subset of [`Message`] that maps to an [`Input`], or `None`.
-    pub(crate) fn from_message(message: Message) -> Option<Input> {
-        Some(match message {
-            Message::MouseDown { x, y, button } => Input::MouseDown { x, y, button },
-            Message::MouseUp { x, y, button } => Input::MouseUp { x, y, button },
-            Message::MouseMove { x, y } => Input::MouseMove { x, y },
-            Message::MouseDoubleClick { x, y, button } => Input::MouseDoubleClick { x, y, button },
-            Message::MouseWheel {
-                delta,
-                horizontal,
-                x,
-                y,
-                modifiers,
-            } => Input::MouseWheel {
-                delta,
-                horizontal,
-                x,
-                y,
-                modifiers,
-            },
-            Message::MouseLeave => Input::MouseLeave,
-            Message::CaptureChanged => Input::CaptureChanged,
-            Message::KeyDown {
-                key,
-                modifiers,
-                repeat,
-                system,
-            } => Input::KeyDown {
-                key,
-                modifiers,
-                repeat,
-                system,
-            },
-            Message::KeyUp {
-                key,
-                modifiers,
-                system,
-            } => Input::KeyUp {
-                key,
-                modifiers,
-                system,
-            },
-            Message::Char(c) => Input::Char(c),
-            Message::SetFocus => Input::SetFocus,
-            Message::KillFocus => Input::KillFocus,
-            _ => return None,
-        })
-    }
-}
+use crate::window::{Window, WindowClass, WindowExStyle, WindowStyle};
 
 /// An application-defined owner-drawn widget.
 ///
@@ -221,62 +70,6 @@ pub trait CustomWidget: 'static {
     /// natural size picks it up.
     fn preferred_size(&self, _dpi: u32) -> Option<Size> {
         None
-    }
-}
-
-/// The context a [`CustomWidget`] is given while handling [`Input`].
-///
-/// It maps the widget's events to the app's `Msg` (through the same queue as
-/// every other widget), and offers the window operations a widget might need
-/// while an input is in progress.
-pub struct WidgetCx<E> {
-    hwnd: Hwnd,
-    bounds: Rc<Cell<Rect>>,
-    emit: Rc<dyn Fn(E)>,
-}
-
-impl<E> WidgetCx<E> {
-    pub(crate) fn new(hwnd: Hwnd, bounds: Rc<Cell<Rect>>, emit: Rc<dyn Fn(E)>) -> WidgetCx<E> {
-        WidgetCx { hwnd, bounds, emit }
-    }
-
-    /// Maps `event` to the app's `Msg` through the widget's [`Custom::on_event`]
-    /// closure and enqueues it. Like every widget event, the resulting `Msg` is
-    /// delivered to [`App::update`](crate::App::update) after the current one
-    /// returns — never re-entered.
-    pub fn emit(&self, event: E) {
-        (self.emit)(event);
-    }
-
-    /// The widget's current client bounds, in device pixels.
-    pub fn bounds(&self) -> Rect {
-        self.bounds.get()
-    }
-
-    /// Schedules a repaint of the widget.
-    pub fn invalidate(&self) {
-        sys::window::invalidate(self.hwnd);
-    }
-
-    /// Captures the mouse, so all mouse input goes to the widget until
-    /// [`WidgetCx::release_capture`] is called.
-    pub fn capture(&self) {
-        sys::window_input::set_capture(self.hwnd);
-    }
-
-    /// Releases the mouse capture, if the widget holds it.
-    pub fn release_capture(&self) {
-        sys::window_input::release_capture();
-    }
-
-    /// Sets the cursor shown over the widget.
-    pub fn cursor(&self, shape: CursorShape) {
-        sys::window_input::set_cursor(self.hwnd, shape);
-    }
-
-    /// Gives the widget the keyboard focus.
-    pub fn focus(&self) {
-        sys::window_input::focus(self.hwnd);
     }
 }
 
