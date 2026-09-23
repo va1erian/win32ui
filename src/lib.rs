@@ -105,11 +105,11 @@ pub mod prelude {
         Hwnd, Icon, Insets, IntoLayoutItem, Key, LResult, Label, Layout, LayoutExt, LayoutItem,
         ListModel, ListView, ListViewEvent, ListViewTheme, Message, MinMaxInfo, Modifiers,
         MouseButton, Notify, Placement, Point, ProgressBar, ProgressBarTheme, ProgressState, Proxy,
-        Px, Rect, Result, RgbaImage, Shortcut, ShortcutParseError, ShowState, SortDirection,
-        Stack, StackDirection, StackSlot, StatusBar, StatusBarTheme, TaskDialog, TaskDialogIcon,
-        Theme, Themed, TimerId, Toolbar, ToolbarItem, ToolbarTheme, TreeEntry, TreeSource,
-        TreeView, TreeViewEvent, Ui, Win32Error, Window, WindowClass, WindowExStyle,
-        WindowHandler, WindowSpec, WindowStyle, column, dip, monitor_work_areas, row, run_app,
+        Px, Rect, Result, RgbaImage, Shortcut, ShortcutParseError, ShowState, SortDirection, Stack,
+        StackDirection, StackSlot, StatusBar, StatusBarTheme, TaskDialog, TaskDialogIcon, Theme,
+        Themed, TimerId, Toolbar, ToolbarItem, ToolbarTheme, TreeEntry, TreeSource, TreeView,
+        TreeViewEvent, Ui, Win32Error, Window, WindowClass, WindowExStyle, WindowHandler,
+        WindowSpec, WindowStyle, column, dip, monitor_work_areas, row, run_app,
     };
     pub use crate::{clipboard, gdi, looper, quit, run, run_modal};
 }

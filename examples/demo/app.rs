@@ -141,7 +141,7 @@ pub(crate) fn main() {
                 list,
                 status,
                 progress,
-                sort,
+                sort_combo: sort,
                 _sort_label: sort_label,
                 tracks,
                 order,
@@ -276,7 +276,7 @@ struct App {
     list: ListView<Track, Msg>,
     status: StatusBar,
     progress: ProgressBar,
-    sort: ComboBox<SortKey, Msg>,
+    sort_combo: ComboBox<SortKey, Msg>,
     _sort_label: Label,
     tracks: Rc<Vec<Track>>,
     order: Vec<usize>,
@@ -432,7 +432,7 @@ impl win32ui::App for App {
             Msg::SortChanged(key) => {
                 self.set_status(&format!("Sorted by {}", key.label()));
             }
-            Msg::OpenCombo => self.sort.show_drop_down(true),
+            Msg::OpenCombo => self.sort_combo.show_drop_down(true),
             Msg::AutoClose => {
                 screenshot::capture_if_requested(ui);
                 ui.quit();
