@@ -134,6 +134,12 @@ impl WindowExStyle {
         WindowExStyle(self.0 | wam::WS_EX_TOOLWINDOW.0)
     }
 
+    /// A container for dialog navigation (`WS_EX_CONTROLPARENT`), so
+    /// `IsDialogMessageW` moves the focus among its children with Tab.
+    pub const fn control_parent(self) -> WindowExStyle {
+        WindowExStyle(self.0 | wam::WS_EX_CONTROLPARENT.0)
+    }
+
     /// Add raw ex-style bits.
     pub const fn with(self, bits: u32) -> WindowExStyle {
         WindowExStyle(self.0 | bits)

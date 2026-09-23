@@ -145,6 +145,43 @@ fn select_during_update_is_not_nested() {
     );
 }
 
+/// Registering accelerators builds the window's table, and `set_tab_stop`
+/// toggles a control's `WS_TABSTOP`; neither may break the run. Matching a real
+/// key needs a live modifier state, so the table itself is unit-tested in
+/// `sys::looper`.
+#[test]
+fn accelerators_and_tab_stop_survive_the_run() {
+    struct AccelApp;
+
+    impl App for AccelApp {
+        type Msg = ();
+
+        fn update(&mut self, _msg: (), ui: &mut Ui<()>) {
+            ui.quit();
+        }
+    }
+
+    let Some(run) = run_app_with_watchdog("win32ui.app.accel", move |ui| {
+        ui.accelerator(Shortcut::ctrl(Key::Q), || Some(()));
+        ui.accelerator(Shortcut::new(Key::F5, Modifiers::NONE), || None);
+        if let Ok(list) = ListView::new(
+            ui,
+            Rect::new(0, 0, 200, 200),
+            &[Column::new("A", dip(80.0))],
+            Box::new(TestRows),
+        ) {
+            list.set_tab_stop(false);
+            list.set_tab_stop(true);
+        }
+        ui.emit(());
+        AccelApp
+    }) else {
+        return;
+    };
+
+    assert!(!run.timed_out, "the watchdog fired before the app quit");
+}
+
 struct DropApp {
     list: Option<ListView<DropMsg>>,
     list_hwnd: Option<Hwnd>,

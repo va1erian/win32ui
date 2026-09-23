@@ -9,10 +9,11 @@ use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent};
 use windows::Win32::UI::Shell::SUBCLASSPROC;
 use windows::Win32::UI::WindowsAndMessaging::{
-    CS_DBLCLKS, CreateWindowExW, DestroyWindow, GetClientRect, GetWindowRect, HCURSOR, HMENU,
-    IDC_ARROW, KillTimer, LoadCursorW, MoveWindow, RegisterClassExW, SW_HIDE, SW_SHOW,
-    SW_SHOWMAXIMIZED, SW_SHOWMINIMIZED, SetTimer, SetWindowTextW, ShowWindow, UnregisterClassW,
-    WINDOW_EX_STYLE, WINDOW_STYLE, WNDCLASSEXW,
+    CS_DBLCLKS, CreateWindowExW, DestroyWindow, GWL_STYLE, GetClientRect, GetWindowLongPtrW,
+    GetWindowRect, HCURSOR, HMENU, IDC_ARROW, KillTimer, LoadCursorW, MoveWindow, RegisterClassExW,
+    SW_HIDE, SW_SHOW, SW_SHOWMAXIMIZED, SW_SHOWMINIMIZED, SetTimer, SetWindowLongPtrW,
+    SetWindowTextW, ShowWindow, UnregisterClassW, WINDOW_EX_STYLE, WINDOW_STYLE, WNDCLASSEXW,
+    WS_TABSTOP,
 };
 use windows::core::{HSTRING, PCWSTR};
 
@@ -268,6 +269,21 @@ pub(crate) fn enable_window(hwnd: Hwnd, enabled: bool) {
     // SAFETY: only a state flag is passed; a stale handle is a documented no-op.
     unsafe {
         let _ = windows::Win32::UI::Input::KeyboardAndMouse::EnableWindow(raw_hwnd(hwnd), enabled);
+    }
+}
+
+/// Includes or excludes `hwnd` from the Tab order (`WS_TABSTOP`).
+pub(crate) fn set_tab_stop(hwnd: Hwnd, tab_stop: bool) {
+    // SAFETY: only the window's style bits are read and written; a stale handle
+    // is a documented no-op.
+    unsafe {
+        let style = GetWindowLongPtrW(raw_hwnd(hwnd), GWL_STYLE);
+        let updated = if tab_stop {
+            style | WS_TABSTOP.0 as isize
+        } else {
+            style & !(WS_TABSTOP.0 as isize)
+        };
+        let _ = SetWindowLongPtrW(raw_hwnd(hwnd), GWL_STYLE, updated);
     }
 }
 

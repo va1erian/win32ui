@@ -160,6 +160,7 @@ pub(crate) unsafe extern "system" fn window_proc(
         // `HWND` never keeps a thread-local bitmap alive.
         super::gdi::release_back_buffer(hwnd_from(hwnd));
         super::window_ext::forget_track_limits(hwnd_from(hwnd));
+        super::looper::forget_keyboard(hwnd_from(hwnd));
         crate::theme::forget_window_theme(hwnd_from(hwnd));
     }
 

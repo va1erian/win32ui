@@ -11,6 +11,7 @@ pub(crate) mod dispatch;
 pub(crate) mod dpi;
 pub(crate) mod gdi;
 pub(crate) mod layout;
+pub(crate) mod looper;
 pub(crate) mod message;
 pub(crate) mod proxy;
 pub(crate) mod taskdialog;

@@ -115,6 +115,12 @@ pub trait ControlExt: AsControl {
         sys::window::set_focus(self.control().hwnd);
     }
 
+    /// Includes or excludes the widget from the Tab order (`WS_TABSTOP`).
+    /// Widgets that are not text-entry fields usually opt out.
+    fn set_tab_stop(&self, tab_stop: bool) {
+        sys::window::set_tab_stop(self.control().hwnd, tab_stop);
+    }
+
     /// The widget's bounds, in device pixels.
     fn bounds(&self) -> Rect {
         self.control().bounds.get()
