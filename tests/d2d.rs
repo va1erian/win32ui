@@ -10,6 +10,7 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use win32ui::d2d::{D2dSurface, PointF, RectF};
+use win32ui::gdi::Paint;
 use win32ui::prelude::*;
 
 const FILL: Color = Color::rgb(0xFF, 0x00, 0x00);
@@ -122,5 +123,76 @@ fn rounded_shapes_have_antialiased_edges() {
     assert!(
         reentrant_frame_rejected.get(),
         "a second begin_draw during a frame must be rejected"
+    );
+}
+
+/// A `Canvas` over a paint DC (the list view's header, the toolbar, the menus)
+/// draws its triangle through Direct2D, so the sort arrow's diagonal edges are
+/// anti-aliased instead of GDI's stair-stepped `Polygon`.
+struct TriangleHandler {
+    capture_timer: Cell<Option<TimerId>>,
+    image: Rc<RefCell<Option<Result<RgbaImage>>>>,
+}
+
+impl WindowHandler for TriangleHandler {
+    fn message(&self, window: &Window, message: Message) -> Option<LResult> {
+        match message {
+            Message::Create => {
+                self.capture_timer.set(window.set_timer(300).ok());
+            }
+            Message::Paint => {
+                if let Some(paint) = Paint::begin(window.hwnd()) {
+                    let client = paint.client_rect();
+                    let canvas = paint.canvas();
+                    canvas.fill_rect(client, BACKGROUND);
+                    canvas.triangle(Rect::new(20, 20, 220, 220), FILL, true);
+                }
+                return Some(0);
+            }
+            Message::Timer { id } if Some(id) == self.capture_timer.get() => {
+                *self.image.borrow_mut() = Some(window.capture());
+                window.destroy();
+                win32ui::quit(0);
+            }
+            _ => {}
+        }
+        None
+    }
+}
+
+#[test]
+fn canvas_triangle_has_antialiased_edges() {
+    let image = Rc::new(RefCell::new(None));
+    let handler_image = Rc::clone(&image);
+
+    let Some(run) = common::run_with_watchdog("win32ui.d2d.triangle", move || TriangleHandler {
+        capture_timer: Cell::new(None),
+        image: handler_image,
+    }) else {
+        return;
+    };
+    assert!(!run.timed_out, "the watchdog fired before the capture");
+    let image = image
+        .borrow_mut()
+        .take()
+        .expect("the capture timer never fired")
+        .expect("Window::capture failed");
+
+    // GDI's `Polygon` writes only the fill and the background; Direct2D's
+    // anti-aliased edges leave pixels that are a blend of the two.
+    let mut intermediate = 0;
+    for y in 0..image.height {
+        for x in 0..image.width {
+            let pixel = image.pixel(x, y).expect("in bounds");
+            if pixel != [FILL.r, FILL.g, FILL.b, 0xFF]
+                && pixel != [BACKGROUND.r, BACKGROUND.g, BACKGROUND.b, 0xFF]
+            {
+                intermediate += 1;
+            }
+        }
+    }
+    assert!(
+        intermediate > 100,
+        "the triangle had too few anti-aliased edge pixels ({intermediate})"
     );
 }
