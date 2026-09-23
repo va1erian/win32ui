@@ -1,26 +1,22 @@
-//! GDI primitives: fonts, brushes, pens, DIB sections, off-screen buffers and
-//! text.
+//! GDI object lifecycle: creation, selection and text measurement.
 
 use core::ffi::c_void;
 use core::ptr::{null_mut, slice_from_raw_parts_mut};
 
-use windows::Win32::Foundation::{COLORREF, POINT, RECT, SIZE};
+use windows::Win32::Foundation::{COLORREF, SIZE};
 use windows::Win32::Graphics::Gdi::{
-    BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BeginPaint, BitBlt, CreateCompatibleBitmap,
-    CreateCompatibleDC, CreateDIBSection, CreateFontW, CreatePen, CreateSolidBrush, DIB_RGB_COLORS,
-    DRAW_TEXT_FORMAT, DeleteDC, DeleteObject, DrawTextW, EndPaint, FONT_CHARSET,
-    FONT_CLIP_PRECISION, FONT_OUTPUT_PRECISION, FONT_QUALITY, GetDC, GetStockObject,
-    GetTextExtentPoint32W, HBITMAP, HBRUSH, HDC, HFONT, HGDIOBJ, HPEN, NULL_PEN, PAINTSTRUCT,
-    PS_SOLID, Polygon, ReleaseDC, SRCCOPY, SelectObject, SetBkMode, SetTextColor, TRANSPARENT,
+    BI_RGB, BITMAPINFO, BITMAPINFOHEADER, CreateDIBSection, CreateFontW, CreatePen,
+    CreateSolidBrush, DIB_RGB_COLORS, DeleteObject, FONT_CHARSET, FONT_CLIP_PRECISION,
+    FONT_OUTPUT_PRECISION, FONT_QUALITY, GetDC, GetStockObject, GetTextExtentPoint32W, HBITMAP,
+    HBRUSH, HDC, HFONT, HGDIOBJ, HPEN, NULL_PEN, PS_SOLID, ReleaseDC, SelectObject,
 };
 use windows::core::PCWSTR;
 
 use crate::color::Color;
 use crate::error::{Error, Result};
-use crate::geometry::{Rect, Size};
-use crate::hwnd::Hwnd;
+use crate::geometry::Size;
 
-use super::{raw_hwnd, win32_error};
+use crate::sys::win32_error;
 
 /// Creates a font for `family` with the given (negative) pixel height.
 pub(crate) fn create_font(family: &str, height: i32, weight: i32) -> Result<HFONT> {
@@ -152,161 +148,6 @@ pub(crate) fn select_pen(hdc: HDC, pen: HPEN) -> HGDIOBJ {
 pub(crate) fn select_object(hdc: HDC, object: HGDIOBJ) -> HGDIOBJ {
     // SAFETY: `hdc` is a live DC and `object` a live GDI object.
     unsafe { SelectObject(hdc, object) }
-}
-
-/// Begins painting into `ps` and returns the paint DC.
-pub(crate) fn begin_paint(hwnd: Hwnd, ps: *mut PAINTSTRUCT) -> HDC {
-    // SAFETY: `ps` is a valid out-pointer and `hwnd` a live window.
-    unsafe { BeginPaint(raw_hwnd(hwnd), ps) }
-}
-
-/// Ends the paint session started by [`begin_paint`].
-pub(crate) fn end_paint(hwnd: Hwnd, ps: *const PAINTSTRUCT) {
-    // SAFETY: `ps` came from the matching `begin_paint`.
-    unsafe {
-        let _ = EndPaint(raw_hwnd(hwnd), ps);
-    }
-}
-
-/// Creates an off-screen buffer compatible with `dc`.
-pub(crate) fn create_back_buffer(dc: HDC, width: i32, height: i32) -> (HDC, HBITMAP, HGDIOBJ) {
-    // SAFETY: `dc` is a live DC; the returned handles are tracked by the
-    // caller and released in `destroy_back_buffer`.
-    unsafe {
-        let memory_dc = CreateCompatibleDC(Some(dc));
-        let bitmap = CreateCompatibleBitmap(dc, width.max(1), height.max(1));
-        let old = SelectObject(memory_dc, HGDIOBJ(bitmap.0));
-        (memory_dc, bitmap, old)
-    }
-}
-
-/// Releases an off-screen buffer created by [`create_back_buffer`].
-pub(crate) fn destroy_back_buffer(memory_dc: HDC, bitmap: HBITMAP, old: HGDIOBJ) {
-    // SAFETY: all three handles came from `create_back_buffer` and are still
-    // live; restoring `old` before deleting keeps the DC consistent.
-    unsafe {
-        SelectObject(memory_dc, old);
-        let _ = DeleteObject(HGDIOBJ(bitmap.0));
-        let _ = DeleteDC(memory_dc);
-    }
-}
-
-/// Copies `width`×`height` pixels from `source` to `dest`.
-pub(crate) fn blit(dest: HDC, source: HDC, width: i32, height: i32) {
-    // SAFETY: both DCs are live and the rectangle is clipped by the caller.
-    unsafe {
-        let _ = BitBlt(dest, 0, 0, width, height, Some(source), 0, 0, SRCCOPY);
-    }
-}
-
-/// Fills a rectangle with a brush.
-pub(crate) fn fill_rect(hdc: HDC, rect: Rect, brush: HBRUSH) {
-    // SAFETY: `rect` is converted to a valid RECT and `brush` is live.
-    unsafe {
-        let raw = RECT {
-            left: rect.left,
-            top: rect.top,
-            right: rect.right,
-            bottom: rect.bottom,
-        };
-        windows::Win32::Graphics::Gdi::FillRect(hdc, &raw, brush);
-    }
-}
-
-/// Draws a rounded rectangle using the DC's current pen and brush.
-pub(crate) fn round_rect(hdc: HDC, rect: Rect, radius: i32) {
-    // SAFETY: plain geometry; current pen/brush are selected by the caller.
-    unsafe {
-        let _ = windows::Win32::Graphics::Gdi::RoundRect(
-            hdc,
-            rect.left,
-            rect.top,
-            rect.right,
-            rect.bottom,
-            radius.max(1),
-            radius.max(1),
-        );
-    }
-}
-
-/// Fills a triangle inside `rect`, using the DC's current brush (the caller
-/// selects a null pen first).
-pub(crate) fn triangle(hdc: HDC, rect: Rect, pointing_up: bool) {
-    let middle = (rect.left + rect.right) / 2;
-    let points = if pointing_up {
-        [
-            POINT {
-                x: middle,
-                y: rect.top,
-            },
-            POINT {
-                x: rect.left,
-                y: rect.bottom,
-            },
-            POINT {
-                x: rect.right,
-                y: rect.bottom,
-            },
-        ]
-    } else {
-        [
-            POINT {
-                x: rect.left,
-                y: rect.top,
-            },
-            POINT {
-                x: rect.right,
-                y: rect.top,
-            },
-            POINT {
-                x: middle,
-                y: rect.bottom,
-            },
-        ]
-    };
-    // SAFETY: `points` is a valid slice for the call.
-    unsafe {
-        let _ = Polygon(hdc, &points);
-    }
-}
-
-/// Draws text inside `rect`, returning the drawn height.
-pub(crate) fn draw_text(hdc: HDC, rect: Rect, text: &str, color: Color, format: u32) -> i32 {
-    let mut wide: Vec<u16> = text.encode_utf16().collect();
-    let mut raw = RECT {
-        left: rect.left,
-        top: rect.top,
-        right: rect.right,
-        bottom: rect.bottom,
-    };
-    // SAFETY: `wide` and `raw` are valid for the call; colour/mode are values.
-    unsafe {
-        SetTextColor(hdc, COLORREF(color.to_colorref()));
-        SetBkMode(hdc, TRANSPARENT);
-        DrawTextW(hdc, &mut wide, &mut raw, DRAW_TEXT_FORMAT(format))
-    }
-}
-
-/// Blits `bitmap` at `target.left/top` (no scaling).
-pub(crate) fn draw_bitmap(hdc: HDC, bitmap: HBITMAP, source: Size, target: Rect) {
-    // SAFETY: all handles are live; `source`/`target` are plain geometry.
-    unsafe {
-        let memory_dc = CreateCompatibleDC(Some(hdc));
-        let old = SelectObject(memory_dc, HGDIOBJ(bitmap.0));
-        let _ = BitBlt(
-            hdc,
-            target.left,
-            target.top,
-            source.width.min(target.width()),
-            source.height.min(target.height()),
-            Some(memory_dc),
-            0,
-            0,
-            SRCCOPY,
-        );
-        SelectObject(memory_dc, old);
-        let _ = DeleteDC(memory_dc);
-    }
 }
 
 /// Measures `text` with the DC's current font.

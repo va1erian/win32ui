@@ -4,6 +4,7 @@
 
 mod bitmap;
 mod brush;
+mod cache;
 mod font;
 mod paint;
 mod pen;
