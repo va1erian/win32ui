@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 
-//! A DIB-section bitmap, typically uploaded from RGBA pixels (album art,
-//! toolbar icons) and blitted during a paint.
+//! A DIB-section bitmap, typically uploaded from RGBA pixels (icons, images)
+//! and blitted during a paint.
 
 use windows::Win32::Graphics::Gdi::{HBITMAP, HGDIOBJ};
 

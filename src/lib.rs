@@ -1,6 +1,7 @@
-//! A small, idiomatic Rust wrapper over the slice of Win32 that the native
-//! emusic frontend (#106) needs: custom windows, the message loop, GDI
-//! painting, and a handful of common controls.
+//! Native Windows UI for Rust: small, fast, idiomatic, and themed. Dark mode is
+//! first-class. Two layers: a safe platform layer over Win32 (windows, typed
+//! messages, GDI) and a widget layer where widget events are mapped to the
+//! application's own message type (see the README's *Architecture* section).
 //!
 //! The crate is deliberately split so that `unsafe` is confined to [`sys`]:
 //! every other module starts with `#![forbid(unsafe_code)]` and talks to

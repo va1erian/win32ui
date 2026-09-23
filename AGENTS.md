@@ -29,8 +29,18 @@ Read this and [README.md](README.md) before writing any code. The README's
 - Public items get doc comments. Comments elsewhere only explain the non-obvious *why*.
 - No dead code, no commented-out code. Nothing emusic-specific in new public API:
   this is a general-purpose library.
-- Every new control or message is exercised in `examples/demo.rs` and has a
+- Every new control or message is exercised in `examples/demo/` and has a
   test in `tests/` or a unit test.
+- **Widgets follow the widget layer** (README → *Architecture*): events map to
+  the app's `Msg` through closures given at construction, there are no numeric
+  control ids in the public API, shared behaviour comes from `AsControl`/`ControlExt`
+  and capability traits (never a base type, `Deref` or downcasting), and design
+  values are `Dip`.
+- **Dark mode is first-class**: widgets implement `Themed`, use semantic theme
+  tokens only, and owner-draw any native part that ignores dark mode (documented
+  APIs only). UI PRs attach one light and one dark screenshot.
+- Tests that enter the message loop use a watchdog so they fail instead of
+  hanging. Never create ad-hoc debug windows.
 
 ## Checks (all must pass before opening a PR)
 
