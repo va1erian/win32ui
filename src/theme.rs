@@ -1,8 +1,7 @@
 #![forbid(unsafe_code)]
 
-//! A minimal colour palette shared by the demo's controls. The real frontend
-//! would build this from `emusic-ui`'s theme; here it only needs to prove the
-//! plumbing.
+//! The semantic colour palette the bundled controls paint with, in a light and
+//! a dark variant. #30 grows this into the full theming model.
 
 use crate::Color;
 
@@ -19,7 +18,7 @@ pub struct Theme {
     pub text_weak: Color,
     /// Selection background.
     pub selection: Color,
-    /// Accent used for the playing row and active toolbar buttons.
+    /// Accent used for highlighted rows and active toolbar buttons.
     pub accent: Color,
     /// Widget border.
     pub border: Color,
