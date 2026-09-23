@@ -11,6 +11,9 @@ pub(crate) mod dpi;
 pub(crate) mod gdi;
 pub(crate) mod message;
 pub(crate) mod window;
+pub(crate) mod window_ext;
+pub(crate) mod window_icon;
+pub(crate) mod window_input;
 
 use core::ffi::c_void;
 

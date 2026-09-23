@@ -59,6 +59,10 @@ pub enum Error {
     #[error("could not create GDI object: {0}")]
     Gdi(&'static str),
 
+    /// A window icon could not be created.
+    #[error("could not create window icon: {0}")]
+    Icon(&'static str),
+
     /// An operation requires a window that has already been destroyed.
     #[error("the window has already been destroyed")]
     WindowDestroyed,

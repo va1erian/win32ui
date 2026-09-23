@@ -72,7 +72,10 @@ pub use message::{
 };
 pub use theme::Theme;
 pub use units::{Dip, Px, dip};
-pub use window::{Window, WindowClass, WindowExStyle, WindowHandler, WindowStyle};
+pub use window::{
+    CursorShape, Icon, Placement, ShowState, Window, WindowClass, WindowExStyle, WindowHandler,
+    WindowStyle, monitor_work_areas,
+};
 
 pub use controls::label::Label;
 pub use controls::listview::{
@@ -82,19 +85,20 @@ pub use controls::statusbar::{StatusBar, StatusBarTheme};
 pub use controls::toolbar::{Toolbar, ToolbarItem, ToolbarTheme};
 pub use controls::treeview::{TreeEntry, TreeSource, TreeView, TreeViewEvent};
 
-pub use looper::{quit, run};
+pub use looper::{quit, run, run_modal};
 
 /// Everything a frontend typically needs, in one `use`.
 pub mod prelude {
     pub use crate::{
-        Color, Column, Command, CommandNotification, Dip, Dock, DockLayout, Error, HitTest, Hwnd,
-        Insets, Key, LResult, Label, ListSource, ListView, ListViewEvent, ListViewTheme, Message,
-        MinMaxInfo, Modifiers, MouseButton, Notify, Point, Px, Rect, Result, RgbaImage,
-        SortDirection, Stack, StackDirection, StackSlot, StatusBar, StatusBarTheme, Theme, TimerId,
-        Toolbar, ToolbarItem, ToolbarTheme, TreeEntry, TreeSource, TreeView, TreeViewEvent,
-        Win32Error, Window, WindowClass, WindowExStyle, WindowHandler, WindowStyle, dip,
+        Color, Column, Command, CommandNotification, CursorShape, Dip, Dock, DockLayout, Error,
+        HitTest, Hwnd, Icon, Insets, Key, LResult, Label, ListSource, ListView, ListViewEvent,
+        ListViewTheme, Message, MinMaxInfo, Modifiers, MouseButton, Notify, Placement, Point, Px,
+        Rect, Result, RgbaImage, ShowState, SortDirection, Stack, StackDirection, StackSlot,
+        StatusBar, StatusBarTheme, Theme, TimerId, Toolbar, ToolbarItem, ToolbarTheme, TreeEntry,
+        TreeSource, TreeView, TreeViewEvent, Win32Error, Window, WindowClass, WindowExStyle,
+        WindowHandler, WindowStyle, dip, monitor_work_areas,
     };
-    pub use crate::{gdi, looper, quit, run};
+    pub use crate::{gdi, looper, quit, run, run_modal};
 }
 
 /// Performs one-time process initialisation: per-monitor-v2 DPI awareness and
