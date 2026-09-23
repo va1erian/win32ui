@@ -10,6 +10,7 @@ use windows::Win32::UI::Controls::{
     LVM_SETITEMSTATE, LVM_SETTEXTBKCOLOR, LVM_SETTEXTCOLOR, LVNI_FOCUSED, LVNI_SELECTED,
     LVS_SINGLESEL, LVSICF_NOSCROLL, NMLVCUSTOMDRAW, NMLVDISPINFOW,
 };
+use windows::Win32::UI::Input::KeyboardAndMouse::GetFocus;
 use windows::Win32::UI::WindowsAndMessaging::{GWL_STYLE, GetWindowLongW, SetWindowLongW};
 use windows::core::PWSTR;
 
@@ -223,6 +224,15 @@ pub(crate) fn lv_is_selected(hwnd: Hwnd, item: i32) -> bool {
         LVIS_SELECTED.0 as isize,
     ) as u32;
     state & LVIS_SELECTED.0 != 0
+}
+
+/// Whether the list view itself has the keyboard focus. The owner-drawn
+/// selection follows it: the focused `selection` background while focused,
+/// the grey `selection_unfocused` one otherwise (Explorer behaviour).
+pub(crate) fn lv_has_focus(hwnd: Hwnd) -> bool {
+    // SAFETY: `GetFocus` takes no arguments and only returns the calling
+    // thread's focused window (or null); comparing handles touches nothing.
+    unsafe { hwnd_from(GetFocus()) == hwnd }
 }
 
 /// The list view's header control.
