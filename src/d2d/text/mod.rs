@@ -27,8 +27,10 @@ mod family;
 mod font;
 mod index;
 mod layout;
+mod rich;
 mod system;
 
 pub use font::{Font, FontMetrics};
 pub use layout::{HitTest, Layout, LineMetrics};
+pub use rich::{RichHit, RichLayout, Span};
 pub use system::{FontSpec, FontStretch, TextSystem};

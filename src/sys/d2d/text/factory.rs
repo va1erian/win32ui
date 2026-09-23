@@ -15,6 +15,7 @@ use crate::sys::win32_error;
 
 use super::alias::{self, GdiAlias};
 use super::layout::TextLayout;
+use super::rich::{RichStyle, RichTextLayout};
 
 /// The widest a line may grow when measuring without wrapping.
 const UNBOUNDED: f32 = 1.0e6;
@@ -206,6 +207,24 @@ impl TextFactory {
         }
         .map_err(win32_error)?;
         Ok(TextLayout::new(layout))
+    }
+
+    /// Lays `text` out with `format` and applies `styles` as per-range
+    /// attributes, giving a rich layout that measures and hit-tests as one
+    /// wrapped block.
+    pub(crate) fn rich_layout(
+        &self,
+        format: &IDWriteTextFormat,
+        text: &str,
+        max_width: f32,
+        styles: &[RichStyle],
+    ) -> Result<RichTextLayout> {
+        let layout = self.layout(format, text, max_width)?;
+        let rich = RichTextLayout::new(layout, styles.to_vec().into_boxed_slice());
+        for style in styles {
+            rich.apply(style)?;
+        }
+        Ok(rich)
     }
 
     /// The unwrapped width of `text`, trailing spaces included.

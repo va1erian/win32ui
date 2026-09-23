@@ -7,6 +7,8 @@
 mod alias;
 mod factory;
 mod layout;
+mod rich;
 
 pub(crate) use factory::{FontRequest, ResolvedFont, TextFactory};
 pub(crate) use layout::TextLayout;
+pub(crate) use rich::{RichStyle, RichTextLayout};

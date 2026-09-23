@@ -3,10 +3,11 @@
 use std::sync::{Arc, Mutex, PoisonError};
 
 use crate::error::Result;
-use crate::sys::d2d::text::{ResolvedFont, TextFactory};
+use crate::sys::d2d::text::{ResolvedFont, RichStyle, TextFactory};
 
 use super::cache::WidthCache;
 use super::layout::Layout;
+use super::rich::{RichLayout, Span};
 use super::system::FontSpec;
 
 /// How many distinct strings a font remembers the width of.
@@ -122,6 +123,42 @@ impl Font {
             .factory
             .layout(&self.inner.resolved.format, text, max_width)?;
         Ok(Layout::new(text, sys))
+    }
+
+    /// Lays `spans` out as one wrapped, flowing line at `max_width` (use
+    /// `f32::INFINITY` for a single unwrapped line). Every run is styled in
+    /// place, so word wrap, bidi and hit testing cross run boundaries. Draw it
+    /// with [`D2dCanvas::draw_rich_text`](crate::d2d::D2dCanvas::draw_rich_text).
+    pub fn rich_layout(&self, spans: &[Span], max_width: f32) -> Result<RichLayout> {
+        let text: String = spans.iter().map(|span| span.text.as_str()).collect();
+        let base = self.inner.spec.size_dip;
+        let styles = spans
+            .iter()
+            .scan(0, |start, span| {
+                let length = span.text.encode_utf16().count() as u32;
+                let style = RichStyle {
+                    start: *start,
+                    length,
+                    size: span
+                        .size_dip
+                        .filter(|size| size.is_finite() && *size > 0.0)
+                        .unwrap_or(base),
+                    weight: span.weight.clamp(100, 900),
+                    italic: span.italic,
+                    underline: span.underline,
+                    color: span.color,
+                };
+                *start += length;
+                Some(style)
+            })
+            .collect::<Vec<_>>();
+        let sys = self.inner.factory.rich_layout(
+            &self.inner.resolved.format,
+            &text,
+            max_width,
+            &styles,
+        )?;
+        Ok(RichLayout::new(text, spans, sys))
     }
 
     fn widths(&self) -> std::sync::MutexGuard<'_, WidthCache> {

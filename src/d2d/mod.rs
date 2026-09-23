@@ -35,5 +35,6 @@ pub use geometry::{
 pub use path::{ArcSize, Path, PathBuilder, Sweep};
 pub use surface::D2dSurface;
 pub use text::{
-    Font, FontMetrics, FontSpec, FontStretch, HitTest, Layout, LineMetrics, TextSystem,
+    Font, FontMetrics, FontSpec, FontStretch, HitTest, Layout, LineMetrics, RichHit, RichLayout,
+    Span, TextSystem,
 };
