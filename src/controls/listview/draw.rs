@@ -1,21 +1,19 @@
 #![forbid(unsafe_code)]
 
 //! The owner-draw plumbing behind [`ListView`](super::ListView): the virtual
-//! (owner-data) cell source and the dark header painting.
-
-use std::cell::RefCell;
-use std::rc::Rc;
+//! (owner-data) cell source and the row custom draw.
 
 use windows::Win32::UI::Controls::{LVN_GETDISPINFO, NM_CUSTOMDRAW};
 
-use crate::controls::listview::{Column, ListSource};
-use crate::controls::listview_theme::ListViewTheme;
+use crate::controls::listview::model::{Column, ListSource};
+use crate::controls::listview::theme::ListViewTheme;
 use crate::controls::registry::{ControlEvents, ControlKind};
 use crate::gdi::{Brush, Canvas, Font, TextFormat};
 use crate::geometry::Rect;
 use crate::hwnd::Hwnd;
 use crate::sys;
 
+// `CDDS_*` stage codes, from `commctrl.h`.
 const CDDS_PREPAINT: u32 = 0x0000_0001;
 const CDDS_ITEMPREPAINT: u32 = 0x0001_0001;
 
@@ -42,11 +40,11 @@ impl ControlEvents for ListViewInner {
         lparam: isize,
     ) -> Option<isize> {
         if code == LVN_GETDISPINFO {
-            let text = sys::control::lv_disp_info(lparam, |item, sub| self.cell(item, sub));
+            let text = sys::listview::lv_disp_info(lparam, |item, sub| self.cell(item, sub));
             return Some(text);
         }
         if code == NM_CUSTOMDRAW {
-            return Some(sys::control::lv_custom_draw(lparam, |ctx| {
+            return Some(sys::listview::lv_custom_draw(lparam, |ctx| {
                 self.custom_draw(hwnd, ctx)
             }));
         }
@@ -65,22 +63,22 @@ impl ListViewInner {
     fn custom_draw(
         &self,
         hwnd: Hwnd,
-        ctx: &sys::control::CustomDraw,
-    ) -> sys::control::CustomDrawResult {
+        ctx: &sys::listview::CustomDraw,
+    ) -> sys::listview::CustomDrawResult {
         if ctx.stage == CDDS_PREPAINT {
-            return sys::control::CustomDrawResult::NotifyItemDraw;
+            return sys::listview::CustomDrawResult::NotifyItemDraw;
         }
         if ctx.stage != CDDS_ITEMPREPAINT || ctx.item < 0 {
-            return sys::control::CustomDrawResult::Default;
+            return sys::listview::CustomDrawResult::Default;
         }
 
         let item = ctx.item;
-        let row = sys::control::lv_subitem_rect(hwnd, item, 0);
+        let row = sys::listview::lv_subitem_rect(hwnd, item, 0);
         if row.is_empty() {
-            return sys::control::CustomDrawResult::SkipDefault;
+            return sys::listview::CustomDrawResult::SkipDefault;
         }
 
-        let selected = sys::control::lv_is_selected(hwnd, item);
+        let selected = sys::listview::lv_is_selected(hwnd, item);
         let playing = self.playing == Some(item as usize);
         let highlight = playing || selected;
         let background = if highlight {
@@ -102,7 +100,7 @@ impl ListViewInner {
         canvas.fill_rect(row, background);
         canvas.with_font(&self.font, |canvas| {
             for (column, spec) in self.columns.iter().enumerate() {
-                let cell = sys::control::lv_subitem_rect(hwnd, item, column as i32);
+                let cell = sys::listview::lv_subitem_rect(hwnd, item, column as i32);
                 if cell.is_empty() {
                     continue;
                 }
@@ -125,7 +123,7 @@ impl ListViewInner {
         // Thin vertical separators between columns.
         if let Ok(brush) = Brush::solid(self.theme.border) {
             for column in 1..self.columns.len() {
-                let cell = sys::control::lv_subitem_rect(hwnd, item, column as i32);
+                let cell = sys::listview::lv_subitem_rect(hwnd, item, column as i32);
                 if cell.height() > 0 && cell.left > 0 {
                     canvas.fill_rect_brush(
                         Rect::new(cell.left, cell.top, cell.left + 1, cell.bottom),
@@ -135,88 +133,6 @@ impl ListViewInner {
             }
         }
 
-        sys::control::CustomDrawResult::SkipDefault
-    }
-}
-
-/// Paints the list view's header in the app's colours.
-pub(crate) struct HeaderDrawer {
-    inner: Rc<RefCell<ListViewInner>>,
-}
-
-impl HeaderDrawer {
-    pub(crate) fn new(inner: Rc<RefCell<ListViewInner>>) -> HeaderDrawer {
-        HeaderDrawer { inner }
-    }
-}
-
-impl sys::control::HeaderPainter for HeaderDrawer {
-    fn draw_header(&self, draw: &sys::control::HeaderDraw) -> Option<isize> {
-        let inner = self.inner.borrow();
-        if draw.stage == CDDS_PREPAINT {
-            Canvas::new(draw.hdc).fill_rect(draw.rect, inner.theme.header_background);
-            // Ask for a notification per header item.
-            return Some(32);
-        }
-        if draw.stage != CDDS_ITEMPREPAINT {
-            return None;
-        }
-
-        let canvas = Canvas::new(draw.hdc);
-        canvas.fill_rect(draw.rect, inner.theme.header_background);
-        let item = draw.item.max(0) as usize;
-
-        if let Some(column) = inner.columns.get(item) {
-            let format = if column.align_right {
-                TextFormat::left().right()
-            } else {
-                TextFormat::left()
-            };
-            let text_rect = Rect::new(
-                draw.rect.left + 6,
-                draw.rect.top,
-                draw.rect.right - 6,
-                draw.rect.bottom,
-            );
-            canvas.with_font(&inner.font, |canvas| {
-                canvas.draw_text(
-                    text_rect,
-                    &column.title,
-                    inner.theme.header_text,
-                    format.single_line().vcenter().no_prefix(),
-                );
-            });
-        }
-
-        if let Ok(brush) = Brush::solid(inner.theme.border)
-            && item > 0
-        {
-            canvas.fill_rect_brush(
-                Rect::new(
-                    draw.rect.left,
-                    draw.rect.top,
-                    draw.rect.left + 1,
-                    draw.rect.bottom,
-                ),
-                &brush,
-            );
-        }
-
-        if let Some((sort_column, ascending)) = inner.sort
-            && sort_column == item
-        {
-            let size = 4;
-            let middle = (draw.rect.top + draw.rect.bottom) / 2;
-            let arrow = Rect::new(
-                draw.rect.right - 16,
-                middle - size,
-                draw.rect.right - 8,
-                middle + size,
-            );
-            canvas.triangle(arrow, inner.theme.header_text, ascending);
-        }
-
-        // We painted the whole item.
-        Some(4)
+        sys::listview::CustomDrawResult::SkipDefault
     }
 }

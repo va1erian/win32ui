@@ -13,7 +13,6 @@ use std::rc::Rc;
 
 use crate::app::Ui;
 use crate::controls::control::{AsControl, Control};
-use crate::controls::listview_inner::{HeaderDrawer, ListViewInner};
 use crate::controls::registry::{self, ControlEvents};
 use crate::controls::{create_child, next_id, style};
 use crate::error::Result;
@@ -23,11 +22,20 @@ use crate::hwnd::Hwnd;
 use crate::message::{Key, Message, Modifiers, Notify};
 use crate::sys;
 use crate::theme::{Theme, Themed};
-use crate::units::Dip;
 
-pub use super::listview_events::ListViewEvent;
-use super::listview_events::ListViewEvents;
-pub use super::listview_theme::ListViewTheme;
+mod draw;
+pub(crate) mod events;
+mod header;
+mod model;
+mod theme;
+
+use self::draw::ListViewInner;
+use self::events::ListViewEvents;
+use self::header::HeaderDrawer;
+
+pub use self::events::ListViewEvent;
+pub use self::model::{Column, ListSource, SortDirection};
+pub use self::theme::ListViewTheme;
 
 const LVS_REPORT: u32 = 0x0000_0001;
 const LVS_SHOWSELALWAYS: u32 = 0x0000_0008;
@@ -35,61 +43,13 @@ const LVS_OWNERDATA: u32 = 0x0000_1000;
 const LVS_EX_FULLROWSELECT: u32 = 0x0000_0020;
 const LVS_EX_DOUBLEBUFFER: u32 = 0x0001_0000;
 
-/// A report-mode column.
-#[derive(Clone, Debug)]
-pub struct Column {
-    /// Header label.
-    pub title: String,
-    /// Initial width as a [`Dip`] design value.
-    pub width: Dip,
-    /// Whether the column's cells are right-aligned.
-    pub align_right: bool,
-}
-
-impl Column {
-    /// A left-aligned column.
-    pub fn new(title: impl Into<String>, width: Dip) -> Column {
-        Column {
-            title: title.into(),
-            width,
-            align_right: false,
-        }
-    }
-
-    /// A right-aligned column (numbers, durations).
-    pub fn right(title: impl Into<String>, width: Dip) -> Column {
-        Column {
-            title: title.into(),
-            width,
-            align_right: true,
-        }
-    }
-}
-
-/// Supplies the virtual list view with its row count and cell text.
-pub trait ListSource {
-    /// The number of rows.
-    fn item_count(&self) -> usize;
-
-    /// The text of the cell at `item`/`column` (both zero-based).
-    fn text(&self, item: usize, column: usize) -> String;
-}
-
-/// Which way a column is sorted, for the header arrow.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SortDirection {
-    /// Ascending (`HDF_SORTUP`).
-    Ascending,
-    /// Descending (`HDF_SORTDOWN`).
-    Descending,
-}
-
+/// A virtual report list view.
 /// A virtual report list view.
 pub struct ListView<M> {
     control: Control,
     header: Hwnd,
     inner: Rc<RefCell<ListViewInner>>,
-    header_subclass: Option<sys::control::HeaderSubclass>,
+    header_subclass: Option<sys::listview::HeaderSubclass>,
     events: Rc<RefCell<ListViewEvents<M>>>,
 }
 
@@ -123,10 +83,10 @@ impl<M: 'static> ListView<M> {
             bounds,
         )?;
 
-        sys::control::lv_set_extended_style(hwnd, LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
-        sys::control::lv_set_colors(hwnd, theme.background, theme.text);
+        sys::listview::lv_set_extended_style(hwnd, LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
+        sys::listview::lv_set_colors(hwnd, theme.background, theme.text);
         for (index, column) in columns.iter().enumerate() {
-            sys::control::lv_insert_column(
+            sys::listview::lv_insert_column(
                 hwnd,
                 index as i32,
                 &column.title,
@@ -134,14 +94,14 @@ impl<M: 'static> ListView<M> {
                 column.align_right,
             );
         }
-        sys::control::lv_set_item_count(hwnd, source.item_count());
+        sys::listview::lv_set_item_count(hwnd, source.item_count());
 
         // Match the egui frontend's font/row height, opt the control and its
         // header into the theme's visual style, and owner-draw the header.
         let font = Font::system_ui(dpi)?;
         sys::control::set_control_font(hwnd, font.raw());
         sys::apply_native_theme(hwnd, sys::NativeControlKind::Scrollable, ui.theme().is_dark);
-        let header = sys::control::lv_header(hwnd);
+        let header = sys::listview::lv_header(hwnd);
         if !header.is_null() {
             sys::control::set_control_font(header, font.raw());
             sys::apply_native_theme(
@@ -165,7 +125,7 @@ impl<M: 'static> ListView<M> {
         let header_subclass = if header.is_null() {
             None
         } else {
-            sys::control::HeaderSubclass::install(
+            sys::listview::HeaderSubclass::install(
                 hwnd,
                 header,
                 Box::new(HeaderDrawer::new(Rc::clone(&inner))),
@@ -218,7 +178,7 @@ impl<M: 'static> ListView<M> {
                 Rc::new(move |applied| {
                     if let Some(inner) = weak.upgrade() {
                         inner.borrow_mut().theme = ListViewTheme::from_theme(applied);
-                        sys::control::lv_set_colors(
+                        sys::listview::lv_set_colors(
                             hwnd,
                             inner.borrow().theme.background,
                             inner.borrow().theme.text,
@@ -278,13 +238,13 @@ impl<M: 'static> ListView<M> {
 
     /// Updates the number of virtual rows after the source changed.
     pub fn set_item_count(&self, count: usize) {
-        sys::control::lv_set_item_count(self.control.hwnd(), count);
+        sys::listview::lv_set_item_count(self.control.hwnd(), count);
     }
 
     /// Replaces the data source and refreshes the view.
     pub fn set_source(&self, source: Box<dyn ListSource>) {
         self.inner.borrow_mut().source = source;
-        sys::control::lv_set_item_count(
+        sys::listview::lv_set_item_count(
             self.control.hwnd(),
             self.inner.borrow().source.item_count(),
         );
@@ -315,23 +275,23 @@ impl<M: 'static> ListView<M> {
 
     /// The first selected row, if any.
     pub fn selected(&self) -> Option<usize> {
-        sys::control::lv_selected(self.control.hwnd()).map(|index| index as usize)
+        sys::listview::lv_selected(self.control.hwnd()).map(|index| index as usize)
     }
 
     /// The control's background colour.
     pub fn background_color(&self) -> crate::Color {
-        sys::control::lv_background(self.control.hwnd())
+        sys::listview::lv_background(self.control.hwnd())
     }
 
     /// Reads back a cell's text (which re-enters the owner-data path). Useful
     /// for tests and for accessibility.
     pub fn cell_text(&self, item: usize, column: usize) -> String {
-        sys::control::lv_item_text(self.control.hwnd(), item as i32, column as i32)
+        sys::listview::lv_item_text(self.control.hwnd(), item as i32, column as i32)
     }
 
     /// Selects and focuses `row`.
     pub fn select(&self, row: usize) {
-        sys::control::lv_select(self.control.hwnd(), row as i32);
+        sys::listview::lv_select(self.control.hwnd(), row as i32);
     }
 }
 
@@ -345,7 +305,7 @@ impl<M> Themed for ListView<M> {
     fn apply_theme(&self, theme: &Theme) {
         self.inner.borrow_mut().theme = ListViewTheme::from_theme(theme);
         let applied = self.inner.borrow().theme;
-        sys::control::lv_set_colors(self.control.hwnd(), applied.background, applied.text);
+        sys::listview::lv_set_colors(self.control.hwnd(), applied.background, applied.text);
         sys::apply_native_theme(
             self.control.hwnd(),
             sys::NativeControlKind::Scrollable,
