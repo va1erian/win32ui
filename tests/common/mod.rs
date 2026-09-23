@@ -137,6 +137,20 @@ where
     A: App + 'static,
     F: FnOnce(&mut Ui<A::Msg>) -> A,
 {
+    run_app_spec_with_watchdog_ms(spec, WATCHDOG_MS, make)
+}
+
+/// Like [`run_app_spec_with_watchdog`], with a longer watchdog for a
+/// measurement that legitimately runs for many seconds.
+pub fn run_app_spec_with_watchdog_ms<A, F>(
+    spec: WindowSpec,
+    watchdog_ms: u32,
+    make: F,
+) -> Option<RunApp>
+where
+    A: App + 'static,
+    F: FnOnce(&mut Ui<A::Msg>) -> A,
+{
     win32ui::init();
 
     let timed_out = Rc::new(Cell::new(false));
@@ -144,7 +158,7 @@ where
     let timed_out_for_timer = Rc::clone(&timed_out);
     let watchdog_for_timer = Rc::clone(&watchdog);
     let result = win32ui::run_app(spec, move |ui| {
-        let id = ui.set_timer(WATCHDOG_MS).ok();
+        let id = ui.set_timer(watchdog_ms).ok();
         watchdog_for_timer.set(id);
         ui.on_timer(move |fired| {
             if Some(fired) == id {

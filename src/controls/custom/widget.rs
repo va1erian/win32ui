@@ -112,6 +112,12 @@ pub enum Input {
     },
     /// A translated character.
     Char(char),
+    /// One tick of the animation timer requested with
+    /// [`WidgetCx::request_animation`].
+    Tick,
+    /// A frame was painted. A widget that coalesces its events per frame
+    /// flushes them here.
+    Frame,
     /// The widget gained the keyboard focus.
     SetFocus,
     /// The widget lost the keyboard focus.
@@ -179,11 +185,38 @@ pub struct WidgetCx<E> {
     hwnd: Hwnd,
     bounds: Rc<Cell<Rect>>,
     emit: Rc<dyn Fn(E)>,
+    dpi: u32,
+    animate: Rc<Cell<bool>>,
 }
 
 impl<E> WidgetCx<E> {
-    pub(crate) fn new(hwnd: Hwnd, bounds: Rc<Cell<Rect>>, emit: Rc<dyn Fn(E)>) -> WidgetCx<E> {
-        WidgetCx { hwnd, bounds, emit }
+    pub(crate) fn new(
+        hwnd: Hwnd,
+        bounds: Rc<Cell<Rect>>,
+        emit: Rc<dyn Fn(E)>,
+        dpi: u32,
+        animate: Rc<Cell<bool>>,
+    ) -> WidgetCx<E> {
+        WidgetCx {
+            hwnd,
+            bounds,
+            emit,
+            dpi,
+            animate,
+        }
+    }
+
+    /// The widget's dots-per-inch, to convert input coordinates (device
+    /// pixels) to device-independent pixels.
+    pub fn dpi(&self) -> u32 {
+        self.dpi
+    }
+
+    /// Starts (`true`) or stops (`false`) a repeating animation timer that
+    /// delivers [`Input::Tick`] about every frame. A widget requests it only
+    /// while it is animating, so an idle widget costs no timer.
+    pub fn request_animation(&self, on: bool) {
+        self.animate.set(on);
     }
 
     /// Maps `event` to the app's `Msg` through the widget's

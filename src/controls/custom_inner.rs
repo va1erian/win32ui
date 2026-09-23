@@ -21,7 +21,7 @@ use crate::d2d::{D2dSurface, pixels_to_dips};
 use crate::gdi::Paint;
 use crate::geometry::Rect;
 use crate::hwnd::Hwnd;
-use crate::message::{LResult, Message};
+use crate::message::{LResult, Message, TimerId};
 use crate::window::{Window, WindowHandler};
 
 /// Maps a widget event to an optional app message.
@@ -34,6 +34,9 @@ pub(super) struct CustomShared<W: CustomWidget, M> {
     pub(super) widget: Rc<RefCell<W>>,
     pub(super) mapper: RefCell<Option<EventMapper<W, M>>>,
     pub(super) scroll: RefCell<Option<Rc<CustomScroll<M>>>>,
+    /// The running animation timer, if any: it exists only while the widget
+    /// has asked for animation ticks.
+    pub(super) timer: Cell<Option<TimerId>>,
     pub(super) ui: Ui<M>,
 }
 
@@ -57,7 +60,14 @@ pub(super) struct CustomHandler<W: CustomWidget, M> {
     /// and input never allocate.
     pub(super) emit: Rc<dyn Fn(W::Event)>,
     pub(super) renderer: RefCell<RendererState>,
+    /// Whether the widget asked for animation ticks.
+    pub(super) animate: Rc<Cell<bool>>,
+    /// Whether a `WM_MOUSELEAVE` is armed, so a move re-arms it only after a leave.
+    pub(super) tracking_mouse: Cell<bool>,
 }
+
+/// The animation timer period: one 60 Hz frame.
+const ANIMATION_FRAME_MS: u32 = 16;
 
 impl<W: CustomWidget, M: 'static> CustomHandler<W, M> {
     fn paint(&self, hwnd: Hwnd) {
@@ -94,6 +104,34 @@ impl<W: CustomWidget, M: 'static> CustomHandler<W, M> {
             paint.canvas().fill_rect(bounds, theme.background);
         }
     }
+
+    /// Hands `input` to the widget with a fresh context, then starts or stops
+    /// the animation timer to match what the widget asked for.
+    fn dispatch(&self, window: &Window, input: Input) {
+        let mut cx = WidgetCx::new(
+            window.hwnd(),
+            Rc::clone(&self.bounds),
+            Rc::clone(&self.emit),
+            self.shared.ui.dpi(),
+            Rc::clone(&self.animate),
+        );
+        self.shared.widget.borrow().input(input, &mut cx);
+        self.sync_timer(window);
+    }
+
+    fn sync_timer(&self, window: &Window) {
+        match (self.animate.get(), self.shared.timer.get()) {
+            (true, None) => self
+                .shared
+                .timer
+                .set(window.set_timer(ANIMATION_FRAME_MS).ok()),
+            (false, Some(id)) => {
+                window.kill_timer(id);
+                self.shared.timer.set(None);
+            }
+            _ => {}
+        }
+    }
 }
 
 impl<W: CustomWidget, M: 'static> WindowHandler for CustomHandler<W, M> {
@@ -104,7 +142,18 @@ impl<W: CustomWidget, M: 'static> WindowHandler for CustomHandler<W, M> {
         match message {
             Message::Paint => {
                 self.paint(window.hwnd());
+                self.dispatch(window, Input::Frame);
                 Some(0)
+            }
+            Message::Timer { id } if Some(id) == self.shared.timer.get() => {
+                self.dispatch(window, Input::Tick);
+                Some(0)
+            }
+            Message::Other { code, .. }
+                if crate::sys::window_input::is_get_dlg_code(code)
+                    && self.shared.widget.borrow().wants_arrow_keys() =>
+            {
+                Some(crate::sys::window_input::DLGC_WANTARROWS)
             }
             Message::Size { width, height } => {
                 self.bounds.set(Rect::new(0, 0, width, height));
@@ -116,7 +165,7 @@ impl<W: CustomWidget, M: 'static> WindowHandler for CustomHandler<W, M> {
             }
             Message::MouseWheel {
                 delta, horizontal, ..
-            } if !horizontal => {
+            } if !horizontal && self.shared.scroll.borrow().is_some() => {
                 if let Some(scroll) = self.shared.scroll.borrow().as_ref() {
                     scroll.wheel(delta);
                 }
@@ -137,13 +186,15 @@ impl<W: CustomWidget, M: 'static> WindowHandler for CustomHandler<W, M> {
                 {
                     return Some(0);
                 }
+                match message {
+                    Message::MouseMove { .. } if !self.tracking_mouse.replace(true) => {
+                        let _ = window.track_mouse_leave();
+                    }
+                    Message::MouseLeave => self.tracking_mouse.set(false),
+                    _ => {}
+                }
                 let input = Input::from_message(message)?;
-                let mut cx = WidgetCx::new(
-                    window.hwnd(),
-                    Rc::clone(&self.bounds),
-                    Rc::clone(&self.emit),
-                );
-                self.shared.widget.borrow().input(input, &mut cx);
+                self.dispatch(window, input);
                 Some(0)
             }
         }

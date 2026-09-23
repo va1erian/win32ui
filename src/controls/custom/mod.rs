@@ -62,6 +62,13 @@ pub trait CustomWidget: 'static {
     /// by the scroll offset, so draw the document in its own coordinates.
     fn paint_d2d(&self, _canvas: &mut D2dCanvas<'_>, _bounds: RectF, _theme: &Theme) {}
 
+    /// Whether the widget handles the arrow keys itself. When `true`, the
+    /// dialog-style navigation of the window leaves the arrows to
+    /// [`CustomWidget::input`] instead of moving the focus.
+    fn wants_arrow_keys(&self) -> bool {
+        false
+    }
+
     /// Handles one input event. The default ignores everything.
     fn input(&self, _input: Input, _cx: &mut WidgetCx<Self::Event>) {}
 
@@ -101,6 +108,7 @@ impl<W: CustomWidget, M: 'static> Custom<W, M> {
             widget: Rc::new(RefCell::new(widget)),
             mapper: RefCell::new(None),
             scroll: RefCell::new(None),
+            timer: Cell::new(None),
             ui: ui.clone(),
         });
         let client_bounds = Rc::new(Cell::new(bounds));
@@ -113,6 +121,8 @@ impl<W: CustomWidget, M: 'static> Custom<W, M> {
             bounds: Rc::clone(&client_bounds),
             emit,
             renderer: RefCell::new(RendererState::Untried),
+            animate: Rc::new(Cell::new(false)),
+            tracking_mouse: Cell::new(false),
         };
 
         let class = WindowClass::register("win32ui.custom", background)?;
@@ -228,6 +238,16 @@ impl<W: CustomWidget, M: 'static> Custom<W, M> {
         if let Some(scroll) = self.shared.scroll.borrow().as_ref() {
             scroll.scroll_into_view(rect, self.shared.ui.dpi());
         }
+    }
+
+    /// Whether the widget's animation timer is running.
+    pub(crate) fn animation_timer_running(&self) -> bool {
+        self.shared.timer.get().is_some()
+    }
+
+    /// The widget's dots-per-inch.
+    pub(crate) fn dpi(&self) -> u32 {
+        self.shared.ui.dpi()
     }
 
     /// A shared handle to the widget, for app-side mutation between paints.

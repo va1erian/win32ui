@@ -205,6 +205,8 @@ impl<M: 'static> WindowHandler for DividerHandler<M> {
                     window.hwnd(),
                     Rc::clone(&self.bounds),
                     Rc::clone(&self.emit),
+                    crate::sys::dpi::window_dpi(window.hwnd()),
+                    Rc::default(),
                 );
                 self.widget.input(input, &mut cx);
                 Some(0)
