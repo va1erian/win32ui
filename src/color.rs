@@ -51,6 +51,30 @@ impl Color {
             b: mix(self.b, other.b),
         }
     }
+
+    /// Relative luminance (`0.0` black .. `1.0` white), per WCAG 2.x.
+    pub fn luminance(self) -> f32 {
+        fn channel(value: u8) -> f32 {
+            let s = value as f32 / 255.0;
+            if s <= 0.04045 {
+                s / 12.92
+            } else {
+                ((s + 0.055) / 1.055).powf(2.4)
+            }
+        }
+        0.2126 * channel(self.r) + 0.7152 * channel(self.g) + 0.0722 * channel(self.b)
+    }
+
+    /// WCAG contrast ratio of `self` (as text) over `background`
+    /// (`1.0` .. `21.0`; body text wants at least `4.5`).
+    pub fn contrast_ratio(self, background: Color) -> f32 {
+        let (lighter, darker) = if self.luminance() >= background.luminance() {
+            (self.luminance(), background.luminance())
+        } else {
+            (background.luminance(), self.luminance())
+        };
+        (lighter + 0.05) / (darker + 0.05)
+    }
 }
 
 #[cfg(test)]
@@ -70,5 +94,15 @@ mod tests {
         assert_eq!(black.lerp(white, 0.0), black);
         assert_eq!(black.lerp(white, 1.0), white);
         assert_eq!(black.lerp(white, 0.5), Color::rgb(128, 128, 128));
+    }
+
+    #[test]
+    fn contrast_endpoints() {
+        let black = Color::rgb(0, 0, 0);
+        let white = Color::rgb(255, 255, 255);
+        assert!((black.luminance() - 0.0).abs() < 1e-6);
+        assert!((white.luminance() - 1.0).abs() < 1e-6);
+        assert!((black.contrast_ratio(white) - 21.0).abs() < 0.01);
+        assert!((white.contrast_ratio(white) - 1.0).abs() < 1e-6);
     }
 }

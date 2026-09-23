@@ -129,22 +129,17 @@ impl<T> ListViewInner<T> {
 
         let selected = sys::listview::lv_is_selected(hwnd, item);
         let playing = self.playing == Some(item as usize);
-        let highlight = playing || selected;
-        let background = if highlight {
-            self.theme.selection
-        } else if item % 2 == 1 {
-            self.theme.alternate
-        } else {
-            self.theme.background
-        };
-        let text_color = if highlight {
-            self.theme.on_playing
-        } else {
-            self.theme.text
-        };
+        let focused = sys::listview::lv_has_focus(hwnd);
+        // Explorer keeps the normal text colour on selection and only swaps
+        // the background (focused blue, unfocused grey); only the playing
+        // row swaps the text too. See `ListViewTheme::row_colors`.
+        let (background, text_color) =
+            self.theme
+                .row_colors(selected, focused, playing, item % 2 == 1);
 
         // Paint the row ourselves: this is a real owner-drawn list, which also
-        // lets us suppress the system's (focus-dependent) selection colour.
+        // lets us pick the focused/unfocused selection background ourselves
+        // instead of taking the system's focus-dependent default.
         let canvas = Canvas::new(ctx.hdc);
         canvas.fill_rect(row, background);
         canvas.with_font(&self.font, |canvas| {
