@@ -2,7 +2,25 @@ use std::rc::Rc;
 
 use win32ui::prelude::*;
 
-use super::Track;
+/// One row of mock library data.
+///
+/// The `*_text` fields pre-format the numeric columns: column accessors
+/// borrow `&str` from the row, so anything not already a string is rendered
+/// once up front rather than on every owner-data request.
+pub(super) struct Track {
+    pub(super) title: String,
+    pub(super) artist: String,
+    pub(super) album: String,
+    pub(super) year: u16,
+    pub(super) year_text: String,
+    pub(super) genre: String,
+    pub(super) seconds: u32,
+    pub(super) duration_text: String,
+    pub(super) format: String,
+    pub(super) plays: u32,
+    pub(super) plays_text: String,
+    pub(super) last_played: String,
+}
 
 /// Virtual list backing store: display order plus shared rows.
 pub(super) struct TrackModel {
