@@ -10,6 +10,9 @@
 //! to the app's `Msg` through the same per-window queue as every other widget,
 //! so [`App::update`](crate::App::update) is never re-entered.
 
+mod d2d;
+mod scroll;
+
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
