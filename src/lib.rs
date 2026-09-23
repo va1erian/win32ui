@@ -86,6 +86,7 @@ pub use window::{
 pub use controls::combobox::ComboBox;
 pub use controls::control::{AsControl, Control, ControlExt, HasText};
 pub use controls::custom::{Custom, CustomWidget, Input, WidgetCx};
+pub use controls::edit::Edit;
 pub use controls::label::Label;
 pub use controls::listview::{
     Column, ColumnWidth, Fill, ListModel, ListView, ListViewEvent, ListViewTheme, SortDirection,
@@ -103,9 +104,9 @@ pub use looper::{quit, run, run_modal};
 pub mod prelude {
     pub use crate::{
         App, AsControl, Color, Column, ColumnWidth, ComboBox, Command, CommandNotification,
-        Control, ControlExt, CursorShape, Custom, CustomWidget, Dip, Dock, DockLayout, Error, Fill,
-        HasText, HitTest, Hwnd, Icon, Input, Insets, IntoLayoutItem, Key, LResult, Label, Layout,
-        LayoutExt, LayoutItem, ListModel, ListView, ListViewEvent, ListViewTheme, Message,
+        Control, ControlExt, CursorShape, Custom, CustomWidget, Dip, Dock, DockLayout, Edit, Error,
+        Fill, HasText, HitTest, Hwnd, Icon, Input, Insets, IntoLayoutItem, Key, LResult, Label,
+        Layout, LayoutExt, LayoutItem, ListModel, ListView, ListViewEvent, ListViewTheme, Message,
         MinMaxInfo, Modifiers, MouseButton, Notify, Placement, Point, ProgressBar,
         ProgressBarTheme, ProgressState, Proxy, Px, Rect, Result, RgbaImage, Shortcut,
         ShortcutParseError, ShowState, SortDirection, Stack, StackDirection, StackSlot, StatusBar,

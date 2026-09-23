@@ -11,6 +11,7 @@ pub(crate) mod control;
 pub(crate) mod d2d;
 pub(crate) mod dispatch;
 pub(crate) mod dpi;
+pub(crate) mod edit;
 pub(crate) mod gdi;
 pub(crate) mod layout;
 pub(crate) mod listview;
