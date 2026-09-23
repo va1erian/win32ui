@@ -121,7 +121,7 @@ already retained), and closures that capture shared mutable app state.
 | Tooltips: `ControlExt::set_tooltip`, region tooltips, toolbar item tooltips, dark owner-draw | exists (#17) |
 | Direct2D shapes, clips and transforms (`d2d`, anti-aliased); `ProgressBar` and the owner-drawn shapes (radio, group box, toolbar, tabs, menus, sort arrow) draw with it (GDI fallback) | exists (#22, #77) |
 | Mica/Mica Alt/Acrylic backdrop and themed caption (`Backdrop`, `TitleBar`), GDI fallback | exists (#53 phase 1) |
-| Extended title bar (`WM_NCCALCSIZE`, `DwmDefWindowProc` hit-test, `caption_inset`, `set_caption_interactive`) | exists (#53 phase 2) |
+| Extended title bar (`WM_NCCALCSIZE`, `DwmDefWindowProc` hit-test, `caption_inset`, `set_caption_interactive`, top-strip frame extension) | exists (#53 phase 2, fixed by #76) |
 | DirectWrite text, gradients, bitmaps, rounded clips, colour emoji | #22 follow-up |
 
 ## Source layout
@@ -262,11 +262,19 @@ Controls theme themselves; the app never handles `NM_CUSTOMDRAW`,
   the standard caption (`WM_NCCALCSIZE`) while keeping the native resize
   borders, and routes `WM_NCHITTEST` through `DwmDefWindowProc` first so the
   min/max/close buttons — and with them Windows 11 snap layouts — keep working.
-  The free strip drags, widgets marked with `ControlExt::set_caption_interactive`
-  accept clicks, and `Ui::caption_inset()` reserves the button area. Content
-  painted over the material still needs Direct2D alpha (GDI text over the glass
-  writes zero alpha), so a `title_bar` layout item and Direct2D text are the
-  remaining follow-up.
+  The frame is extended over the caption strip only
+  (`DwmExtendFrameIntoClientArea` with a top margin), so DWM draws the caption
+  buttons there and a backdrop material shows through that strip while the rest
+  of the client stays an ordinary opaque surface. The strip is erased to black
+  (DWM's "glass" colour) only when the backdrop is active; the menu bar keeps
+  its non-client strip below the removed caption, and the demo reserves the
+  strip with `Ui::title_bar_height()` so content never sits under the buttons.
+  The free strip drags, widgets marked with
+  `ControlExt::set_caption_interactive` accept clicks, and
+  `Ui::caption_inset()` reserves the button area. Content painted over the
+  material still needs Direct2D alpha (GDI text over the glass writes zero
+  alpha), so a widget in the strip — the `title_bar` layout item — remains the
+  follow-up.
 
 ## Menus
 

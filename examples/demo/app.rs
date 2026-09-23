@@ -149,6 +149,10 @@ pub(crate) fn main() {
 
             // The window owns the layout: it re-runs this tree on every resize
             // and DPI change, so the app never handles `WM_SIZE`.
+            // An extended title bar reserves a top strip (the caption buttons
+            // and menu bar); content starts below it so nothing sits under the
+            // buttons. Zero on a standard title bar, so the layout is unchanged.
+            let title_bar = ui.title_bar_height();
             ui.set_layout(
                 column![
                     toolbar,
@@ -158,7 +162,8 @@ pub(crate) fn main() {
                     row![views, options.page().width(dip(220.0))].fill(1),
                     status,
                 ]
-                .spacing(dip(4.0)),
+                .spacing(dip(4.0))
+                .margins(Insets::new(dip(0.0), title_bar, dip(0.0), dip(0.0))),
             );
 
             let app = App {
@@ -227,6 +232,14 @@ pub(crate) fn main() {
             // light/dark composite of both secondary window kinds to.
             if std::env::var("WIN32UI_DEMO_SECONDARY_SCREENSHOT").is_ok() {
                 ui.emit(Msg::SecondaryScreenshot);
+            }
+
+            // `WIN32UI_DEMO_TAB` selects a tab page by index (0 = Library,
+            // 1 = Primitives, 2 = Document) before a screenshot is taken.
+            if let Ok(value) = std::env::var("WIN32UI_DEMO_TAB")
+                && let Ok(index) = value.parse::<usize>()
+            {
+                ui.emit(Msg::TabsPage(index));
             }
 
             app
@@ -381,6 +394,7 @@ impl win32ui::App for App {
             Msg::TabsPage(page) => self.set_status(&format!("Tab page {page}")),
             Msg::AutoClose => {
                 screenshot::capture_if_requested(ui);
+                screenshot::capture_screen_if_requested(ui);
                 primitives::PrimitivesPanel::capture_if_requested(ui, &self.primitives);
                 ui.quit();
             }

@@ -13,8 +13,9 @@
 /// Extending the material into the client area (so widgets sit on it) is the
 /// extended-client-area work: GDI draws text with zero alpha over the glass and
 /// DWM drops it, so content there has to be painted with Direct2D alpha first.
-/// [`Canvas::clear_to_backdrop`](crate::gdi::Canvas::clear_to_backdrop) is the
-/// seam for that.
+/// The extended title bar extends only the caption strip, and the window erases
+/// that strip to black itself; [`Canvas::clear_to_backdrop`](crate::gdi::Canvas::clear_to_backdrop)
+/// is the low-level seam for a widget that draws inside the strip.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Backdrop {
     /// No material: the window paints its opaque theme background (the default).

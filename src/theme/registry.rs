@@ -69,16 +69,12 @@ pub(crate) fn backdrop_active(window: Hwnd) -> bool {
     })
 }
 
-/// The class background a window should paint: transparent black when its
-/// backdrop is active (DWM shows the material through it), otherwise the
-/// theme's background. GDI has no alpha, so black is the documented
-/// extended-frame "glass" colour.
-pub(crate) fn window_background(window: Hwnd, theme: Theme) -> Color {
-    if backdrop_active(window) {
-        Color::rgb(0, 0, 0)
-    } else {
-        theme.background
-    }
+/// The class background a window should paint: always the theme's background.
+/// With an extended frame only the caption strip is glass; it is cleared to
+/// black by the non-client erase path, never by painting the whole client
+/// black (which would leave black bands wherever no control paints).
+pub(crate) fn window_background(_window: Hwnd, theme: Theme) -> Color {
+    theme.background
 }
 
 /// Registers `child` (created under `window`) with its re-theme callback.

@@ -14,13 +14,14 @@ use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Dwm::{
     DWMWA_CAPTION_BUTTON_BOUNDS, DwmDefWindowProc, DwmGetWindowAttribute,
 };
+use windows::Win32::Graphics::Gdi::HDC;
 use windows::Win32::UI::HiDpi::{AdjustWindowRectExForDpi, GetSystemMetricsForDpi};
 use windows::Win32::UI::WindowsAndMessaging::{
     CWP_SKIPDISABLED, CWP_SKIPINVISIBLE, ChildWindowFromPointEx, DefWindowProcW, GWL_EXSTYLE,
-    GWL_STYLE, GetWindowLongPtrW, HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTCAPTION, HTCLIENT,
-    HTLEFT, HTRIGHT, HTTOP, HTTOPLEFT, HTTOPRIGHT, NCCALCSIZE_PARAMS, SM_CXPADDEDBORDER,
-    SM_CYCAPTION, SM_CYSIZEFRAME, WINDOW_EX_STYLE, WINDOW_STYLE, WM_NCCALCSIZE, WM_NCHITTEST,
-    WS_CAPTION,
+    GWL_STYLE, GetMenuBarInfo, GetWindowLongPtrW, HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTCAPTION,
+    HTCLIENT, HTLEFT, HTRIGHT, HTTOP, HTTOPLEFT, HTTOPRIGHT, MENUBARINFO, NCCALCSIZE_PARAMS,
+    OBJID_MENU, SM_CXPADDEDBORDER, SM_CYCAPTION, SM_CYSIZEFRAME, WINDOW_EX_STYLE, WINDOW_STYLE,
+    WM_ERASEBKGND, WM_NCCALCSIZE, WM_NCHITTEST, WS_CAPTION,
 };
 
 use crate::geometry::{Point, Rect};
@@ -147,6 +148,28 @@ fn caption_height(hwnd: HWND) -> i32 {
     }
 }
 
+/// The window's menu-bar height in pixels, or 0 when it has no `HMENU` bar.
+fn menu_bar_height(hwnd: HWND) -> i32 {
+    let mut info = MENUBARINFO {
+        cbSize: size_of::<MENUBARINFO>() as u32,
+        ..Default::default()
+    };
+    // SAFETY: `info` is a correctly-sized, initialised out-struct; `OBJID_MENU`
+    // is the documented identifier for a window's menu bar.
+    if unsafe { GetMenuBarInfo(hwnd, OBJID_MENU, 0, &mut info) }.is_err() {
+        return 0;
+    }
+    info.rcBar.bottom - info.rcBar.top
+}
+
+/// The top strip an extended-frame window must reserve for its caption buttons
+/// and menu bar, in pixels: the caption (incl. its top frame) plus the menu-bar
+/// height. Content laid out by the app starts below it.
+pub(crate) fn title_bar_height(hwnd: Hwnd) -> i32 {
+    let raw = raw_hwnd(hwnd);
+    caption_height(raw) + menu_bar_height(raw)
+}
+
 /// Reads the screen point from a mouse-message `lparam`.
 fn screen_point(lparam: LPARAM) -> Point {
     let x = (lparam.0 & 0xFFFF) as i16 as i32;
@@ -205,6 +228,10 @@ pub(crate) fn calc_size(hwnd: HWND, wparam: WPARAM, lparam: LPARAM) -> Option<LR
         right: client.right,
         bottom: client.bottom,
     };
+    // DWM drops the caption buttons when the caption is removed; extending the
+    // frame over the strip draws them back (and lets the backdrop show there).
+    // Re-applied here because `DefWindowProc` resets the frame on `WM_NCCALCSIZE`.
+    apply_extended_frame(hwnd_from(hwnd));
     Some(LRESULT(0))
 }
 
@@ -261,10 +288,54 @@ pub(crate) fn refresh_caption_inset(hwnd: Hwnd) -> Option<Rect> {
     Some(client)
 }
 
-/// Marks `hwnd` as using the extended title bar and reads its caption inset.
+/// Marks `hwnd` as using the extended title bar, reads its caption inset and
+/// extends the frame over the caption strip.
 pub(crate) fn enable_extended(hwnd: Hwnd) {
     crate::window::nc::set_extended(hwnd, true);
+    apply_extended_frame(hwnd);
     let _ = refresh_caption_inset(hwnd);
+}
+
+/// Extends DWM's frame over the caption strip of an extended-frame `window` and
+/// records the strip height. The strip is where DWM draws the caption buttons
+/// and, with a backdrop, the material. Re-apply after `WM_NCCALCSIZE`, on
+/// resize and on DPI change (the strip height is DPI-dependent).
+pub(crate) fn apply_extended_frame(window: Hwnd) {
+    if !crate::window::nc::is_extended(window) {
+        return;
+    }
+    let height = caption_height(raw_hwnd(window));
+    crate::window::nc::set_strip_height(window, height);
+    super::dwm::extend_frame(window, height);
+}
+
+/// Handles `WM_ERASEBKGND` for an extended-frame window, or `None` to let the
+/// default apply. The client erases to the theme background; the caption strip
+/// is then cleared to black (DWM's "glass" colour) so a backdrop material shows
+/// through it. Without a backdrop the strip stays the solid theme background.
+pub(crate) fn erase_background(hwnd: HWND, wparam: WPARAM) -> Option<LRESULT> {
+    let window = hwnd_from(hwnd);
+    if !crate::window::nc::is_extended(window) {
+        return None;
+    }
+    // The default erase paints the theme background (the class brush) across
+    // the whole client.
+    // SAFETY: `hwnd` is live; `WM_ERASEBKGND`'s `wparam` is the paint DC and
+    // `lparam` is unused.
+    let _ = unsafe { DefWindowProcW(hwnd, WM_ERASEBKGND, wparam, LPARAM(0)) };
+    if crate::theme::backdrop_active(window) {
+        let height = crate::window::nc::strip_height(window);
+        if height > 0 {
+            let client = super::window::client_rect(window);
+            let strip = Rect::new(0, 0, client.right, height.min(client.bottom));
+            if let Some(brush) = crate::gdi::cache_brush(crate::color::Color::rgb(0, 0, 0)) {
+                // SAFETY: `wparam` is the message's paint DC, live for the
+                // duration of the message; `strip` is inside the client.
+                super::gdi::fill_rect(HDC(wparam.0 as *mut core::ffi::c_void), strip, brush);
+            }
+        }
+    }
+    Some(LRESULT(1))
 }
 
 #[cfg(test)]

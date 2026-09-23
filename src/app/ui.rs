@@ -14,7 +14,7 @@ use crate::layout::Insets;
 use crate::message::TimerId;
 use crate::sys;
 use crate::theme::Theme;
-use crate::units::{Px, dip};
+use crate::units::{Dip, Px, dip};
 
 use super::core::Core;
 use super::layout::Layout;
@@ -96,6 +96,19 @@ impl<M: 'static> Ui<M> {
         let right = (client.right - buttons.left).max(0);
         let dpi = sys::dpi::window_dpi(hwnd);
         Insets::new(dip(0.0), dip(0.0), Px(right).to_dip(dpi), dip(0.0))
+    }
+
+    /// The height of the top strip an extended title bar reserves for its
+    /// caption buttons and menu bar, in design units. Content laid out by the
+    /// app must start below it (the strip itself is left empty unless a widget
+    /// there paints with the Direct2D path). Zero on a standard title bar.
+    pub fn title_bar_height(&self) -> Dip {
+        let hwnd = self.core.hwnd();
+        if !crate::window::nc::is_extended(hwnd) {
+            return dip(0.0);
+        }
+        let dpi = sys::dpi::window_dpi(hwnd);
+        Px(sys::nc::title_bar_height(hwnd)).to_dip(dpi)
     }
 
     /// Switches the window and every widget created through it to `theme`,
@@ -249,6 +262,19 @@ impl<M: 'static> Ui<M> {
     pub fn capture(&self) -> Result<RgbaImage> {
         let size = self.window_rect().size();
         let captured = sys::capture::capture(self.core.hwnd(), size.width, size.height)?;
+        Ok(RgbaImage {
+            width: captured.width as u32,
+            height: captured.height as u32,
+            pixels: captured.pixels,
+        })
+    }
+
+    /// Renders the window's screen rectangle into an image, including the
+    /// DWM-drawn caption buttons, frame and backdrop material. The window must
+    /// be on screen and unobscured. See [`Window::capture_screen`](crate::Window::capture_screen).
+    pub fn capture_screen(&self) -> Result<RgbaImage> {
+        let rect = self.window_rect();
+        let captured = sys::capture::capture_screen(rect)?;
         Ok(RgbaImage {
             width: captured.width as u32,
             height: captured.height as u32,

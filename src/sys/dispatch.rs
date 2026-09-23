@@ -14,7 +14,8 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{
     CREATESTRUCTW, DefWindowProcW, GWLP_USERDATA, GetWindowLongPtrW, SetWindowLongPtrW,
-    WM_GETMINMAXINFO, WM_NCCALCSIZE, WM_NCCREATE, WM_NCDESTROY, WM_NCHITTEST, WM_NOTIFY,
+    WM_ERASEBKGND, WM_GETMINMAXINFO, WM_NCCALCSIZE, WM_NCCREATE, WM_NCDESTROY, WM_NCHITTEST,
+    WM_NOTIFY,
 };
 
 use crate::message::{Command, Message};
@@ -124,6 +125,14 @@ pub(crate) unsafe extern "system" fn window_proc(
     }
     if msg == WM_NCHITTEST
         && let Some(result) = super::nc::hit_test(hwnd, wparam, lparam)
+    {
+        return result;
+    }
+    // An extended-frame window erases to the theme background, then clears its
+    // caption strip to black so DWM's backdrop shows through it. Both are
+    // internal to the extended title bar; a standard window falls through.
+    if msg == WM_ERASEBKGND
+        && let Some(result) = super::nc::erase_background(hwnd, wparam)
     {
         return result;
     }

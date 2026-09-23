@@ -132,7 +132,9 @@ impl<A: App> WindowHandler for AppHandler<A> {
             // application never has to handle `WM_SIZE`.
             Message::Size { .. } if self.core.has_layout() => {
                 // The caption buttons move with the window (and when it is
-                // maximized), so re-read the inset before laying out.
+                // maximized), so re-read the inset before laying out; the
+                // extended strip is re-applied so the frame survives a resize.
+                sys::nc::apply_extended_frame(window.hwnd());
                 sys::nc::refresh_caption_inset(window.hwnd());
                 self.core.relayout();
                 Some(0)
@@ -142,8 +144,9 @@ impl<A: App> WindowHandler for AppHandler<A> {
                     sys::window::move_window(window.hwnd(), suggested);
                 }
                 self.core.relayout_with_dpi(dpi);
-                // The caption buttons move with the DPI, so the inset is
-                // re-read for the new scale.
+                // The caption strip height and the caption buttons move with the
+                // DPI, so both are re-read for the new scale.
+                sys::nc::apply_extended_frame(window.hwnd());
                 sys::nc::refresh_caption_inset(window.hwnd());
                 Some(0)
             }
