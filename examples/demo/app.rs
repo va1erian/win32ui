@@ -11,6 +11,7 @@
 mod data;
 mod icons;
 mod screenshot;
+mod swatch;
 
 use std::rc::Rc;
 
@@ -21,6 +22,7 @@ use win32ui::{column, row};
 
 use self::data::{LibraryTree, TrackModel, generate_tracks};
 use self::icons::dot_icon;
+use self::swatch::Swatch;
 
 pub(crate) fn main() {
     // `WIN32UI_DEMO_THEME` / `WIN32UI_DEMO_WIDTH` / `WIN32UI_DEMO_HEIGHT` let a
@@ -117,6 +119,12 @@ pub(crate) fn main() {
                 .range(0..=100)
                 .value(40);
 
+            // A custom owner-drawn widget: a colour swatch that raises
+            // `Clicked`, mapped to `Msg::SwatchClicked` below.
+            let swatch = Custom::new(ui, Swatch::new(theme.accent))
+                .expect("swatch")
+                .on_event(|_| Some(Msg::SwatchClicked));
+
             // Shortcuts are data and fire whichever widget has focus. `Ctrl+Q`
             // quits; `Ctrl+T` toggles the theme.
             ui.accelerator(Shortcut::ctrl(Key::Q), || Some(Msg::Quit));
@@ -129,6 +137,7 @@ pub(crate) fn main() {
                     toolbar,
                     row![sort_label.width(dip(60.0)), sort.width(dip(180.0))].height(dip(30.0)),
                     progress.height(dip(8.0)),
+                    swatch.height(dip(24.0)),
                     row![tree.width(dip(220.0)), list.fill(1)].fill(1),
                     status,
                 ]
@@ -143,6 +152,7 @@ pub(crate) fn main() {
                 progress,
                 sort_combo: sort,
                 _sort_label: sort_label,
+                swatch,
                 tracks,
                 order,
                 sort: None,
@@ -239,6 +249,7 @@ enum Msg {
     Tick(u64),
     SortChanged(SortKey),
     OpenCombo,
+    SwatchClicked,
     Quit,
     AutoClose,
 }
@@ -274,10 +285,11 @@ struct App {
     toolbar: Toolbar<Msg>,
     tree: TreeView<Msg>,
     list: ListView<Track, Msg>,
-    status: StatusBar,
+    status: StatusBar<Msg>,
     progress: ProgressBar,
     sort_combo: ComboBox<SortKey, Msg>,
     _sort_label: Label,
+    swatch: Custom<Swatch, Msg>,
     tracks: Rc<Vec<Track>>,
     order: Vec<usize>,
     sort: Option<(usize, bool)>,
@@ -421,6 +433,19 @@ impl win32ui::App for App {
                 self.set_status(&format!("Sorted by column {}", column + 1));
             }
             Msg::Tick(tick) => self.set_status(&format!("Worker tick {tick}")),
+            Msg::SwatchClicked => {
+                // Mutate the custom widget through its `Cell` state, then ask it
+                // to repaint — the same pattern apps use for their own widgets.
+                let theme = ui.theme();
+                let next = match self.swatch.widget().borrow().color() {
+                    c if c == theme.accent => theme.selection,
+                    c if c == theme.selection => theme.warning,
+                    _ => theme.accent,
+                };
+                self.swatch.widget().borrow().set_color(next);
+                self.swatch.invalidate();
+                self.set_status("Swatch clicked");
+            }
             Msg::Copy => match self.list.selected() {
                 None => self.set_status("Nothing selected to copy"),
                 Some(row) => match clipboard::set_text(ui.hwnd(), &self.row_text(row)) {

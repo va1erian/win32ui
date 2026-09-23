@@ -1,23 +1,27 @@
 #![forbid(unsafe_code)]
 
-//! An owner-drawn toolbar: a child window that paints a row of buttons itself
-//! (background, hover/pressed states, icon and label) and maps clicks to the
-//! app's `Msg` through each item's `on_click` closure.
+//! An owner-drawn toolbar: a row of buttons that paint themselves (background,
+//! hover/pressed states, icon and label) and map clicks to the app's `Msg`
+//! through each item's `on_click` closure.
+//!
+//! The toolbar is a [`CustomWidget`](crate::CustomWidget): its child window is
+//! owned by [`Custom`](crate::Custom), which routes input and theme changes to
+//! it. This is the same owner-draw pattern the status bar and any user widget
+//! use.
 
-use std::cell::RefCell;
-use std::rc::Rc;
+use std::cell::Cell;
 
 use crate::app::Ui;
 use crate::color::Color;
 use crate::controls::control::{AsControl, Control};
+use crate::controls::custom::{Custom, CustomWidget, Input, WidgetCx};
 use crate::error::Result;
-use crate::gdi::{Bitmap, Font, Paint, TextFormat};
-use crate::geometry::{Point, Rect};
-use crate::message::{Message, MouseButton};
+use crate::gdi::{Bitmap, Canvas, Font, TextFormat};
+use crate::geometry::{Point, Rect, Size};
+use crate::message::MouseButton;
 use crate::sys;
 use crate::theme::{Theme, Themed};
 use crate::units::dip;
-use crate::window::{Window, WindowClass, WindowExStyle, WindowHandler, WindowStyle};
 
 /// One toolbar button.
 pub struct ToolbarItem<M> {
@@ -81,22 +85,19 @@ impl ToolbarTheme {
     }
 }
 
-struct ToolbarState<M> {
+/// The mutable state behind a [`Toolbar`], shared with the child window.
+struct ToolbarWidget<M> {
     items: Vec<ToolbarItem<M>>,
-    theme: ToolbarTheme,
     font: Font,
     dpi: u32,
     widths: Vec<i32>,
-    rects: Vec<Rect>,
-    bounds: Rect,
     height: i32,
-    hover: Option<usize>,
-    pressed: Option<usize>,
-    ui: Ui<M>,
+    hover: Cell<Option<usize>>,
+    pressed: Cell<Option<usize>>,
 }
 
-impl<M> ToolbarState<M> {
-    fn new(items: Vec<ToolbarItem<M>>, theme: ToolbarTheme, dpi: u32, ui: Ui<M>) -> Result<Self> {
+impl<M> ToolbarWidget<M> {
+    fn new(items: Vec<ToolbarItem<M>>, dpi: u32) -> Result<ToolbarWidget<M>> {
         let font = Font::system_ui(dpi)?;
         let padding = dip(10.0).to_px(dpi).value();
         let icon = dip(16.0).to_px(dpi).value();
@@ -112,55 +113,47 @@ impl<M> ToolbarState<M> {
             })
             .collect();
 
-        let mut state = ToolbarState {
+        Ok(ToolbarWidget {
             items,
-            theme,
             font,
             dpi,
             widths,
-            rects: Vec::new(),
-            bounds: Rect::new(0, 0, 0, height),
             height,
-            hover: None,
-            pressed: None,
-            ui,
-        };
-        state.layout(0);
-        Ok(state)
+            hover: Cell::new(None),
+            pressed: Cell::new(None),
+        })
     }
 
-    fn layout(&mut self, width: i32) {
-        self.bounds = Rect::new(0, 0, width.max(0), self.height);
-        self.rects = Vec::with_capacity(self.items.len());
+    /// The button rectangles for the current client width.
+    fn rects(&self) -> Vec<Rect> {
+        let mut rects = Vec::with_capacity(self.items.len());
         let mut x = 0;
         for width in &self.widths {
-            self.rects.push(Rect::new(x, 0, x + width, self.height));
+            rects.push(Rect::new(x, 0, x + width, self.height));
             x += width;
         }
-    }
-
-    fn height(&self) -> i32 {
-        self.height
+        rects
     }
 
     fn hit_test(&self, x: i32, y: i32) -> Option<usize> {
         let point = Point::new(x, y);
-        self.rects.iter().position(|rect| rect.contains(point))
+        self.rects().iter().position(|rect| rect.contains(point))
     }
 
-    fn draw(&self, canvas: &crate::gdi::Canvas) {
-        canvas.fill_rect(self.bounds, self.theme.background);
+    fn draw(&self, canvas: &Canvas, bounds: Rect, theme: &ToolbarTheme) {
+        canvas.fill_rect(bounds, theme.background);
         let radius = dip(4.0).to_px(self.dpi).value();
-        for (index, rect) in self.rects.iter().enumerate() {
+        let rects = self.rects();
+        for (index, rect) in rects.iter().enumerate() {
             if index >= self.items.len() {
                 break;
             }
-            let background = if self.pressed == Some(index) {
-                self.theme.button_pressed
-            } else if self.hover == Some(index) {
-                self.theme.button_hover
+            let background = if self.pressed.get() == Some(index) {
+                theme.button_pressed
+            } else if self.hover.get() == Some(index) {
+                theme.button_hover
             } else {
-                self.theme.button
+                theme.button
             };
             let button = rect.shrink(dip(2.0).to_px(self.dpi).value());
             canvas.round_rect(button, radius, background, None);
@@ -183,185 +176,111 @@ impl<M> ToolbarState<M> {
                 canvas.draw_text(
                     text_rect,
                     &self.items[index].label,
-                    self.theme.text,
+                    theme.text,
                     TextFormat::left().single_line().vcenter().end_ellipsis(),
                 );
             });
         }
         canvas.fill_rect(
-            Rect::new(
-                0,
-                self.bounds.bottom - 1,
-                self.bounds.right,
-                self.bounds.bottom,
-            ),
-            self.theme.border,
+            Rect::new(0, bounds.bottom - 1, bounds.right, bounds.bottom),
+            theme.border,
         );
     }
 }
 
-struct ToolbarHandler<M> {
-    state: Rc<RefCell<ToolbarState<M>>>,
-}
+impl<M: 'static> CustomWidget for ToolbarWidget<M> {
+    /// The clicked item's index.
+    type Event = usize;
 
-impl<M: 'static> ToolbarHandler<M> {
-    fn fire_click(&self, index: usize) {
-        let state = self.state.borrow();
-        let Some(item) = state.items.get(index) else {
-            return;
-        };
-        let Some(on_click) = &item.on_click else {
-            return;
-        };
-        if let Some(msg) = on_click() {
-            state.ui.emit(msg);
+    fn paint(&self, canvas: &Canvas, bounds: Rect, theme: &Theme) {
+        let theme = ToolbarTheme::from_theme(theme);
+        self.draw(canvas, bounds, &theme);
+    }
+
+    fn input(&self, input: Input, cx: &mut WidgetCx<usize>) {
+        match input {
+            Input::MouseMove { x, y } => {
+                let hover = self.hit_test(x, y);
+                if hover != self.hover.get() {
+                    self.hover.set(hover);
+                    cx.invalidate();
+                }
+            }
+            Input::MouseDown {
+                x,
+                y,
+                button: MouseButton::Left,
+            } => {
+                self.pressed.set(self.hit_test(x, y));
+                cx.invalidate();
+            }
+            Input::MouseUp {
+                x,
+                y,
+                button: MouseButton::Left,
+            } => {
+                let pressed = self.pressed.take();
+                let hit = self.hit_test(x, y);
+                if let (Some(pressed), Some(hit)) = (pressed, hit)
+                    && pressed == hit
+                {
+                    cx.emit(hit);
+                }
+                cx.invalidate();
+            }
+            Input::MouseLeave if self.hover.get().is_some() => {
+                self.hover.set(None);
+                cx.invalidate();
+            }
+            _ => {}
         }
     }
-}
 
-impl<M: 'static> WindowHandler for ToolbarHandler<M> {
-    fn message(&self, window: &Window, message: Message) -> Option<isize> {
-        match message {
-            Message::Paint => {
-                if let Some(paint) = Paint::begin(window.hwnd()) {
-                    let state = self.state.borrow();
-                    state.draw(paint.canvas());
-                }
-                Some(0)
-            }
-            Message::Size { width, .. } => {
-                self.state.borrow_mut().layout(width);
-                Some(0)
-            }
-            Message::MouseMove { x, y } => {
-                let mut state = self.state.borrow_mut();
-                let hover = state.hit_test(x, y);
-                if hover != state.hover {
-                    state.hover = hover;
-                    drop(state);
-                    window.invalidate();
-                }
-                Some(0)
-            }
-            Message::MouseDown {
-                x,
-                y,
-                button: MouseButton::Left,
-            } => {
-                let hit = self.state.borrow().hit_test(x, y);
-                self.state.borrow_mut().pressed = hit;
-                window.invalidate();
-                Some(0)
-            }
-            Message::MouseUp {
-                x,
-                y,
-                button: MouseButton::Left,
-            } => {
-                let clicked = {
-                    let mut state = self.state.borrow_mut();
-                    let pressed = state.pressed.take();
-                    let hit = state.hit_test(x, y);
-                    match (pressed, hit) {
-                        (Some(pressed), Some(hit)) if pressed == hit => Some(hit),
-                        _ => None,
-                    }
-                };
-                if let Some(index) = clicked {
-                    self.fire_click(index);
-                }
-                window.invalidate();
-                Some(0)
-            }
-            _ => None,
-        }
+    fn preferred_size(&self, _dpi: u32) -> Option<Size> {
+        Some(Size::new(self.widths.iter().sum(), self.height))
     }
 }
 
 /// An owner-drawn toolbar control.
-pub struct Toolbar<M> {
-    window: Window,
-    control: Control,
-    state: Rc<RefCell<ToolbarState<M>>>,
+pub struct Toolbar<M: 'static> {
+    custom: Custom<ToolbarWidget<M>, M>,
 }
 
 impl<M: 'static> Toolbar<M> {
     /// Creates the toolbar as a child of the window behind `ui`, adopting
     /// `ui`'s theme. Use [`Themed::apply_theme`] for a one-off override.
     pub fn new(ui: &mut Ui<M>, items: Vec<ToolbarItem<M>>) -> Result<Toolbar<M>> {
-        let theme = ToolbarTheme::from_theme(&ui.theme());
-        let state = Rc::new(RefCell::new(ToolbarState::new(
-            items,
-            theme,
-            ui.dpi(),
-            ui.clone(),
-        )?));
-        let class = WindowClass::register("win32ui.toolbar", theme.background)?;
-        let handler = ToolbarHandler {
-            state: Rc::clone(&state),
-        };
-        let bounds = Rect::new(0, 0, 0, state.borrow().height());
-        let window = Window::create(
-            class,
-            Some(ui.hwnd()),
-            WindowStyle::new().child().visible(),
-            WindowExStyle::new(),
-            bounds,
-            "",
-            handler,
-        )?;
-        let control = Control::borrowed(window.hwnd(), bounds);
-        let toolbar = Toolbar {
-            window,
-            control,
-            state,
-        };
-        {
-            let weak = Rc::downgrade(&toolbar.state);
-            let hwnd = toolbar.control.hwnd();
-            let parent = ui.hwnd();
-            crate::theme::register_themed(
-                parent,
-                hwnd,
-                Rc::new(move |applied| {
-                    if let Some(state) = weak.upgrade() {
-                        state.borrow_mut().theme = ToolbarTheme::from_theme(applied);
-                        sys::set_class_background(hwnd, applied.surface);
-                        sys::window::invalidate(hwnd);
-                    }
-                }),
-            );
-        }
-        Ok(toolbar)
+        let widget = ToolbarWidget::new(items, ui.dpi())?;
+        let custom = Custom::new(ui, widget)?;
+        let shared = custom.widget();
+        let custom = custom.on_event(move |index| {
+            let state = shared.borrow();
+            let item = state.items.get(index)?;
+            let on_click = item.on_click.as_ref()?;
+            on_click()
+        });
+        Ok(Toolbar { custom })
     }
 
     /// The toolbar's natural height.
     pub fn height(&self) -> i32 {
-        self.state.borrow().height()
+        self.custom.widget().borrow().height
     }
 
     /// Schedules a repaint.
     pub fn invalidate(&self) {
-        self.window.invalidate();
+        self.custom.invalidate();
     }
 }
 
-impl<M> AsControl for Toolbar<M> {
+impl<M: 'static> AsControl for Toolbar<M> {
     fn control(&self) -> &Control {
-        &self.control
+        self.custom.control()
     }
 }
 
-impl<M> Themed for Toolbar<M> {
+impl<M: 'static> Themed for Toolbar<M> {
     fn apply_theme(&self, theme: &Theme) {
-        self.state.borrow_mut().theme = ToolbarTheme::from_theme(theme);
-        sys::set_class_background(self.control.hwnd(), theme.surface);
-        self.window.invalidate();
-    }
-}
-
-impl<M> Drop for Toolbar<M> {
-    fn drop(&mut self) {
-        crate::theme::unregister_themed(self.control.hwnd());
+        self.custom.apply_theme(theme);
     }
 }

@@ -34,7 +34,7 @@ enum SmokeMsg {
 struct SmokeApp {
     tree: Option<TreeView<SmokeMsg>>,
     list: Option<ListView<TestRow, SmokeMsg>>,
-    status: Option<StatusBar>,
+    status: Option<StatusBar<SmokeMsg>>,
     toolbar: Option<Toolbar<SmokeMsg>>,
     label: Option<Label>,
     node_count: Rc<Cell<Option<i32>>>,

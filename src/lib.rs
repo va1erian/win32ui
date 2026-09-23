@@ -84,6 +84,7 @@ pub use window::{
 
 pub use controls::combobox::ComboBox;
 pub use controls::control::{AsControl, Control, ControlExt, HasText};
+pub use controls::custom::{Custom, CustomWidget, Input, WidgetCx};
 pub use controls::label::Label;
 pub use controls::listview::{
     Column, ColumnWidth, Fill, ListModel, ListView, ListViewEvent, ListViewTheme, SortDirection,
@@ -101,15 +102,16 @@ pub use looper::{quit, run, run_modal};
 pub mod prelude {
     pub use crate::{
         App, AsControl, Color, Column, ColumnWidth, ComboBox, Command, CommandNotification,
-        Control, ControlExt, CursorShape, Dip, Dock, DockLayout, Error, Fill, HasText, HitTest,
-        Hwnd, Icon, Insets, IntoLayoutItem, Key, LResult, Label, Layout, LayoutExt, LayoutItem,
-        ListModel, ListView, ListViewEvent, ListViewTheme, Message, MinMaxInfo, Modifiers,
-        MouseButton, Notify, Placement, Point, ProgressBar, ProgressBarTheme, ProgressState, Proxy,
-        Px, Rect, Result, RgbaImage, Shortcut, ShortcutParseError, ShowState, SortDirection, Stack,
-        StackDirection, StackSlot, StatusBar, StatusBarTheme, TaskDialog, TaskDialogIcon, Theme,
-        Themed, TimerId, Toolbar, ToolbarItem, ToolbarTheme, TreeEntry, TreeSource, TreeView,
-        TreeViewEvent, Ui, Win32Error, Window, WindowClass, WindowExStyle, WindowHandler,
-        WindowSpec, WindowStyle, column, dip, monitor_work_areas, row, run_app,
+        Control, ControlExt, CursorShape, Custom, CustomWidget, Dip, Dock, DockLayout, Error, Fill,
+        HasText, HitTest, Hwnd, Icon, Input, Insets, IntoLayoutItem, Key, LResult, Label, Layout,
+        LayoutExt, LayoutItem, ListModel, ListView, ListViewEvent, ListViewTheme, Message, MinMaxInfo,
+        Modifiers, MouseButton, Notify, Placement, Point, ProgressBar, ProgressBarTheme,
+        ProgressState, Proxy, Px, Rect, Result, RgbaImage, Shortcut, ShortcutParseError, ShowState,
+        SortDirection, Stack, StackDirection, StackSlot, StatusBar, StatusBarTheme, TaskDialog,
+        TaskDialogIcon, Theme, Themed, TimerId, Toolbar, ToolbarItem, ToolbarTheme, TreeEntry,
+        TreeSource, TreeView, TreeViewEvent, Ui, WidgetCx, Win32Error, Window, WindowClass,
+        WindowExStyle, WindowHandler, WindowSpec, WindowStyle, column, dip, monitor_work_areas, row,
+        run_app,
     };
     pub use crate::{clipboard, gdi, looper, quit, run, run_modal};
 }
