@@ -6,6 +6,7 @@
 
 pub(crate) mod capture;
 pub(crate) mod clipboard;
+pub(crate) mod combobox;
 pub(crate) mod control;
 pub(crate) mod dispatch;
 pub(crate) mod dpi;
