@@ -42,6 +42,12 @@ impl<M: 'static> Ui<M> {
         sys::dpi::window_dpi(self.core.hwnd())
     }
 
+    /// Whether the window accepts input. A modal window's owner reports `false`
+    /// while the modal dialog is open.
+    pub fn is_enabled(&self) -> bool {
+        sys::window_input::is_enabled(self.core.hwnd())
+    }
+
     /// The client area, in device pixels.
     pub fn client_rect(&self) -> Rect {
         sys::window::client_rect(self.core.hwnd())
@@ -131,10 +137,21 @@ impl<M: 'static> Ui<M> {
         sys::window::kill_timer(self.core.hwnd(), id.0);
     }
 
-    /// Closes the window and ends the message loop.
+    /// Closes the window. For the top-level window this also ends the message
+    /// loop; a secondary window closes without disturbing it.
     pub fn close(&self) {
         sys::window::destroy(self.core.hwnd());
-        crate::looper::quit(0);
+        if self.core.quits_loop() {
+            crate::looper::quit(0);
+        }
+    }
+
+    /// Closes the window, recording `result` for the opener of a modal window
+    /// ([`Ui::open_modal`]) to receive. On a non-modal window the result is
+    /// simply dropped when the window goes away.
+    pub fn close_with_result<R: 'static>(&self, result: R) {
+        self.core.set_result(Box::new(result));
+        self.close();
     }
 
     /// Ends the message loop.

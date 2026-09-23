@@ -12,6 +12,7 @@ mod data;
 mod icons;
 mod screenshot;
 mod search;
+mod secondary;
 mod swatch;
 
 use std::rc::Rc;
@@ -23,6 +24,7 @@ use win32ui::{column, row};
 
 use self::data::{LibraryTree, TrackModel, generate_tracks};
 use self::icons::dot_icon;
+use self::secondary::PrefsMsg;
 use self::swatch::Swatch;
 
 pub(crate) fn main() {
@@ -55,6 +57,8 @@ pub(crate) fn main() {
                         .on_click(|| Some(Msg::Refresh)),
                     ToolbarItem::new("Theme").on_click(|| Some(Msg::ToggleTheme)),
                     ToolbarItem::new("Clear").on_click(|| Some(Msg::Clear)),
+                    ToolbarItem::new("Prefs").on_click(|| Some(Msg::OpenPrefs)),
+                    ToolbarItem::new("Confirm").on_click(|| Some(Msg::OpenConfirm)),
                 ],
             )
             .expect("toolbar");
@@ -218,6 +222,7 @@ pub(crate) fn main() {
                 order,
                 sort: None,
                 now_playing: None,
+                prefs: None,
             };
 
             // A worker thread ticks a counter into the status bar through the
@@ -257,6 +262,12 @@ pub(crate) fn main() {
                         None
                     }
                 });
+            }
+
+            // `WIN32UI_DEMO_SECONDARY_SCREENSHOT` names a directory to write the
+            // light/dark composite of both secondary window kinds to.
+            if std::env::var("WIN32UI_DEMO_SECONDARY_SCREENSHOT").is_ok() {
+                ui.emit(Msg::SecondaryScreenshot);
             }
 
             app
@@ -315,6 +326,9 @@ enum Msg {
     Search(String),
     OpenCombo,
     SwatchClicked,
+    OpenPrefs,
+    OpenConfirm,
+    SecondaryScreenshot,
     Quit,
     AutoClose,
 }
@@ -372,6 +386,7 @@ struct App {
     order: Vec<usize>,
     sort: Option<(usize, bool)>,
     now_playing: Option<usize>,
+    prefs: Option<WindowHandle<PrefsMsg>>,
 }
 
 /// Handles for the options panel. The widgets paint and notify through their
@@ -558,6 +573,29 @@ impl win32ui::App for App {
                     Err(error) => self.set_status(&format!("Copy failed: {error}")),
                 },
             },
+            Msg::OpenPrefs => {
+                if self.prefs.is_none() {
+                    match secondary::open_prefs(ui) {
+                        Ok(handle) => {
+                            self.set_status("Preferences open");
+                            self.prefs = Some(handle);
+                        }
+                        Err(error) => self.set_status(&format!("Preferences failed: {error}")),
+                    }
+                }
+            }
+            Msg::OpenConfirm => {
+                let result = secondary::open_confirm(ui);
+                self.set_status(&format!("Confirm returned {result:?}"));
+            }
+            Msg::SecondaryScreenshot => {
+                self.set_status(if secondary::run_screenshot(ui) {
+                    "Secondary windows captured"
+                } else {
+                    "Secondary screenshot failed"
+                });
+                ui.quit();
+            }
             Msg::Quit => ui.quit(),
             Msg::SortChanged(key) => {
                 self.set_status(&format!("Sorted by {}", key.label()));

@@ -106,6 +106,7 @@ already retained), and closures that capture shared mutable app state.
 | `Dock`/`Stack` layout arithmetic | exists |
 | Owner-drawn dark `ListView`, `TreeView`, `Toolbar`, `StatusBar`; `Label` | exist (widget-layer API) |
 | Widget layer: `App`/`Ui`, `Msg` mapping, `ControlExt`, `run_app` | exists |
+| Secondary windows: `Ui::open_window` (non-modal) and `Ui::open_modal` (modal), `WindowHandle` | exists (#45) |
 | Layout tree (`column!`/`row!`, `fill`/`width`, relayout on resize/DPI) | exists |
 | Theming foundation: tokens, `Themed`, live switching, central `WM_CTLCOLOR*` | #30 |
 | Owner-drawn `ProgressBar` (range/value/state/marquee), typed `TaskDialog` | exist (#18) |
@@ -130,6 +131,7 @@ src/
   window.rs       `WindowClass`, `Window`, `WindowHandler`, style builders
   looper.rs       `run()` / `quit()`
   app/            `App`, `Ui`, the per-window message queue, `run_app`
+  app/child.rs    secondary windows: `open_window`, `open_modal`, `WindowHandle`
   app/layout/     the layout tree: `column!`/`row!`, `fill`/`width`, relayout
   gdi/            RAII `Font` / `Brush` / `Pen` / `Bitmap`, `Paint`, `Canvas`
   d2d/            anti-aliased Direct2D `D2dSurface` / `D2dCanvas` for any `HWND`

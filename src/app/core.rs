@@ -8,6 +8,7 @@
 //! runs, and `update` holds the app borrow, so putting the app here would make
 //! the drain's `try_borrow_mut` deadlock against itself.
 
+use std::any::Any;
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
 
@@ -17,6 +18,7 @@ use crate::hwnd::Hwnd;
 use crate::message::TimerId;
 use crate::sys;
 use crate::theme::Theme;
+use crate::window::Window;
 
 use super::layout::{Layout, Placed};
 
@@ -44,10 +46,27 @@ pub(crate) struct Core<M> {
     accelerators: RefCell<Vec<Accelerator<M>>>,
     theme: Cell<Theme>,
     layout: RefCell<Option<Layout>>,
+    result: RefCell<Option<Box<dyn Any>>>,
+    quits_loop: bool,
+    // Holds the `Window` (and so its class registration) alive for the window's
+    // lifetime. Only secondary windows set this; the main window in `run_app`
+    // keeps its `Window` local.
+    _window: RefCell<Option<Window>>,
 }
 
 impl<M> Core<M> {
+    /// A top-level window that quits the message loop when it closes.
     pub(crate) fn new(theme: Theme) -> Core<M> {
+        Core::with_theme(theme, true)
+    }
+
+    /// A secondary window (owned by another): closing it leaves the shared loop
+    /// running.
+    pub(crate) fn new_secondary(theme: Theme) -> Core<M> {
+        Core::with_theme(theme, false)
+    }
+
+    fn with_theme(theme: Theme, quits_loop: bool) -> Core<M> {
         Core {
             hwnd: Cell::new(Hwnd::NULL),
             queue: RefCell::new(VecDeque::new()),
@@ -57,7 +76,35 @@ impl<M> Core<M> {
             accelerators: RefCell::new(Vec::new()),
             theme: Cell::new(theme),
             layout: RefCell::new(None),
+            result: RefCell::new(None),
+            quits_loop,
+            _window: RefCell::new(None),
         }
+    }
+
+    /// Whether closing this window also quits the message loop.
+    pub(crate) fn quits_loop(&self) -> bool {
+        self.quits_loop
+    }
+
+    /// Stores the window handle, keeping its class registered.
+    pub(crate) fn set_window(&self, window: Window) {
+        self._window.replace(Some(window));
+    }
+
+    /// Records the value a modal window's app produced on close.
+    pub(crate) fn set_result(&self, result: Box<dyn Any>) {
+        self.result.replace(Some(result));
+    }
+
+    /// Takes the recorded modal result, if it has the expected type.
+    pub(crate) fn take_result<R: 'static>(&self) -> Option<R> {
+        self.result
+            .borrow_mut()
+            .take()?
+            .downcast::<R>()
+            .ok()
+            .map(|boxed| *boxed)
     }
 
     pub(crate) fn set_hwnd(&self, hwnd: Hwnd) {
