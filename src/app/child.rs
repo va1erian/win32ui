@@ -136,6 +136,9 @@ where
     if spec.title_bar_kind() == TitleBar::Colored {
         sys::apply_caption_colors(window.hwnd(), &theme);
     }
+    if spec.title_bar_kind() == TitleBar::Extended {
+        sys::nc::enable_extended(window.hwnd());
+    }
     // Tab/Shift+Tab move between the window's focusable children, handled by
     // `IsDialogMessageW` in the pump.
     sys::looper::enable_dialog_nav(window.hwnd());

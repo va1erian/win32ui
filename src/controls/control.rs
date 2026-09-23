@@ -142,6 +142,14 @@ pub trait ControlExt: AsControl {
         sys::control::set_control_font(self.control().hwnd, font.raw());
         self.control().font.replace(Some(font));
     }
+
+    /// Lets the widget accept clicks in the caption strip of a
+    /// [`TitleBar::Extended`](crate::TitleBar::Extended) window instead of
+    /// starting a window drag. Off by default, so the free strip stays
+    /// draggable.
+    fn set_caption_interactive(&self, interactive: bool) {
+        crate::window::nc::set_caption_interactive(self.control().hwnd, interactive);
+    }
 }
 
 impl<T: AsControl + ?Sized> ControlExt for T {}

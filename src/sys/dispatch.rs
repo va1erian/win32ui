@@ -14,7 +14,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{
     CREATESTRUCTW, DefWindowProcW, GWLP_USERDATA, GetWindowLongPtrW, SetWindowLongPtrW,
-    WM_GETMINMAXINFO, WM_NCCREATE, WM_NCDESTROY, WM_NOTIFY,
+    WM_GETMINMAXINFO, WM_NCCALCSIZE, WM_NCCREATE, WM_NCDESTROY, WM_NCHITTEST, WM_NOTIFY,
 };
 
 use crate::message::{Command, Message};
@@ -114,6 +114,20 @@ pub(crate) unsafe extern "system" fn window_proc(
         super::window_ext::apply_track_limits(hwnd_from(hwnd), lparam.0);
     }
 
+    // The extended title bar owns these two: it removes the standard caption
+    // and routes the strip's hit-testing through DWM. Both return `None` for a
+    // standard window, so the default path below is unchanged.
+    if msg == WM_NCCALCSIZE
+        && let Some(result) = super::nc::calc_size(hwnd, wparam, lparam)
+    {
+        return result;
+    }
+    if msg == WM_NCHITTEST
+        && let Some(result) = super::nc::hit_test(hwnd, wparam, lparam)
+    {
+        return result;
+    }
+
     // Every message but `WM_NCDESTROY` goes to the handler, reentrant or not:
     // the handler is shared (`&self`), so a synchronous second message to the
     // same window may run while the first is still on the stack.
@@ -163,6 +177,7 @@ pub(crate) unsafe extern "system" fn window_proc(
         super::window_ext::forget_track_limits(hwnd_from(hwnd));
         super::looper::forget_keyboard(hwnd_from(hwnd));
         crate::theme::forget_window_theme(hwnd_from(hwnd));
+        crate::window::nc::forget_window(hwnd_from(hwnd));
     }
 
     if msg == WM_NCDESTROY && !raw.is_null() {

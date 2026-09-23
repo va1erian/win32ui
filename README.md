@@ -119,6 +119,7 @@ already retained), and closures that capture shared mutable app state.
 | Tooltips | #17 |
 | Direct2D shapes, clips and transforms (`d2d`, anti-aliased); `ProgressBar` draws with it (GDI fallback) | exists (#22) |
 | Mica/Mica Alt/Acrylic backdrop and themed caption (`Backdrop`, `TitleBar`), GDI fallback | exists (#53 phase 1) |
+| Extended title bar (`WM_NCCALCSIZE`, `DwmDefWindowProc` hit-test, `caption_inset`, `set_caption_interactive`) | exists (#53 phase 2) |
 | DirectWrite text, gradients, bitmaps, rounded clips, colour emoji | #22 follow-up |
 
 ## Source layout
@@ -253,11 +254,16 @@ Controls theme themselves; the app never handles `NM_CUSTOMDRAW`,
   result, never by the OS version: when DWM rejects the attribute (Windows 10,
   builds before 22621), in high-contrast mode, or when the user disabled
   transparency effects, the window falls back to the solid `Theme::background`;
-  `Ui::backdrop_active()` reports which path was taken. Extending the material
-  into the client area is deliberately left to the extended-client-area work
-  (issue #53, phase 2): GDI draws text with zero alpha over the glass, so
-  content there has to be painted with Direct2D alpha first.
-  `Canvas::clear_to_backdrop` is the seam for that follow-up.
+  `Ui::backdrop_active()` reports which path was taken.
+- **Extended title bar.** `WindowSpec::title_bar(TitleBar::Extended)` removes
+  the standard caption (`WM_NCCALCSIZE`) while keeping the native resize
+  borders, and routes `WM_NCHITTEST` through `DwmDefWindowProc` first so the
+  min/max/close buttons — and with them Windows 11 snap layouts — keep working.
+  The free strip drags, widgets marked with `ControlExt::set_caption_interactive`
+  accept clicks, and `Ui::caption_inset()` reserves the button area. Content
+  painted over the material still needs Direct2D alpha (GDI text over the glass
+  writes zero alpha), so a `title_bar` layout item and Direct2D text are the
+  remaining follow-up.
 
 ## Menus
 
