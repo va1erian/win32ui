@@ -9,11 +9,12 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use crate::app::Ui;
 use crate::color::Color;
+use crate::controls::control::{AsControl, Control};
 use crate::error::Result;
 use crate::gdi::{Font, Paint, TextFormat};
 use crate::geometry::Rect;
-use crate::hwnd::Hwnd;
 use crate::message::Message;
 use crate::theme::Theme;
 use crate::units::dip;
@@ -123,34 +124,42 @@ impl WindowHandler for StatusBarHandler {
 /// An owner-drawn status bar with parts and text.
 pub struct StatusBar {
     window: Window,
+    control: Control,
     state: Rc<RefCell<StatusBarState>>,
 }
 
 impl StatusBar {
-    /// Creates the bar as a child of `parent`.
-    pub fn new(parent: Hwnd, _id: usize, theme: StatusBarTheme, dpi: u32) -> Result<StatusBar> {
+    /// Creates the bar as a child of the window behind `ui`.
+    pub fn new<M: 'static>(ui: &mut Ui<M>, theme: StatusBarTheme) -> Result<StatusBar> {
+        let dpi = ui.dpi();
         let font = Font::system_ui(dpi)?;
+        let height = dip(22.0).to_px(dpi).value();
         let state = Rc::new(RefCell::new(StatusBarState {
             parts: vec![-1],
             texts: Vec::new(),
             theme,
             font,
-            bounds: Rect::new(0, 0, 0, dip(22.0).to_px(dpi).value()),
+            bounds: Rect::new(0, 0, 0, height),
         }));
-        let class = WindowClass::register("emusic.statusbar", theme.background)?;
+        let class = WindowClass::register("win32ui.statusbar", theme.background)?;
         let handler = StatusBarHandler {
             state: Rc::clone(&state),
         };
         let window = Window::create(
             class,
-            Some(parent),
+            Some(ui.hwnd()),
             WindowStyle::new().child().visible(),
             WindowExStyle::new(),
-            Rect::new(0, 0, 0, dip(22.0).to_px(dpi).value()),
+            Rect::new(0, 0, 0, height),
             "",
             handler,
         )?;
-        Ok(StatusBar { window, state })
+        let control = Control::borrowed(window.hwnd(), Rect::new(0, 0, 0, height));
+        Ok(StatusBar {
+            window,
+            control,
+            state,
+        })
     }
 
     /// Splits the bar into parts whose right edges are given in client
@@ -171,14 +180,10 @@ impl StatusBar {
         }
         self.window.invalidate();
     }
+}
 
-    /// Moves/resizes the bar.
-    pub fn set_bounds(&self, bounds: Rect) {
-        self.window.set_bounds(bounds);
-    }
-
-    /// The control handle.
-    pub fn hwnd(&self) -> Hwnd {
-        self.window.hwnd()
+impl AsControl for StatusBar {
+    fn control(&self) -> &Control {
+        &self.control
     }
 }

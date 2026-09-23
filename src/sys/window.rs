@@ -251,6 +251,35 @@ pub(crate) fn set_title(hwnd: Hwnd, title: &str) -> Result<()> {
     unsafe { SetWindowTextW(raw_hwnd(hwnd), &title) }.map_err(win32_error)
 }
 
+/// Reads the window's title text.
+pub(crate) fn get_title(hwnd: Hwnd) -> String {
+    const WM_GETTEXT: u32 = 0x000D;
+    let mut buffer = vec![0u16; 256];
+    let length =
+        send_message(hwnd, WM_GETTEXT, buffer.len(), buffer.as_mut_ptr() as isize) as usize;
+    if length == 0 {
+        return String::new();
+    }
+    String::from_utf16_lossy(&buffer[..length.min(buffer.len())])
+}
+
+/// Enables or disables a window (greyed out and unclickable when disabled).
+pub(crate) fn enable_window(hwnd: Hwnd, enabled: bool) {
+    // SAFETY: only a state flag is passed; a stale handle is a documented no-op.
+    unsafe {
+        let _ = windows::Win32::UI::Input::KeyboardAndMouse::EnableWindow(raw_hwnd(hwnd), enabled);
+    }
+}
+
+/// Sets the keyboard focus to `hwnd`.
+pub(crate) fn set_focus(hwnd: Hwnd) {
+    // SAFETY: only the handle is passed; the returned previous focus needs no
+    // cleanup.
+    unsafe {
+        let _ = windows::Win32::UI::Input::KeyboardAndMouse::SetFocus(Some(raw_hwnd(hwnd)));
+    }
+}
+
 /// Schedules a full repaint.
 pub(crate) fn invalidate(hwnd: Hwnd) {
     // SAFETY: `None`/true means "erase and repaint the whole client area".

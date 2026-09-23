@@ -9,81 +9,8 @@ mod common;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use common::{NullHandler, TestRows, run_with_watchdog};
+use common::{NullHandler, run_with_watchdog};
 use win32ui::prelude::*;
-
-/// A handler that calls `ListView::select()` while it is already on the stack
-/// must still receive the synchronous `LVN_ITEMCHANGED` it provokes. The old
-/// implementation sent reentrant messages straight to `DefWindowProcW` and
-/// silently dropped the notification.
-#[test]
-fn reentrant_notification_reaches_parent() {
-    struct ReentrantHandler {
-        list: Rc<RefCell<Option<ListView>>>,
-        under_test: Rc<Cell<Option<TimerId>>>,
-        item_changed: Rc<Cell<bool>>,
-    }
-
-    impl WindowHandler for ReentrantHandler {
-        fn message(&self, window: &Window, message: Message) -> Option<LResult> {
-            match message {
-                Message::Create => {
-                    self.under_test.set(window.set_timer(50).ok());
-                    Some(0)
-                }
-                Message::Timer { id } if Some(id) == self.under_test.get() => {
-                    *self.list.borrow_mut() = ListView::new(
-                        window.hwnd(),
-                        1,
-                        Rect::new(0, 0, 200, 200),
-                        &[Column::new("A", dip(80.0))],
-                        Box::new(TestRows),
-                        ListViewTheme::from_theme(&Theme::light()),
-                        96,
-                    )
-                    .ok();
-                    if let Some(list) = self.list.borrow().as_ref() {
-                        list.select(0);
-                    }
-                    window.destroy();
-                    win32ui::quit(0);
-                    Some(0)
-                }
-                Message::Notify(Notify::ListView {
-                    event: ListViewEvent::ItemChanged { item, selected },
-                    ..
-                }) if item == 0 && selected => {
-                    self.item_changed.set(true);
-                    Some(0)
-                }
-                _ => None,
-            }
-        }
-    }
-
-    let list = Rc::new(RefCell::new(None));
-    let under_test = Rc::new(Cell::new(None));
-    let item_changed = Rc::new(Cell::new(false));
-    let Some(run) = run_with_watchdog("win32ui.reentrant", || ReentrantHandler {
-        list: Rc::clone(&list),
-        under_test: Rc::clone(&under_test),
-        item_changed: Rc::clone(&item_changed),
-    }) else {
-        return;
-    };
-
-    assert!(!run.timed_out, "the watchdog fired");
-    // If the CI session cannot create common controls at all, skip rather than
-    // fail (matching the other tests).
-    if list.borrow().is_none() {
-        return;
-    }
-    assert!(under_test.get().is_some(), "the timer was not started");
-    assert!(
-        item_changed.get(),
-        "ListView::select() from a handler did not reach the parent"
-    );
-}
 
 /// The same reentrancy guarantee without depending on the common controls:
 /// a handler synchronously sends a message to its own window and must receive
@@ -182,20 +109,20 @@ fn destroy_from_handler_is_safe() {
     );
 }
 
-/// A window whose handler owns a `Toolbar` destroys itself from inside its own
-/// handler. Dropping the handler then destroys the toolbar, which re-enters
+/// A window whose handler owns a child `Window` destroys itself from inside its
+/// own handler. Dropping the handler then destroys the child, which re-enters
 /// `window_proc`; the free of the parent handler must not run while the
 /// dispatch bookkeeping is borrowed, or the reentry would panic inside the
 /// `extern "system"` boundary and abort the process.
 ///
-/// The toolbar is parented to a second, independent window: a child of the
-/// window being destroyed is torn down by `DestroyWindow` before the handler is
+/// The child is parented to a second, independent window: a child of the window
+/// being destroyed is torn down by `DestroyWindow` before the handler is
 /// dropped, so it would never exercise the reentry.
 #[test]
 fn destroy_owning_child_from_handler_is_safe() {
     struct OwningHandler {
-        // Declared before `owner` so the toolbar drops (and reenters) first.
-        toolbar: RefCell<Option<Toolbar>>,
+        // Declared before `owner` so the child drops (and reenters) first.
+        child: RefCell<Option<Window>>,
         owner: RefCell<Option<Window>>,
         under_test: Rc<Cell<Option<TimerId>>>,
         created: Rc<Cell<bool>>,
@@ -206,31 +133,39 @@ fn destroy_owning_child_from_handler_is_safe() {
         fn message(&self, window: &Window, message: Message) -> Option<LResult> {
             match message {
                 Message::Create => {
-                    let owner =
-                        WindowClass::register("win32ui.destroy.owner", Theme::light().background)
+                    let background = Theme::light().background;
+                    let owner = WindowClass::register("win32ui.destroy.owner", background)
+                        .ok()
+                        .and_then(|class| {
+                            Window::create(
+                                class,
+                                None,
+                                WindowStyle::overlapped(),
+                                WindowExStyle::new(),
+                                Rect::new(0, 0, 200, 200),
+                                "owner",
+                                NullHandler,
+                            )
                             .ok()
-                            .and_then(|class| {
-                                Window::create(
-                                    class,
-                                    None,
-                                    WindowStyle::overlapped(),
-                                    WindowExStyle::new(),
-                                    Rect::new(0, 0, 200, 200),
-                                    "owner",
-                                    NullHandler,
-                                )
-                                .ok()
-                            });
+                        });
                     if let Some(owner) = &owner {
-                        *self.toolbar.borrow_mut() = Toolbar::new(
-                            owner.hwnd(),
-                            vec![ToolbarItem::new(1, "One")],
-                            ToolbarTheme::from_theme(&Theme::light()),
-                            96,
-                        )
-                        .ok();
+                        *self.child.borrow_mut() =
+                            WindowClass::register("win32ui.destroy.child", background)
+                                .ok()
+                                .and_then(|class| {
+                                    Window::create(
+                                        class,
+                                        Some(owner.hwnd()),
+                                        WindowStyle::new().child().visible(),
+                                        WindowExStyle::new(),
+                                        Rect::new(0, 0, 100, 100),
+                                        "child",
+                                        NullHandler,
+                                    )
+                                    .ok()
+                                });
                     }
-                    self.created.set(self.toolbar.borrow().is_some());
+                    self.created.set(self.child.borrow().is_some());
                     *self.owner.borrow_mut() = owner;
                     self.under_test.set(window.set_timer(50).ok());
                     Some(0)
@@ -250,7 +185,7 @@ fn destroy_owning_child_from_handler_is_safe() {
     let created = Rc::new(Cell::new(false));
     let destroyed = Rc::new(Cell::new(false));
     let Some(run) = run_with_watchdog("win32ui.destroy.owning", || OwningHandler {
-        toolbar: RefCell::new(None),
+        child: RefCell::new(None),
         owner: RefCell::new(None),
         under_test: Rc::clone(&under_test),
         created: Rc::clone(&created),

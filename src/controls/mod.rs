@@ -4,12 +4,16 @@
 //! registry that keeps their owner-data/custom-draw plumbing out of the
 //! application's window procedure.
 
+pub mod control;
 pub mod label;
 pub mod listview;
+pub(crate) mod listview_inner;
 pub(crate) mod registry;
 pub mod statusbar;
 pub mod toolbar;
 pub mod treeview;
+
+pub use control::{AsControl, Control, ControlExt, HasText};
 
 use crate::error::{Error, Result};
 use crate::geometry::Rect;
@@ -31,6 +35,21 @@ pub(crate) fn create_child(
     sys::window::create_control(class, style, ex_style, parent, id, bounds)
         .map(sys::hwnd_from)
         .map_err(|_| Error::CreateControl(name))
+}
+
+thread_local! {
+    /// Source of unique, non-zero control ids for this thread. The ids are
+    /// internal only: notifications are routed by `HWND`, never by id.
+    static NEXT_CONTROL_ID: std::cell::Cell<usize> = const { std::cell::Cell::new(1) };
+}
+
+/// The next unique control id, used purely to satisfy the Win32 child-id slot.
+pub(crate) fn next_id() -> usize {
+    NEXT_CONTROL_ID.with(|next| {
+        let id = next.get();
+        next.set(id.wrapping_add(1).max(1));
+        id
+    })
 }
 
 /// Standard child-window style bits, as raw values so the safe modules don't

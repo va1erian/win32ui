@@ -108,6 +108,52 @@ impl WindowHandler for NullHandler {
     }
 }
 
+/// How a watched widget-layer run ended.
+pub struct RunApp {
+    /// Whether the watchdog fired before the app quit.
+    pub timed_out: bool,
+    /// The id of the watchdog timer.
+    pub watchdog: Option<TimerId>,
+}
+
+/// Runs a widget-layer app under a watchdog: the helper starts a watchdog timer
+/// on the window before `make` runs and quits the loop (recording `timed_out`)
+/// if it fires, so an app that never quits fails the test instead of hanging.
+///
+/// `make` receives the `Ui` and must enqueue its first message (typically
+/// `ui.emit(..)`) and arrange for the app to quit once done. Returns `None`
+/// when the session cannot create windows.
+pub fn run_app_with_watchdog<A, F>(name: &str, make: F) -> Option<RunApp>
+where
+    A: App + 'static,
+    F: FnOnce(&mut Ui<A::Msg>) -> A,
+{
+    win32ui::init();
+
+    let timed_out = Rc::new(Cell::new(false));
+    let watchdog = Rc::new(Cell::new(None));
+    let timed_out_for_timer = Rc::clone(&timed_out);
+    let watchdog_for_timer = Rc::clone(&watchdog);
+    let result = win32ui::run_app(WindowSpec::new(name).theme(Theme::light()), move |ui| {
+        let id = ui.set_timer(WATCHDOG_MS).ok();
+        watchdog_for_timer.set(id);
+        ui.on_timer(move |fired| {
+            if Some(fired) == id {
+                timed_out_for_timer.set(true);
+                win32ui::quit(1);
+            }
+            None
+        });
+        make(ui)
+    });
+
+    result.ok()?;
+    Some(RunApp {
+        timed_out: timed_out.get(),
+        watchdog: watchdog.get(),
+    })
+}
+
 /// Five list rows, enough to exercise owner-data requests.
 pub struct TestRows;
 

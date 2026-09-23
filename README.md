@@ -31,8 +31,8 @@ There are two layers.
 loop, and `sys/` holding all the `unsafe` code. Use it for custom windows, and as the
 escape hatch when the widget layer doesn't cover something.
 
-**The widget layer** (being built; see the issues linked below) is what
-applications use:
+**The widget layer** is what applications use; the `App`/`Ui` core exists, and
+later issues add layout, theming and the remaining controls:
 
 ```rust
 enum Msg { Search(String), Open(usize), Delete }
@@ -100,10 +100,11 @@ already retained), and closures that capture shared mutable app state.
 |---|---|
 | Platform layer: windows, typed messages, loop, timers, GDI, re-entrancy-safe dispatch | exists (re-entrancy: #31) |
 | `Dock`/`Stack` layout arithmetic | exists |
-| Owner-drawn dark `ListView`, `TreeView`, `Toolbar`, `StatusBar`; `Label` | exist (platform-style API; ported to the widget layer in #33) |
-| Widget layer: `App`/`Ui`, `Msg` mapping, `ControlExt` | #33 |
+| Owner-drawn dark `ListView`, `TreeView`, `Toolbar`, `StatusBar`; `Label` | exist (widget-layer API) |
+| Widget layer: `App`/`Ui`, `Msg` mapping, `ControlExt`, `run_app` | exists |
 | Theming foundation: tokens, `Themed`, live switching, central `WM_CTLCOLOR*` | #30 |
 | Edit, buttons, ComboBox, tabs, menus, tooltips, progress/task dialog, split/scroll | #11–#18 |
+| Layout tree (`column!`/`row!`, `fill`/`width`) | #34 |
 | Direct2D/DirectWrite (anti-aliasing, colour emoji) | #22 |
 
 ## Source layout
@@ -120,8 +121,10 @@ src/
   message.rs      typed `Message`, `Command`, `Notify`, control events
   window.rs       `WindowClass`, `Window`, `WindowHandler`, style builders
   looper.rs       `run()` / `quit()`
+  app/            `App`, `Ui`, the per-window message queue, `run_app`
   gdi/            RAII `Font` / `Brush` / `Pen` / `Bitmap`, `Paint`, `Canvas`
   controls/       `ListView`, `TreeView`, `Toolbar`, `StatusBar`, `Label`
+  controls/control.rs   `Control`, `AsControl`, `ControlExt`, `HasText`
   controls/registry.rs  routes a control's own notifications back to it
   sys/            ALL `unsafe` lives here; every block has a `// SAFETY:` note
 ```
@@ -168,20 +171,21 @@ intercept the header's `NM_CUSTOMDRAW` and paint it dark too.
 ## Adding a control
 
 Every new control must follow the widget layer: it holds a `Control`, maps its
-events to the app's `Msg`, implements `Themed`, and its PR includes a light and
-a dark screenshot. #33 turns the steps below into that shape. Until it lands,
-these are the platform-level mechanics every control still needs:
+events to the app's `Msg` through closures given at construction, implements
+`Themed`, and its PR includes a light and a dark screenshot. The steps:
 
 1. Add a `sys::control` helper for the raw message(s) you need; keep it safe
    and document each `unsafe` block.
-2. Add `controls/<name>.rs`: a struct owning a child `HWND` (create via
-   `controls::create_child`), an inner state implementing
-   `registry::ControlEvents` if it needs owner-data/custom-draw, and a `Drop`
-   that unregisters + destroys.
+2. Add `controls/<name>.rs`: a struct holding a `Control` (which owns the child
+   `HWND`), an inner state implementing `registry::ControlEvents` if it needs
+   owner-data/custom-draw, and a `Drop` that unregisters from the registry.
 3. Decode application-level notifications into a `…Event` enum and add a
    `Notify::…` variant in `message.rs` + `sys::message::decode_notify`.
-4. Re-export it from `lib.rs` (and `prelude`), and exercise it in
-   `examples/demo/` + `tests/smoke.rs`.
+4. Map those events to the app's `Msg`: register a `registry::register_app_events`
+   mapper (see `controls/listview.rs`) and expose builder methods
+   (`on_select`, `on_activate`, …).
+5. Re-export it from `lib.rs` (and `prelude`), and exercise it in
+   `examples/demo/` + `tests/`.
 
 ## Dark theming notes
 

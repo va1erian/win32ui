@@ -1,5 +1,6 @@
-//! Proof of concept for `win32ui`: a window with an owner-drawn toolbar, a
-//! lazily-populated side tree and a virtual (owner-data) list view.
+//! Proof of concept for the `win32ui` widget layer: an `App` with a `Msg`
+//! enum, an owner-drawn toolbar, a lazily-populated side tree and a virtual
+//! (owner-data) list view.
 //!
 //! Run with:
 //!
@@ -11,7 +12,6 @@ mod data;
 mod icons;
 mod screenshot;
 
-use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use win32ui::prelude::*;
@@ -19,42 +19,100 @@ use win32ui::prelude::*;
 use self::data::{LibraryTree, TrackSource, generate_tracks};
 use self::icons::dot_icon;
 
-const TOOLBAR_SCAN: u16 = 100;
-const TOOLBAR_SHUFFLE: u16 = 101;
-const TOOLBAR_REFRESH: u16 = 102;
-
-const ID_TREE: usize = 1000;
-const ID_LIST: usize = 1001;
-const ID_STATUS: usize = 1002;
-
 pub(crate) fn main() {
-    win32ui::init();
-
     let theme = Theme::dark();
-    let Ok(class) = WindowClass::register("emusic.demo", theme.background) else {
-        return;
-    };
+    let result = win32ui::run_app(
+        WindowSpec::new("win32ui demo")
+            .size(dip(1080.0), dip(680.0))
+            .theme(theme),
+        |ui| {
+            let dpi = ui.dpi();
 
-    let app = App::new(theme);
-    let Ok(window) = Window::create(
-        class,
-        None,
-        WindowStyle::overlapped().min_max(),
-        WindowExStyle::new(),
-        Rect::new(80, 80, 1080, 680),
-        "win32ui demo",
-        app,
-    ) else {
-        return;
-    };
+            let toolbar = Toolbar::new(
+                ui,
+                vec![
+                    ToolbarItem::new("Scan")
+                        .with_icon(dot_icon(theme.accent))
+                        .on_click(|| Some(Msg::Scan)),
+                    ToolbarItem::new("Shuffle").on_click(|| Some(Msg::Shuffle)),
+                    ToolbarItem::new("Refresh")
+                        .with_icon(dot_icon(theme.text_weak))
+                        .on_click(|| Some(Msg::Refresh)),
+                ],
+                ToolbarTheme::from_theme(&theme),
+            )
+            .expect("toolbar");
 
-    window.show();
-    let code = win32ui::run();
-    // Capture once the loop has stopped (and the last paint has landed) so
-    // owner-drawn controls are rendered into the image.
-    screenshot::capture_if_requested(&window);
-    window.destroy();
-    std::process::exit(code);
+            let tree = TreeView::new(ui, Rect::default(), Box::new(LibraryTree))
+                .expect("tree")
+                .on_select(|item| Some(Msg::TreeSelect(item)));
+            tree.set_colors(theme.background, theme.text);
+
+            let columns = [
+                Column::right("#", dip(44.0)),
+                Column::new("Title", dip(260.0)),
+                Column::new("Artist", dip(180.0)),
+                Column::new("Album", dip(180.0)),
+                Column::right("Year", dip(50.0)),
+                Column::new("Genre", dip(110.0)),
+                Column::right("Time", dip(64.0)),
+                Column::new("Format", dip(60.0)),
+                Column::right("Plays", dip(54.0)),
+                Column::new("Last played", dip(100.0)),
+            ];
+            let tracks = Rc::new(generate_tracks(20_000));
+            let order: Vec<usize> = (0..tracks.len()).collect();
+            let list = ListView::new(
+                ui,
+                Rect::default(),
+                &columns,
+                Box::new(TrackSource {
+                    tracks: Rc::clone(&tracks),
+                    order: order.clone(),
+                    playing: None,
+                }),
+                ListViewTheme::from_theme(&theme),
+            )
+            .expect("list")
+            .on_activate(|item| Some(Msg::Play(item)))
+            .on_select(|item| Some(Msg::Select(item)));
+
+            let status = StatusBar::new(ui, StatusBarTheme::from_theme(&theme)).expect("status");
+            status.set_parts(&[-1]);
+            status.set_text(0, "Ready");
+
+            let mut app = App {
+                dpi,
+                toolbar,
+                tree,
+                list,
+                status,
+                tracks,
+                order,
+                now_playing: None,
+            };
+            app.layout(ui);
+
+            // `WIN32UI_DEMO_AUTOCLOSE_MS` makes the demo quit itself; handy for
+            // a headless smoke run of the example.
+            if let Ok(millis) = std::env::var("WIN32UI_DEMO_AUTOCLOSE_MS") {
+                let auto_close = ui.set_timer(millis.parse().unwrap_or(2000)).ok();
+                ui.on_timer(move |id| {
+                    if Some(id) == auto_close {
+                        Some(Msg::AutoClose)
+                    } else {
+                        None
+                    }
+                });
+            }
+
+            app
+        },
+    );
+    if let Err(error) = result {
+        eprintln!("demo failed: {error}");
+        std::process::exit(1);
+    }
 }
 
 /// One row of mock library data.
@@ -70,125 +128,32 @@ struct Track {
     last_played: String,
 }
 
+enum Msg {
+    Scan,
+    Shuffle,
+    Refresh,
+    TreeSelect(Option<i64>),
+    Play(usize),
+    Select(usize),
+    AutoClose,
+}
+
 struct App {
-    theme: Theme,
-    dpi: Cell<u32>,
-    toolbar: RefCell<Option<Toolbar>>,
-    tree: RefCell<Option<TreeView>>,
+    dpi: u32,
+    toolbar: Toolbar<Msg>,
+    tree: TreeView<Msg>,
+    list: ListView<Msg>,
+    status: StatusBar,
     tracks: Rc<Vec<Track>>,
-    order: RefCell<Vec<usize>>,
-    list: RefCell<Option<ListView>>,
-    status: RefCell<Option<StatusBar>>,
-    sort_column: Cell<Option<usize>>,
-    ascending: Cell<bool>,
-    now_playing: Cell<Option<usize>>,
-    auto_close: Cell<Option<TimerId>>,
+    order: Vec<usize>,
+    now_playing: Option<usize>,
 }
 
 impl App {
-    fn new(theme: Theme) -> App {
-        let tracks = generate_tracks(20_000);
-        let order = (0..tracks.len()).collect();
-        App {
-            theme,
-            dpi: Cell::new(96),
-            toolbar: RefCell::new(None),
-            tree: RefCell::new(None),
-            tracks: Rc::new(tracks),
-            order: RefCell::new(order),
-            list: RefCell::new(None),
-            status: RefCell::new(None),
-            sort_column: Cell::new(None),
-            ascending: Cell::new(true),
-            now_playing: Cell::new(None),
-            auto_close: Cell::new(None),
-        }
-    }
-
-    fn setup(&self, window: &Window) {
-        self.dpi.set(window.dpi());
-        let theme = self.theme;
-
-        let toolbar_theme = ToolbarTheme::from_theme(&theme);
-        *self.toolbar.borrow_mut() = Toolbar::new(
-            window.hwnd(),
-            vec![
-                ToolbarItem::new(TOOLBAR_SCAN, "Scan").with_icon(dot_icon(theme.accent)),
-                ToolbarItem::new(TOOLBAR_SHUFFLE, "Shuffle"),
-                ToolbarItem::new(TOOLBAR_REFRESH, "Refresh").with_icon(dot_icon(theme.text_weak)),
-            ],
-            toolbar_theme,
-            self.dpi.get(),
-        )
-        .ok();
-
-        *self.tree.borrow_mut() = TreeView::new(
-            window.hwnd(),
-            ID_TREE,
-            Rect::default(),
-            Box::new(LibraryTree),
-            self.dpi.get(),
-        )
-        .ok();
-        if let Some(tree) = self.tree.borrow().as_ref() {
-            tree.set_colors(theme.background, theme.text);
-        }
-
-        let columns = [
-            Column::right("#", dip(44.0)),
-            Column::new("Title", dip(260.0)),
-            Column::new("Artist", dip(180.0)),
-            Column::new("Album", dip(180.0)),
-            Column::right("Year", dip(50.0)),
-            Column::new("Genre", dip(110.0)),
-            Column::right("Time", dip(64.0)),
-            Column::new("Format", dip(60.0)),
-            Column::right("Plays", dip(54.0)),
-            Column::new("Last played", dip(100.0)),
-        ];
-        let source = self.source();
-        *self.list.borrow_mut() = ListView::new(
-            window.hwnd(),
-            ID_LIST,
-            Rect::default(),
-            &columns,
-            source,
-            ListViewTheme::from_theme(&theme),
-            self.dpi.get(),
-        )
-        .ok();
-
-        *self.status.borrow_mut() = StatusBar::new(
-            window.hwnd(),
-            ID_STATUS,
-            StatusBarTheme::from_theme(&theme),
-            self.dpi.get(),
-        )
-        .ok();
-        if let Some(status) = self.status.borrow().as_ref() {
-            status.set_parts(&[-1]);
-            status.set_text(0, "Ready");
-        }
-
-        self.layout(window);
-
-        // `WIN32UI_DEMO_AUTOCLOSE_MS` makes the demo quit itself; handy for a
-        // headless smoke run of the example.
-        if let Ok(millis) = std::env::var("WIN32UI_DEMO_AUTOCLOSE_MS") {
-            self.auto_close
-                .set(window.set_timer(millis.parse().unwrap_or(1500)).ok());
-        }
-    }
-
-    fn layout(&self, window: &Window) {
-        let client = window.client_rect();
-        let dpi = self.dpi.get();
-        let toolbar_height = self
-            .toolbar
-            .borrow()
-            .as_ref()
-            .map(Toolbar::height)
-            .unwrap_or(0);
+    fn layout(&mut self, ui: &Ui<Msg>) {
+        let client = ui.client_rect();
+        let dpi = self.dpi;
+        let toolbar_height = self.toolbar.height();
 
         let areas = Dock::new()
             .top_px(Px(toolbar_height))
@@ -199,162 +164,59 @@ impl App {
             .fill(1)
             .split(areas.fill, dpi);
 
-        if let Some(toolbar) = self.toolbar.borrow().as_ref() {
-            toolbar.set_bounds(areas.top.unwrap_or_default());
-        }
-        if let Some(tree) = self.tree.borrow().as_ref() {
-            tree.set_bounds(columns[0]);
-        }
-        if let Some(list) = self.list.borrow().as_ref() {
-            list.set_bounds(columns[1]);
-        }
-        if let Some(status) = self.status.borrow().as_ref() {
-            status.set_bounds(areas.bottom.unwrap_or_default());
-        }
+        self.toolbar.set_bounds(areas.top.unwrap_or_default());
+        self.tree.set_bounds(columns[0]);
+        self.list.set_bounds(columns[1]);
+        self.status.set_bounds(areas.bottom.unwrap_or_default());
     }
 
     fn source(&self) -> Box<dyn ListSource> {
         Box::new(TrackSource {
             tracks: Rc::clone(&self.tracks),
-            order: self.order.borrow().clone(),
-            playing: self.now_playing.get(),
+            order: self.order.clone(),
+            playing: self.now_playing,
         })
     }
 
-    fn rebuild_list(&self) {
-        let list = self.list.borrow();
-        let Some(list) = list.as_ref() else {
-            return;
-        };
-        list.set_source(self.source());
-        list.set_playing(self.now_playing.get());
-    }
-
-    fn sort_by(&self, column: usize) {
-        if column == 0 {
-            return;
-        }
-        if self.sort_column.get() == Some(column) {
-            self.ascending.set(!self.ascending.get());
-        } else {
-            self.sort_column.set(Some(column));
-            self.ascending.set(true);
-        }
-        let ascending = self.ascending.get();
-        let tracks = Rc::clone(&self.tracks);
-        let mut order = self.order.borrow_mut();
-        order.sort_by(|&a, &b| {
-            let key = |index: usize| -> (String, String) {
-                let track = &tracks[index];
-                match column {
-                    2 => (track.artist.to_lowercase(), track.title.to_lowercase()),
-                    3 => (track.album.to_lowercase(), track.title.to_lowercase()),
-                    4 => (track.year.to_string(), track.title.to_lowercase()),
-                    5 => (track.genre.to_lowercase(), track.title.to_lowercase()),
-                    6 => (track.seconds.to_string(), track.title.to_lowercase()),
-                    7 => (track.format.clone(), track.title.to_lowercase()),
-                    8 => (track.plays.to_string(), track.title.to_lowercase()),
-                    9 => (track.last_played.clone(), track.title.to_lowercase()),
-                    _ => (track.title.to_lowercase(), track.artist.to_lowercase()),
-                }
-            };
-            let left = key(a);
-            let right = key(b);
-            if ascending {
-                left.cmp(&right)
-            } else {
-                right.cmp(&left)
-            }
-        });
-        drop(order);
-
-        if let Some(list) = self.list.borrow().as_ref() {
-            list.clear_sort_indicator(column);
-        }
-        self.rebuild_list();
-        if let Some(list) = self.list.borrow().as_ref() {
-            let direction = if self.ascending.get() {
-                SortDirection::Ascending
-            } else {
-                SortDirection::Descending
-            };
-            list.set_sort_indicator(column, direction);
-        }
+    fn rebuild_list(&mut self) {
+        self.list.set_source(self.source());
+        self.list.set_playing(self.now_playing);
     }
 
     fn set_status(&self, text: &str) {
-        if let Some(status) = self.status.borrow().as_ref() {
-            status.set_text(0, text);
-        }
+        self.status.set_text(0, text);
     }
 }
 
-impl WindowHandler for App {
-    fn message(&self, window: &Window, message: Message) -> Option<LResult> {
-        match message {
-            Message::Create => {
-                self.setup(window);
-                Some(0)
+impl win32ui::App for App {
+    type Msg = Msg;
+
+    fn update(&mut self, msg: Msg, ui: &mut Ui<Msg>) {
+        match msg {
+            Msg::Scan => self.set_status("Scanning… (not wired in this PoC)"),
+            Msg::Shuffle => self.set_status("Shuffle requested"),
+            Msg::Refresh => self.set_status("Refreshed"),
+            Msg::TreeSelect(item) => {
+                let label = item
+                    .map(|id| format!("node {id}"))
+                    .unwrap_or_else(|| "nothing".to_string());
+                self.set_status(&format!("Tree selection: {label}"));
             }
-            Message::Size { .. } => {
-                self.layout(window);
-                Some(0)
+            Msg::Play(item) => {
+                self.now_playing = Some(item);
+                self.rebuild_list();
+                let title = self
+                    .tracks
+                    .get(item)
+                    .map(|track| track.title.clone())
+                    .unwrap_or_default();
+                self.set_status(&format!("Playing: {title}"));
             }
-            Message::DpiChanged { dpi, .. } => {
-                self.dpi.set(dpi);
-                self.layout(window);
-                Some(0)
+            Msg::Select(item) => self.set_status(&format!("Selected row {}", item + 1)),
+            Msg::AutoClose => {
+                screenshot::capture_if_requested(ui);
+                ui.quit();
             }
-            Message::Timer { id } if self.auto_close.get() == Some(id) => {
-                // The window is destroyed after the loop stops, so the demo
-                // screenshot (if requested) can still be taken.
-                win32ui::quit(0);
-                Some(0)
-            }
-            Message::Command(command) => {
-                match command.id {
-                    TOOLBAR_SCAN => self.set_status("Scanning… (not wired in this PoC)"),
-                    TOOLBAR_SHUFFLE => self.set_status("Shuffle requested"),
-                    TOOLBAR_REFRESH => self.set_status("Refreshed"),
-                    _ => {}
-                }
-                Some(0)
-            }
-            Message::Notify(Notify::ListView { event, .. }) => {
-                match event {
-                    ListViewEvent::ColumnClick { column } => self.sort_by(column as usize),
-                    ListViewEvent::DoubleClick { item } if item >= 0 => {
-                        self.now_playing.set(Some(item as usize));
-                        self.rebuild_list();
-                        let title = self
-                            .tracks
-                            .get(item as usize)
-                            .map(|track| track.title.clone())
-                            .unwrap_or_default();
-                        self.set_status(&format!("Playing: {title}"));
-                    }
-                    ListViewEvent::ItemChanged { item, selected } if selected && item >= 0 => {
-                        self.set_status(&format!("Selected row {}", item + 1));
-                    }
-                    _ => {}
-                }
-                Some(0)
-            }
-            Message::Notify(Notify::TreeView { event, .. }) => {
-                if let TreeViewEvent::SelectionChanged { item } = event {
-                    let label = item
-                        .map(|id| format!("node {id}"))
-                        .unwrap_or_else(|| "nothing".to_string());
-                    self.set_status(&format!("Tree selection: {label}"));
-                }
-                Some(0)
-            }
-            Message::Close => {
-                window.destroy();
-                win32ui::quit(0);
-                Some(0)
-            }
-            _ => None,
         }
     }
 }

@@ -75,6 +75,18 @@ pub(crate) fn wake_message() -> u32 {
     })
 }
 
+/// Name of the private message that nudges the widget layer to drain its queue.
+const DRAIN_MESSAGE_NAME: PCWSTR = w!("emusic.win32ui.drain");
+
+/// The process-wide id of the registered "drain" message (0 if unavailable).
+pub(crate) fn drain_message() -> u32 {
+    static ID: OnceLock<u32> = OnceLock::new();
+    *ID.get_or_init(|| {
+        // SAFETY: the string is a static, nul-terminated wide literal.
+        unsafe { RegisterWindowMessageW(DRAIN_MESSAGE_NAME) }
+    })
+}
+
 thread_local! {
     /// High half of a `WM_CHAR` surrogate pair, waiting for its low half.
     static PENDING_HIGH_SURROGATE: Cell<Option<u16>> = const { Cell::new(None) };
