@@ -9,6 +9,7 @@
 
 mod data;
 mod icons;
+mod screenshot;
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -49,6 +50,10 @@ pub(crate) fn main() {
 
     window.show();
     let code = win32ui::run();
+    // Capture once the loop has stopped (and the last paint has landed) so
+    // owner-drawn controls are rendered into the image.
+    screenshot::capture_if_requested(&window);
+    window.destroy();
     std::process::exit(code);
 }
 
@@ -301,7 +306,8 @@ impl WindowHandler for App {
                 Some(0)
             }
             Message::Timer { id } if self.auto_close.get() == Some(id) => {
-                window.destroy();
+                // The window is destroyed after the loop stops, so the demo
+                // screenshot (if requested) can still be taken.
                 win32ui::quit(0);
                 Some(0)
             }
