@@ -29,6 +29,7 @@ pub struct WindowSpec {
     width: Dip,
     height: Dip,
     theme: Theme,
+    theme_explicit: bool,
 }
 
 impl WindowSpec {
@@ -39,6 +40,7 @@ impl WindowSpec {
             width: dip(640.0),
             height: dip(480.0),
             theme: Theme::light(),
+            theme_explicit: false,
         }
     }
 
@@ -52,7 +54,18 @@ impl WindowSpec {
     /// The palette the window and its controls are built with.
     pub fn theme(mut self, theme: Theme) -> WindowSpec {
         self.theme = theme;
+        self.theme_explicit = true;
         self
+    }
+
+    /// The effective theme: the explicit one if set, otherwise `fallback` (the
+    /// opener's theme, for a secondary window).
+    pub(crate) fn theme_or(&self, fallback: Theme) -> Theme {
+        if self.theme_explicit {
+            self.theme
+        } else {
+            fallback
+        }
     }
 
     pub(crate) fn parts(&self) -> (&str, Dip, Dip, Theme) {
