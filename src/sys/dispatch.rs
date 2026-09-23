@@ -134,6 +134,12 @@ pub(crate) unsafe extern "system" fn window_proc(
         None => default_proc(hwnd, msg, wparam, lparam),
     };
 
+    if msg == WM_NCDESTROY {
+        // The window is gone: drop its cached off-screen buffer so a dead
+        // `HWND` never keeps a thread-local bitmap alive.
+        super::gdi::release_back_buffer(hwnd_from(hwnd));
+    }
+
     if msg == WM_NCDESTROY && !raw.is_null() {
         // SAFETY: the window is gone; clear the slot so no later lookup can
         // reach a handler that is about to be freed.

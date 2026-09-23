@@ -9,11 +9,11 @@
 use windows::Win32::Graphics::Gdi::{HDC, PAINTSTRUCT};
 
 use crate::color::Color;
-use crate::geometry::{Rect, Size};
+use crate::geometry::{Point, Rect, Size};
 use crate::hwnd::Hwnd;
 use crate::sys;
 
-use super::{Bitmap, Brush, Font, Pen};
+use super::{Bitmap, Brush, Font, cache};
 
 // DrawText flags, mirrored here so callers never see the `windows` crate.
 const DT_CENTER: u32 = 0x0000_0001;
@@ -79,17 +79,37 @@ impl TextFormat {
 /// the duration of the paint.
 pub struct Canvas {
     dc: HDC,
+    paint: Rect,
 }
 
 impl Canvas {
+    /// A canvas over `dc` with no known repaint rectangle.
     pub(crate) fn new(dc: HDC) -> Canvas {
-        Canvas { dc }
+        Canvas {
+            dc,
+            paint: Rect::default(),
+        }
+    }
+
+    /// A canvas over `dc`, reporting `paint` from [`Canvas::paint_rect`].
+    pub(crate) fn with_paint_rect(dc: HDC, paint: Rect) -> Canvas {
+        Canvas { dc, paint }
+    }
+
+    /// The rectangle being repainted: the `PAINTSTRUCT.rcPaint` of the paint
+    /// that created this canvas, or an empty rectangle for a canvas obtained
+    /// from [`Canvas::new`] outside a [`Paint`].
+    pub fn paint_rect(&self) -> Rect {
+        self.paint
     }
 
     /// Fills `rect` with `color`.
     pub fn fill_rect(&self, rect: Rect, color: Color) {
-        if let Ok(brush) = Brush::solid(color) {
-            self.fill_rect_brush(rect, &brush);
+        if rect.is_empty() {
+            return;
+        }
+        if let Some(brush) = cache::solid_brush(color) {
+            sys::gdi::fill_rect(self.dc, rect, brush);
         }
     }
 
@@ -98,6 +118,15 @@ impl Canvas {
     pub fn fill_rect_brush(&self, rect: Rect, brush: &Brush) {
         if !rect.is_empty() {
             sys::gdi::fill_rect(self.dc, rect, brush.raw());
+        }
+    }
+
+    /// Draws a straight line from `from` to `to`, `width` pixels wide.
+    pub fn line(&self, from: Point, to: Point, color: Color, width: i32) {
+        if let Some(pen) = cache::pen(color, width.max(1)) {
+            let previous = sys::gdi::select_pen(self.dc, pen);
+            sys::gdi::line(self.dc, from, to);
+            sys::gdi::select_object(self.dc, previous);
         }
     }
 
@@ -129,13 +158,12 @@ impl Canvas {
         if rect.is_empty() {
             return;
         }
-        let Ok(brush) = Brush::solid(fill) else {
+        let Some(brush) = cache::solid_brush(fill) else {
             return;
         };
-        let old_brush = sys::gdi::select_brush(self.dc, brush.raw());
-        let pen = border.and_then(|color| Pen::new(color, 1).ok());
-        let old_pen = match &pen {
-            Some(pen) => sys::gdi::select_pen(self.dc, pen.raw()),
+        let old_brush = sys::gdi::select_brush(self.dc, brush);
+        let old_pen = match border.and_then(|color| cache::pen(color, 1)) {
+            Some(pen) => sys::gdi::select_pen(self.dc, pen),
             None => sys::gdi::select_object(self.dc, sys::gdi::null_pen()),
         };
         sys::gdi::round_rect(self.dc, rect, radius);
@@ -148,10 +176,10 @@ impl Canvas {
         if rect.is_empty() {
             return;
         }
-        let Ok(brush) = Brush::solid(color) else {
+        let Some(brush) = cache::solid_brush(color) else {
             return;
         };
-        let previous_brush = sys::gdi::select_brush(self.dc, brush.raw());
+        let previous_brush = sys::gdi::select_brush(self.dc, brush);
         let previous_pen = sys::gdi::select_object(self.dc, sys::gdi::null_pen());
         sys::gdi::triangle(self.dc, rect, pointing_up);
         sys::gdi::select_object(self.dc, previous_pen);
@@ -182,14 +210,17 @@ impl Canvas {
     }
 }
 
-/// A double-buffered paint session. Drop it to flush the buffer to the screen
-/// and end the paint.
+/// A double-buffered paint session. Drop it to flush the dirty rectangle to the
+/// screen and end the paint.
+///
+/// The off-screen buffer is kept per window between paints (and released when
+/// the window is destroyed), so repeated paints do not allocate a bitmap each
+/// time; it is only recreated when the client area grows or the DPI changes.
 pub struct Paint {
     hwnd: Hwnd,
     ps: PAINTSTRUCT,
     memory_dc: HDC,
-    bitmap: windows::Win32::Graphics::Gdi::HBITMAP,
-    old_bitmap: windows::Win32::Graphics::Gdi::HGDIOBJ,
+    paint: Rect,
     canvas: Canvas,
     client: Rect,
 }
@@ -204,15 +235,29 @@ impl Paint {
             return None;
         }
         let client = sys::window::client_rect(hwnd);
-        let (memory_dc, bitmap, old_bitmap) =
-            sys::gdi::create_back_buffer(dc, client.width(), client.height());
+        let paint = Rect::new(
+            ps.rcPaint.left,
+            ps.rcPaint.top,
+            ps.rcPaint.right,
+            ps.rcPaint.bottom,
+        );
+        let dpi = sys::dpi::window_dpi(hwnd);
+        let Some(memory_dc) =
+            sys::gdi::acquire_back_buffer(hwnd, dc, client.width(), client.height(), dpi)
+        else {
+            sys::gdi::end_paint(hwnd, &ps);
+            return None;
+        };
+        // Clip the off-screen buffer to the dirty rectangle so callers that
+        // paint everything do not pay for off-screen work.
+        sys::gdi::reset_clip(memory_dc);
+        sys::gdi::clip_rect(memory_dc, paint);
         Some(Paint {
             hwnd,
             ps,
             memory_dc,
-            bitmap,
-            old_bitmap,
-            canvas: Canvas::new(memory_dc),
+            paint,
+            canvas: Canvas::with_paint_rect(memory_dc, paint),
             client,
         })
     }
@@ -220,6 +265,11 @@ impl Paint {
     /// The drawing surface.
     pub fn canvas(&self) -> &Canvas {
         &self.canvas
+    }
+
+    /// The rectangle Windows asked to repaint (`PAINTSTRUCT.rcPaint`).
+    pub fn paint_rect(&self) -> Rect {
+        self.paint
     }
 
     /// The client rectangle being painted.
@@ -230,13 +280,7 @@ impl Paint {
 
 impl Drop for Paint {
     fn drop(&mut self) {
-        sys::gdi::blit(
-            self.ps.hdc,
-            self.memory_dc,
-            self.client.width(),
-            self.client.height(),
-        );
-        sys::gdi::destroy_back_buffer(self.memory_dc, self.bitmap, self.old_bitmap);
+        sys::gdi::blit_rect(self.ps.hdc, self.memory_dc, self.paint);
         sys::gdi::end_paint(self.hwnd, &self.ps);
     }
 }
