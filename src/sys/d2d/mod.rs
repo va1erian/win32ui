@@ -10,6 +10,7 @@ pub(crate) use target::Target;
 
 pub(crate) mod bitmap;
 pub(crate) mod brush;
+pub(crate) mod dc;
 pub(crate) mod geometry;
 
 use std::cell::OnceCell;

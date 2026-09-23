@@ -9,6 +9,7 @@
 use windows::Win32::Graphics::Gdi::{HDC, PAINTSTRUCT};
 
 use crate::color::Color;
+use crate::d2d::{DcCanvas, PathBuilder, PointF, RectF, Stroke};
 use crate::geometry::{Point, Rect, Size};
 use crate::hwnd::Hwnd;
 use crate::sys;
@@ -130,8 +131,27 @@ impl Canvas {
         self.fill_rect(rect, Color::rgb(0, 0, 0));
     }
 
+    /// A Direct2D canvas over this device context for anti-aliased shapes, or
+    /// `None` when Direct2D is unavailable. Draw and [`DcCanvas::end_draw`] it
+    /// before drawing with GDI on the same context.
+    pub fn d2d(&self) -> Option<DcCanvas> {
+        let rect = sys::gdi::clip_box(self.dc);
+        DcCanvas::new(self.dc.0 as isize, rect).ok()
+    }
+
     /// Draws a straight line from `from` to `to`, `width` pixels wide.
     pub fn line(&self, from: Point, to: Point, color: Color, width: i32) {
+        if let Some(mut d2d) = self.d2d() {
+            let half = if width % 2 == 1 { 0.5 } else { 0.0 };
+            d2d.draw_line(
+                PointF::new(from.x as f32 + half, from.y as f32 + half),
+                PointF::new(to.x as f32 + half, to.y as f32 + half),
+                color,
+                Stroke::solid(width.max(1) as f32),
+            );
+            let _ = d2d.end_draw();
+            return;
+        }
         if let Some(pen) = cache::pen(color, width.max(1)) {
             let previous = sys::gdi::select_pen(self.dc, pen);
             sys::gdi::line(self.dc, from, to);
@@ -167,6 +187,24 @@ impl Canvas {
         if rect.is_empty() {
             return;
         }
+        if let Some(mut d2d) = self.d2d() {
+            let shape = RectF::from_rect(rect);
+            let radius = radius.max(1) as f32;
+            d2d.fill_rounded_rect(shape, radius, fill);
+            if let Some(color) = border {
+                // Inset by half a pixel so the 1px outline lands inside the
+                // shape and stays crisp instead of straddling the edge.
+                let inner = RectF::new(
+                    shape.left + 0.5,
+                    shape.top + 0.5,
+                    shape.right - 0.5,
+                    shape.bottom - 0.5,
+                );
+                d2d.stroke_rounded_rect(inner, radius, color, Stroke::solid(1.0));
+            }
+            let _ = d2d.end_draw();
+            return;
+        }
         let Some(brush) = cache::solid_brush(fill) else {
             return;
         };
@@ -183,6 +221,13 @@ impl Canvas {
     /// Fills a triangle inside `rect` (used for sort arrows).
     pub fn triangle(&self, rect: Rect, color: Color, pointing_up: bool) {
         if rect.is_empty() {
+            return;
+        }
+        if let Some(mut d2d) = self.d2d()
+            && let Some(path) = triangle_path(rect, pointing_up)
+        {
+            d2d.fill_path(&path, color.into());
+            let _ = d2d.end_draw();
             return;
         }
         let Some(brush) = cache::solid_brush(color) else {
@@ -217,6 +262,26 @@ impl Canvas {
         sys::gdi::select_object(self.dc, previous);
         result
     }
+}
+
+/// The Direct2D path for a sort-arrow triangle inside `rect`.
+fn triangle_path(rect: Rect, pointing_up: bool) -> Option<crate::d2d::Path> {
+    let shape = RectF::from_rect(rect);
+    let middle = (shape.left + shape.right) / 2.0;
+    let mut builder = PathBuilder::new().ok()?;
+    if pointing_up {
+        builder
+            .move_to(PointF::new(middle, shape.top))
+            .line_to(PointF::new(shape.left, shape.bottom))
+            .line_to(PointF::new(shape.right, shape.bottom));
+    } else {
+        builder
+            .move_to(PointF::new(shape.left, shape.top))
+            .line_to(PointF::new(shape.right, shape.top))
+            .line_to(PointF::new(middle, shape.bottom));
+    }
+    builder.close();
+    builder.build().ok()
 }
 
 /// A double-buffered paint session. Drop it to flush the dirty rectangle to the

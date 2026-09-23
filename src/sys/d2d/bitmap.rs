@@ -10,7 +10,7 @@ use windows::Win32::Graphics::Direct2D::Common::{
 use windows::Win32::Graphics::Direct2D::{
     D2D1_BITMAP_BRUSH_PROPERTIES, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR,
     D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR, D2D1_BITMAP_PROPERTIES, D2D1_EXTEND_MODE_WRAP,
-    ID2D1Bitmap, ID2D1BitmapBrush, ID2D1HwndRenderTarget,
+    ID2D1Bitmap, ID2D1BitmapBrush, ID2D1RenderTarget,
 };
 use windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_R8G8B8A8_UNORM;
 
@@ -37,7 +37,7 @@ impl Images {
     /// first use.
     fn bitmap(
         &mut self,
-        render: &ID2D1HwndRenderTarget,
+        render: &ID2D1RenderTarget,
         id: ImageId,
         image: &RgbaImage,
     ) -> Option<ID2D1Bitmap> {
@@ -74,7 +74,7 @@ impl Images {
     /// A wrap-mode bitmap brush for tiling `id`.
     fn tiled(
         &mut self,
-        render: &ID2D1HwndRenderTarget,
+        render: &ID2D1RenderTarget,
         id: ImageId,
         image: &RgbaImage,
         interpolation: Interpolation,
