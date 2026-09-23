@@ -15,7 +15,6 @@
 mod data;
 mod dialogs;
 mod document;
-mod icons;
 mod library;
 mod menus;
 mod options;

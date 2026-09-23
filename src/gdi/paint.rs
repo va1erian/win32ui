@@ -134,8 +134,14 @@ impl Canvas {
     /// A Direct2D canvas over this device context for anti-aliased shapes, or
     /// `None` when Direct2D is unavailable. Draw and [`DcCanvas::end_draw`] it
     /// before drawing with GDI on the same context.
+    ///
+    /// Coordinates are device pixels relative to the DC's origin, so they line
+    /// up with this canvas's GDI drawing. The render target is bound from the
+    /// origin to the clip box's far corner, so a partially clipped DC never
+    /// shifts the shapes.
     pub fn d2d(&self) -> Option<DcCanvas> {
-        let rect = sys::gdi::clip_box(self.dc);
+        let clip = sys::gdi::clip_box(self.dc);
+        let rect = Rect::new(0, 0, clip.right.max(1), clip.bottom.max(1));
         DcCanvas::new(self.dc.0 as isize, rect).ok()
     }
 

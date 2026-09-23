@@ -27,12 +27,14 @@ pub mod scrollview;
 pub mod statusbar;
 pub mod taskdialog;
 pub mod toolbar;
+pub(crate) mod toolbar_icon;
 pub mod treeview;
 
 pub use control::{AsControl, Control, ControlExt, HasText};
 pub use custom::{Custom, CustomWidget, Input, Renderer, WidgetCx};
 pub use listview::ListViewTheme;
 pub use progressbar_theme::ProgressBarTheme;
+pub use toolbar_icon::ToolbarIcon;
 
 /// The control types a frontend usually needs.
 pub mod prelude {
@@ -55,6 +57,7 @@ pub mod prelude {
     pub use super::statusbar::{StatusBar, StatusBarTheme};
     pub use super::taskdialog::{TaskDialog, TaskDialogIcon};
     pub use super::toolbar::{Toolbar, ToolbarItem, ToolbarTheme};
+    pub use super::toolbar_icon::ToolbarIcon;
     pub use super::treeview::{TreeEntry, TreeSource, TreeView, TreeViewEvent};
 }
 

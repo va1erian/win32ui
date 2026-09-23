@@ -27,7 +27,8 @@ use super::{PointF, RectF, Stroke};
 ///
 /// Bind it with [`DcCanvas::new`], draw, then [`end_draw`](DcCanvas::end_draw);
 /// a device loss is transparent (the target is rebuilt on the next bind).
-/// Coordinates are device-independent pixels relative to the bound `rect`.
+/// Coordinates are device pixels (matching GDI, so shapes line up with the
+/// text a control draws with `DrawTextW`), relative to the bound `rect`.
 pub struct DcCanvas {
     rect: RectF,
     finished: bool,
@@ -54,7 +55,7 @@ impl DcCanvas {
         sys::d2d::dc::with(draw)
     }
 
-    /// The bound rectangle, from the origin, in device-independent pixels.
+    /// The bound rectangle, from the origin, in device pixels.
     pub fn bounds(&self) -> RectF {
         self.rect
     }
