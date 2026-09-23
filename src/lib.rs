@@ -43,6 +43,7 @@ mod color;
 mod error;
 mod geometry;
 mod hwnd;
+mod layout;
 mod message;
 mod theme;
 mod window;
@@ -56,6 +57,7 @@ pub use color::Color;
 pub use error::{Error, Result};
 pub use geometry::{Point, Rect, Size};
 pub use hwnd::Hwnd;
+pub use layout::{Dock, DockLayout, Insets, Stack, StackDirection, StackSlot};
 pub use message::{Command, CommandNotification, LResult, Message, MouseButton, Notify, TimerId};
 pub use theme::Theme;
 pub use window::{Window, WindowClass, WindowExStyle, WindowHandler, WindowStyle, dpi_scale};
@@ -73,11 +75,12 @@ pub use looper::{quit, run};
 /// Everything a frontend typically needs, in one `use`.
 pub mod prelude {
     pub use crate::{
-        Color, Column, Command, CommandNotification, Error, Hwnd, LResult, Label, ListSource,
-        ListView, ListViewEvent, ListViewTheme, Message, MouseButton, Notify, Point, Rect, Result,
-        SortDirection, StatusBar, StatusBarTheme, Theme, TimerId, Toolbar, ToolbarItem,
-        ToolbarTheme, TreeEntry, TreeSource, TreeView, TreeViewEvent, Window, WindowClass,
-        WindowExStyle, WindowHandler, WindowStyle, dpi_scale,
+        Color, Column, Command, CommandNotification, Dock, DockLayout, Error, Hwnd, Insets,
+        LResult, Label, ListSource, ListView, ListViewEvent, ListViewTheme, Message, MouseButton,
+        Notify, Point, Rect, Result, SortDirection, Stack, StackDirection, StackSlot, StatusBar,
+        StatusBarTheme, Theme, TimerId, Toolbar, ToolbarItem, ToolbarTheme, TreeEntry, TreeSource,
+        TreeView, TreeViewEvent, Window, WindowClass, WindowExStyle, WindowHandler, WindowStyle,
+        dpi_scale,
     };
     pub use crate::{gdi, looper, quit, run};
 }
