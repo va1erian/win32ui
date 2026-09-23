@@ -89,6 +89,9 @@ pub(crate) fn main() {
                 .expect("progress")
                 .range(0..=100)
                 .value(40);
+            // Every widget gets a tooltip through `ControlExt`, not just the
+            // toolbar buttons.
+            progress.set_tooltip("Scan progress");
 
             // A custom owner-drawn widget: a colour swatch that raises
             // `Clicked`, mapped to `Msg::SwatchClicked` below.

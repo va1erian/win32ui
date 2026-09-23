@@ -27,6 +27,7 @@ pub struct Control {
     bounds: Rc<Cell<Rect>>,
     visible: Rc<Cell<bool>>,
     font: RefCell<Option<Font>>,
+    tooltip: RefCell<Option<String>>,
 }
 
 impl Control {
@@ -38,6 +39,7 @@ impl Control {
             bounds: Rc::new(Cell::new(bounds)),
             visible: Rc::new(Cell::new(true)),
             font: RefCell::new(None),
+            tooltip: RefCell::new(None),
         }
     }
 
@@ -49,6 +51,7 @@ impl Control {
             bounds: Rc::new(Cell::new(bounds)),
             visible: Rc::new(Cell::new(true)),
             font: RefCell::new(None),
+            tooltip: RefCell::new(None),
         }
     }
 
@@ -70,6 +73,9 @@ impl Control {
 
 impl Drop for Control {
     fn drop(&mut self) {
+        // Drop this widget's tools from its top-level window's shared tooltip
+        // while the handle is still valid.
+        crate::controls::tooltip::forget_widget(self.hwnd);
         if self.owned {
             sys::window::destroy(self.hwnd);
         }
@@ -141,6 +147,19 @@ pub trait ControlExt: AsControl {
     fn set_font(&self, font: Font) {
         sys::control::set_control_font(self.control().hwnd, font.raw());
         self.control().font.replace(Some(font));
+    }
+
+    /// Sets the tooltip shown while the pointer rests on the widget. All
+    /// widgets on a top-level window share one lazily created tooltip window;
+    /// on a dark theme it is owner-drawn from theme tokens.
+    fn set_tooltip(&self, text: &str) {
+        self.control().tooltip.replace(Some(text.to_string()));
+        crate::controls::tooltip::set_control_tooltip(self.control().hwnd, text);
+    }
+
+    /// The tooltip set with [`ControlExt::set_tooltip`], if any.
+    fn tooltip(&self) -> Option<String> {
+        self.control().tooltip.borrow().clone()
     }
 
     /// Lets the widget accept clicks in the caption strip of a

@@ -205,6 +205,15 @@ impl<E> WidgetCx<E> {
         sys::window::invalidate(self.hwnd);
     }
 
+    /// Shows `text` while the pointer rests inside `rect` — a region in the
+    /// widget's client coordinates (device pixels). The widget's top-level
+    /// window shares one lazily created tooltip; on a dark theme it is
+    /// owner-drawn from theme tokens. Calling this again with a new rectangle
+    /// or text updates the same region tool.
+    pub fn set_tooltip_region(&self, rect: Rect, text: &str) {
+        crate::controls::tooltip::set_region_tooltip(self.hwnd, 0, rect, text);
+    }
+
     /// Captures the mouse, so all mouse input goes to the widget until
     /// [`WidgetCx::release_capture`] is called.
     pub fn capture(&self) {

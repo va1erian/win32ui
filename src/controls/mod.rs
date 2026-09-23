@@ -28,6 +28,7 @@ pub mod statusbar;
 pub mod taskdialog;
 pub mod toolbar;
 pub(crate) mod toolbar_icon;
+pub(crate) mod tooltip;
 pub mod treeview;
 
 pub use control::{AsControl, Control, ControlExt, HasText};

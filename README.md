@@ -116,7 +116,7 @@ already retained), and closures that capture shared mutable app state.
 | Draggable `split_row!`/`split_col!` layout nodes; themed `ScrollView` (native vertical scrollbar, wheel, `scroll_to`) | exist (#11) |
 | Custom widgets: Direct2D paint path (`CustomWidget::renderer`/`paint_d2d`) and a built-in vertical scroll host (`Custom::with_vscroll`, `scroll_to`, `Scrolled` event) | exist (#64) |
 | `tabs!` paged layout node: native `SysTabControl32`, owner-drawn tabs, pages are layout subtrees | exists (#15) |
-| Tooltips | #17 |
+| Tooltips: `ControlExt::set_tooltip`, region tooltips, toolbar item tooltips, dark owner-draw | exists (#17) |
 | Direct2D shapes, clips and transforms (`d2d`, anti-aliased); `ProgressBar` and the owner-drawn shapes (radio, group box, toolbar, tabs, menus, sort arrow) draw with it (GDI fallback) | exists (#22, #77) |
 | Mica/Mica Alt/Acrylic backdrop and themed caption (`Backdrop`, `TitleBar`), GDI fallback | exists (#53 phase 1) |
 | Extended title bar (`WM_NCCALCSIZE`, `DwmDefWindowProc` hit-test, `caption_inset`, `set_caption_interactive`) | exists (#53 phase 2) |
@@ -309,6 +309,35 @@ takes no space and cannot receive focus). The native tabs ignore dark mode, so
 the control is `TCS_OWNERDRAWFIXED` and each tab is painted from theme tokens on
 `WM_DRAWITEM` — including hover, selected and focus states — with a small
 subclass tracking the hot tab and `Ctrl+Tab`.
+
+## Tooltips
+
+Every widget gets a tooltip through the shared `ControlExt` capability, and a
+custom widget can declare one region of itself:
+
+```rust
+progress.set_tooltip("Scan progress");                 // any widget
+ToolbarItem::new("Refresh").tooltip("Refresh").shortcut(Shortcut::ctrl(Key::R));
+// inside CustomWidget::input:
+cx.set_tooltip_region(rect, "Left half");
+```
+
+One `tooltips_class32` window (`TTS_ALWAYSTIP | TTS_NOPREFIX`) is created lazily
+per top-level window and owned by it; every widget's tooltip is a *tool* on that
+one window, so widgets never each create their own. A `ToolbarItem` with a
+`shortcut` shows the shortcut's display text after its tooltip text — the same
+string its menu item shows. On a dark theme the tooltip is owner-drawn through
+the documented `NM_CUSTOMDRAW` notification: `SetWindowTheme("DarkMode_Explorer")`
+alone does not darken a tooltip, and `TTM_SETTIPBKCOLOR`/`TTM_SETTIPTEXTCOLOR`
+are ignored while visual styles are on. The tooltip is given the same
+DPI-scaled font comctl32 sizes it with through `WM_SETFONT` (re-applied after
+`SetWindowTheme`, which resets it, and on `WM_DPICHANGED`), so the window is
+never sized for a narrower font than the one the text is painted with; a
+DPI-scaled `TTM_SETMAXTIPWIDTH` makes a long tip wrap instead of clip. The
+owner-draw reads the shown text from our own tool list (the tool whose area
+contains the cursor) rather than sending a `TTM_*` query back to the control
+while it is blocked in `SendMessage`; it also skips an empty text, because
+`DrawTextW` faults on an empty buffer.
 
 ## Dark theming notes
 
