@@ -154,15 +154,17 @@ where
     })
 }
 
+/// One row of the shared five-row test model.
+pub struct TestRow {
+    /// Display text for the first column.
+    pub label: String,
+}
+
 /// Five list rows, enough to exercise owner-data requests.
-pub struct TestRows;
-
-impl ListSource for TestRows {
-    fn item_count(&self) -> usize {
-        5
-    }
-
-    fn text(&self, item: usize, column: usize) -> String {
-        format!("{item}/{column}")
-    }
+pub fn test_rows() -> Vec<TestRow> {
+    (0..5)
+        .map(|item| TestRow {
+            label: format!("{item}/0"),
+        })
+        .collect()
 }

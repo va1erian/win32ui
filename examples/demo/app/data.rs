@@ -4,42 +4,21 @@ use win32ui::prelude::*;
 
 use super::Track;
 
-/// Virtual list backing store.
-pub(super) struct TrackSource {
+/// Virtual list backing store: display order plus shared rows.
+pub(super) struct TrackModel {
     pub(super) tracks: Rc<Vec<Track>>,
     pub(super) order: Vec<usize>,
-    pub(super) playing: Option<usize>,
 }
 
-impl ListSource for TrackSource {
-    fn item_count(&self) -> usize {
+impl ListModel for TrackModel {
+    type Item = Track;
+
+    fn len(&self) -> usize {
         self.order.len()
     }
 
-    fn text(&self, item: usize, column: usize) -> String {
-        let Some(&row) = self.order.get(item) else {
-            return String::new();
-        };
-        let track = &self.tracks[row];
-        match column {
-            0 => (item + 1).to_string(),
-            1 => {
-                if self.playing == Some(item) {
-                    format!("\u{25b6} {}", track.title)
-                } else {
-                    track.title.clone()
-                }
-            }
-            2 => track.artist.clone(),
-            3 => track.album.clone(),
-            4 => track.year.to_string(),
-            5 => track.genre.clone(),
-            6 => format_duration(track.seconds),
-            7 => track.format.clone(),
-            8 => track.plays.to_string(),
-            9 => track.last_played.clone(),
-            _ => String::new(),
-        }
+    fn get(&self, index: usize) -> Option<&Track> {
+        self.order.get(index).and_then(|&row| self.tracks.get(row))
     }
 }
 
@@ -145,10 +124,13 @@ pub(super) fn generate_tracks(count: usize) -> Vec<Track> {
                 artist: artist.to_string(),
                 album: format!("{album} {}", index % 7 + 1),
                 year,
+                year_text: year.to_string(),
                 genre: genre.to_string(),
                 seconds,
+                duration_text: format_duration(seconds),
                 format: format.to_string(),
                 plays,
+                plays_text: plays.to_string(),
                 last_played: last_played.to_string(),
             }
         })

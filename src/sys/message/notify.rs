@@ -2,8 +2,9 @@
 
 use windows::Win32::Foundation::LPARAM;
 use windows::Win32::UI::Controls::{
-    LVN_COLUMNCLICK, LVN_ITEMCHANGED, LVN_KEYDOWN, NM_CLICK, NM_DBLCLK, NM_RCLICK, NM_RETURN,
-    NMITEMACTIVATE, NMLISTVIEW, NMLVKEYDOWN, NMTREEVIEWW, TVN_ITEMEXPANDED, TVN_SELCHANGED,
+    LVIS_SELECTED, LVN_COLUMNCLICK, LVN_ITEMCHANGED, LVN_KEYDOWN, LVN_ODSTATECHANGED, NM_CLICK,
+    NM_DBLCLK, NM_RCLICK, NM_RETURN, NMITEMACTIVATE, NMLISTVIEW, NMLVKEYDOWN, NMLVODSTATECHANGE,
+    NMTREEVIEWW, TVN_ITEMEXPANDED, TVN_SELCHANGED,
 };
 
 use crate::controls::listview::ListViewEvent;
@@ -36,6 +37,23 @@ pub(crate) fn decode_notify(lparam: LPARAM) -> Notify {
                 selected: info.uNewState & 0x0002 != 0,
             },
         };
+    }
+    // Owner-data lists report selection changes as ranges, not per item.
+    // Focus-only moves leave the selected bit untouched and are skipped here;
+    // the widget reads the whole selection when the bit does change, so one
+    // user gesture becomes one selection event.
+    if code == LVN_ODSTATECHANGED {
+        let info = read::<NMLVODSTATECHANGE>(lparam);
+        let changed = (info.uNewState.0 ^ info.uOldState.0) & LVIS_SELECTED.0 != 0;
+        if changed {
+            return Notify::ListView {
+                id,
+                event: ListViewEvent::SelectionChanged {
+                    from: info.iFrom,
+                    to: info.iTo,
+                },
+            };
+        }
     }
     if code == LVN_COLUMNCLICK {
         let info = read::<NMLISTVIEW>(lparam);

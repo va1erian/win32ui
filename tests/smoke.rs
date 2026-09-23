@@ -9,7 +9,7 @@ mod common;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use common::{TestRows, run_app_with_watchdog, run_with_watchdog};
+use common::{TestRow, run_app_with_watchdog, run_with_watchdog, test_rows};
 use win32ui::prelude::*;
 
 struct TestTree;
@@ -33,7 +33,7 @@ enum SmokeMsg {
 
 struct SmokeApp {
     tree: Option<TreeView<SmokeMsg>>,
-    list: Option<ListView<SmokeMsg>>,
+    list: Option<ListView<TestRow, SmokeMsg>>,
     status: Option<StatusBar>,
     toolbar: Option<Toolbar<SmokeMsg>>,
     label: Option<Label>,
@@ -88,16 +88,15 @@ fn window_with_controls_round_trips() {
     let Some(run) = run_app_with_watchdog("win32ui.smoke", move |ui| {
         let toolbar = Toolbar::new(ui, vec![ToolbarItem::new("One")]).ok();
         let tree = TreeView::new(ui, Rect::new(0, 0, 200, 400), Box::new(TestTree)).ok();
-        let list = ListView::new(
-            ui,
-            Rect::new(200, 0, 640, 400),
-            &[
-                Column::new("Title", dip(160.0)),
-                Column::right("Time", dip(60.0)),
-            ],
-            Box::new(TestRows),
-        )
-        .ok();
+        let list = ListView::new(ui)
+            .map(|list| {
+                list.column("Title", dip(160.0), |row: &TestRow| row.label.as_str())
+                    .column_right("Time", dip(60.0), |row: &TestRow| row.label.as_str())
+            })
+            .ok();
+        if let Some(list) = &list {
+            list.set_model(test_rows());
+        }
         let status = StatusBar::new(ui).ok();
         let label = Label::new(ui, Rect::default(), "hi").ok();
 

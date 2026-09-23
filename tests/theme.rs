@@ -7,7 +7,7 @@
 
 mod common;
 
-use common::run_app_with_watchdog;
+use common::{TestRow, run_app_with_watchdog, test_rows};
 use win32ui::prelude::*;
 
 /// The per-control derived palettes follow the semantic tokens.
@@ -41,7 +41,7 @@ enum ThemeMsg {
 }
 
 struct ThemeApp {
-    list: Option<ListView<ThemeMsg>>,
+    list: Option<ListView<TestRow, ThemeMsg>>,
     switched: bool,
     matches: std::rc::Rc<std::cell::Cell<bool>>,
 }
@@ -83,13 +83,12 @@ fn live_switch_rethemes_children() {
     let matches_for_make = matches.clone();
     let created_for_make = created.clone();
     let Some(run) = run_app_with_watchdog("win32ui.theme.live", move |ui| {
-        let list = ListView::new(
-            ui,
-            Rect::new(0, 0, 200, 200),
-            &[Column::new("A", dip(80.0))],
-            Box::new(common::TestRows),
-        )
-        .ok();
+        let list = ListView::new(ui)
+            .map(|list| list.column("A", dip(80.0), |row: &TestRow| row.label.as_str()))
+            .ok();
+        if let Some(list) = &list {
+            list.set_model(test_rows());
+        }
         created_for_make.set(list.is_some());
         if list.is_none() {
             ui.quit();

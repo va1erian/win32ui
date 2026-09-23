@@ -86,7 +86,7 @@ pub use controls::combobox::ComboBox;
 pub use controls::control::{AsControl, Control, ControlExt, HasText};
 pub use controls::label::Label;
 pub use controls::listview::{
-    Column, ListSource, ListView, ListViewEvent, ListViewTheme, SortDirection,
+    Column, ColumnWidth, Fill, ListModel, ListView, ListViewEvent, ListViewTheme, SortDirection,
 };
 pub use controls::progressbar::{ProgressBar, ProgressState};
 pub use controls::progressbar_theme::ProgressBarTheme;
@@ -100,16 +100,16 @@ pub use looper::{quit, run, run_modal};
 /// Everything a frontend typically needs, in one `use`.
 pub mod prelude {
     pub use crate::{
-        App, AsControl, Color, Column, ComboBox, Command, CommandNotification, Control, ControlExt,
-        CursorShape, Dip, Dock, DockLayout, Error, HasText, HitTest, Hwnd, Icon, Insets,
-        IntoLayoutItem, Key, LResult, Label, Layout, LayoutExt, LayoutItem, ListSource, ListView,
-        ListViewEvent, ListViewTheme, Message, MinMaxInfo, Modifiers, MouseButton, Notify,
-        Placement, Point, ProgressBar, ProgressBarTheme, ProgressState, Proxy, Px, Rect, Result,
-        RgbaImage, Shortcut, ShortcutParseError, ShowState, SortDirection, Stack, StackDirection,
-        StackSlot, StatusBar, StatusBarTheme, TaskDialog, TaskDialogIcon, Theme, Themed, TimerId,
-        Toolbar, ToolbarItem, ToolbarTheme, TreeEntry, TreeSource, TreeView, TreeViewEvent, Ui,
-        Win32Error, Window, WindowClass, WindowExStyle, WindowHandler, WindowSpec, WindowStyle,
-        column, dip, monitor_work_areas, row, run_app,
+        App, AsControl, Color, Column, ColumnWidth, ComboBox, Command, CommandNotification,
+        Control, ControlExt, CursorShape, Dip, Dock, DockLayout, Error, Fill, HasText, HitTest,
+        Hwnd, Icon, Insets, IntoLayoutItem, Key, LResult, Label, Layout, LayoutExt, LayoutItem,
+        ListModel, ListView, ListViewEvent, ListViewTheme, Message, MinMaxInfo, Modifiers,
+        MouseButton, Notify, Placement, Point, ProgressBar, ProgressBarTheme, ProgressState, Proxy,
+        Px, Rect, Result, RgbaImage, Shortcut, ShortcutParseError, ShowState, SortDirection,
+        Stack, StackDirection, StackSlot, StatusBar, StatusBarTheme, TaskDialog, TaskDialogIcon,
+        Theme, Themed, TimerId, Toolbar, ToolbarItem, ToolbarTheme, TreeEntry, TreeSource,
+        TreeView, TreeViewEvent, Ui, Win32Error, Window, WindowClass, WindowExStyle,
+        WindowHandler, WindowSpec, WindowStyle, column, dip, monitor_work_areas, row, run_app,
     };
     pub use crate::{clipboard, gdi, looper, quit, run, run_modal};
 }
