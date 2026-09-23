@@ -6,7 +6,8 @@
 
 use win32ui::prelude::*;
 
-use super::{App, Msg};
+use super::Msg;
+use super::library::Library;
 
 /// Builds the search label and box. The box shows cue placeholder text while
 /// empty and reports every change as `Msg::Search`.
@@ -20,13 +21,13 @@ pub(super) fn build(ui: &mut Ui<Msg>) -> Result<(Label, Edit<Msg>)> {
 
 /// Re-filters the list on `query` (case-insensitive over title, artist and
 /// album) and reports the match count on the status bar.
-pub(super) fn apply(app: &mut App, query: &str) {
-    let total = app.tracks.len();
+pub(super) fn apply(library: &mut Library, query: &str, status: &StatusBar<Msg>) {
+    let total = library.tracks.len();
     if query.is_empty() {
-        app.order = (0..total).collect();
+        library.order = (0..total).collect();
     } else {
         let needle = query.to_lowercase();
-        app.order = app
+        library.order = library
             .tracks
             .iter()
             .enumerate()
@@ -38,11 +39,14 @@ pub(super) fn apply(app: &mut App, query: &str) {
             .map(|(index, _)| index)
             .collect();
     }
-    app.list.set_model(app.model());
-    let shown = app.order.len();
-    app.set_status(&if query.is_empty() {
-        "Search cleared".to_string()
-    } else {
-        format!("{shown} of {total} for {query}")
-    });
+    library.list.set_model(library.model());
+    let shown = library.order.len();
+    status.set_text(
+        0,
+        &if query.is_empty() {
+            "Search cleared".to_string()
+        } else {
+            format!("{shown} of {total} for {query}")
+        },
+    );
 }
