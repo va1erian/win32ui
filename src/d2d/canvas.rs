@@ -32,7 +32,7 @@ impl<'a> D2dCanvas<'a> {
         canvas
     }
 
-    fn with<R>(&self, draw: impl FnOnce(&mut Target) -> R) -> Option<R> {
+    pub(in crate::d2d) fn with<R>(&self, draw: impl FnOnce(&mut Target) -> R) -> Option<R> {
         self.surface.target.borrow_mut().as_mut().map(draw)
     }
 
