@@ -182,7 +182,9 @@ fn deliver(
         return Some(result);
     }
 
-    let message = message::decode(hwnd, msg, wparam, lparam);
+    // A message may be suppressed (the first half of a `WM_CHAR` surrogate
+    // pair), in which case the handler is not called.
+    let message = message::decode(hwnd, msg, wparam, lparam)?;
     let window = crate::window::Window::from_raw(hwnd_from(hwnd));
     handler.message(&window, message)
 }

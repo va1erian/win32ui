@@ -12,7 +12,7 @@ use crate::error::Result;
 use crate::gdi::Brush;
 use crate::geometry::Rect;
 use crate::hwnd::Hwnd;
-use crate::message::{LResult, Message, TimerId};
+use crate::message::{LResult, Message, MinMaxInfo, TimerId};
 use crate::sys;
 
 /// Receives a window's messages. Return `Some(value)` to mark a message
@@ -311,6 +311,25 @@ impl Window {
     /// The window's current dots-per-inch.
     pub fn dpi(&self) -> u32 {
         sys::dpi::window_dpi(self.hwnd)
+    }
+
+    /// Arms one `WM_MOUSELEAVE` notification for the next time the cursor
+    /// leaves the window. Call this from a `MouseMove` handler to keep being
+    /// told when the cursor leaves.
+    pub fn track_mouse_leave(&self) -> Result<()> {
+        sys::window::track_mouse_leave(self.hwnd)
+    }
+
+    /// The size limits reported for the [`Message::GetMinMaxInfo`] currently
+    /// being handled, or `None` outside that message.
+    pub fn min_max_info(&self) -> Option<MinMaxInfo> {
+        sys::message::read_min_max_info()
+    }
+
+    /// Overrides the size limits for the [`Message::GetMinMaxInfo`] currently
+    /// being handled. A no-op outside that message.
+    pub fn set_min_max_info(&self, info: MinMaxInfo) {
+        sys::message::write_min_max_info(info);
     }
 }
 

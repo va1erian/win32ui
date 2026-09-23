@@ -6,12 +6,13 @@ use core::ffi::c_void;
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, WPARAM};
 use windows::Win32::Graphics::Gdi::{HBRUSH, InvalidateRect, UpdateWindow};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::UI::Input::KeyboardAndMouse::{TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent};
 use windows::Win32::UI::Shell::SUBCLASSPROC;
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DestroyWindow, GetClientRect, GetWindowRect, HCURSOR, HMENU, IDC_ARROW,
-    KillTimer, LoadCursorW, MoveWindow, RegisterClassExW, SW_HIDE, SW_SHOW, SW_SHOWMAXIMIZED,
-    SW_SHOWMINIMIZED, SetTimer, SetWindowTextW, ShowWindow, UnregisterClassW, WINDOW_EX_STYLE,
-    WINDOW_STYLE, WNDCLASSEXW,
+    CS_DBLCLKS, CreateWindowExW, DestroyWindow, GetClientRect, GetWindowRect, HCURSOR, HMENU,
+    IDC_ARROW, KillTimer, LoadCursorW, MoveWindow, RegisterClassExW, SW_HIDE, SW_SHOW,
+    SW_SHOWMAXIMIZED, SW_SHOWMINIMIZED, SetTimer, SetWindowTextW, ShowWindow, UnregisterClassW,
+    WINDOW_EX_STYLE, WINDOW_STYLE, WNDCLASSEXW,
 };
 use windows::core::{HSTRING, PCWSTR};
 
@@ -50,6 +51,8 @@ fn arrow_cursor() -> Result<HCURSOR> {
 pub(crate) fn register_class(name: &[u16], display: &str, background: HBRUSH) -> Result<()> {
     let class = WNDCLASSEXW {
         cbSize: size_of::<WNDCLASSEXW>() as u32,
+        // `CS_DBLCLKS` makes the class receive `WM_*BUTTONDBLCLK` messages.
+        style: CS_DBLCLKS,
         lpfnWndProc: Some(super::dispatch::window_proc),
         hInstance: module_instance()?,
         hCursor: arrow_cursor()?,
@@ -298,6 +301,19 @@ pub(crate) fn kill_timer(hwnd: Hwnd, id: usize) {
     unsafe {
         let _ = KillTimer(Some(raw_hwnd(hwnd)), id);
     }
+}
+
+/// Arms one `WM_MOUSELEAVE` notification for the next time the cursor leaves
+/// `hwnd`.
+pub(crate) fn track_mouse_leave(hwnd: Hwnd) -> Result<()> {
+    let mut event = TRACKMOUSEEVENT {
+        cbSize: size_of::<TRACKMOUSEEVENT>() as u32,
+        dwFlags: TME_LEAVE,
+        hwndTrack: raw_hwnd(hwnd),
+        dwHoverTime: 0,
+    };
+    // SAFETY: `event` is fully initialised and only read by the call.
+    unsafe { TrackMouseEvent(&mut event) }.map_err(win32_error)
 }
 
 /// Posts a message without waiting for it to be handled.
