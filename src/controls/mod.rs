@@ -4,6 +4,8 @@
 //! registry that keeps their owner-data/custom-draw plumbing out of the
 //! application's window procedure.
 
+pub mod button;
+pub mod checkbox;
 pub mod combobox;
 pub(crate) mod combobox_events;
 pub(crate) mod combobox_model;
@@ -13,10 +15,12 @@ pub(crate) mod custom_inner;
 pub mod edit;
 pub(crate) mod edit_events;
 pub(crate) mod edit_text;
+pub mod groupbox;
 pub mod label;
 pub mod listview;
 pub mod progressbar;
 pub mod progressbar_theme;
+pub mod radio;
 pub(crate) mod registry;
 pub mod statusbar;
 pub mod taskdialog;

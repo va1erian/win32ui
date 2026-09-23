@@ -1,5 +1,6 @@
 //! Raw-message decoding: the typed [`Message`] behind each Win32 message.
 
+mod draw;
 mod input;
 mod notify;
 
@@ -25,6 +26,8 @@ use crate::message::{Command, CommandNotification, Message, MinMaxInfo, Modifier
 use super::hwnd_from;
 
 use notify::decode_notify;
+
+pub(crate) use draw::{decode_draw, message_id as draw_message_id};
 
 /// Name of the message a worker thread posts to wake the UI.
 const WAKE_MESSAGE_NAME: PCWSTR = w!("emusic.win32ui.wake");

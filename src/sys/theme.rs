@@ -48,44 +48,36 @@ pub(crate) const fn ctlcolor_msg_dlg() -> u32 {
     WM_CTLCOLORDLG
 }
 
-/// Which documented `SetWindowTheme` sub-app name a control needs.
+/// Which family a control belongs to, selecting its `SetWindowTheme` sub-app
+/// name. Every bundled control currently darkens through `DarkMode_Explorer`,
+/// so this only documents the family (and stays the seam if a later control
+/// needs another name): `DarkMode_CFD` was tried for button chrome but left
+/// buttons rendering classic-light, so it was dropped. Parts
+/// `DarkMode_Explorer` still misses (radio text, the group box frame) are
+/// owner-drawn by the widget instead.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum NativeControlKind {
-    /// Scrollable controls (list, tree, header): `DarkMode_Explorer` darkens
-    /// scroll bars (and the list header base) on Windows 10/11.
+    /// Scrollable controls (list, tree, header).
     Scrollable,
-    /// Button/edit-style chrome (used by statics until the button/edit issues
-    /// land): `DarkMode_CFD` when dark.
+    /// Button-chrome controls (push buttons, check boxes, radios, group
+    /// boxes, statics).
     Button,
 }
 
 /// Opts a control into its dark visual style, or back to `Explorer` when
-/// light. Only documented `SetWindowTheme` names are used (`DarkMode_Explorer`,
-/// `DarkMode_CFD`, `Explorer`); where a native part cannot be darkened this
-/// way, the control owner-draws it.
-pub(crate) fn apply_native_theme(hwnd: Hwnd, kind: NativeControlKind, is_dark: bool) {
+/// light. Only documented `SetWindowTheme` names are used
+/// (`DarkMode_Explorer`, `Explorer`); where a native part cannot be darkened
+/// this way, the control owner-draws it.
+pub(crate) fn apply_native_theme(hwnd: Hwnd, _kind: NativeControlKind, is_dark: bool) {
+    let name = if is_dark {
+        windows::core::w!("DarkMode_Explorer")
+    } else {
+        windows::core::w!("Explorer")
+    };
     // SAFETY: `hwnd` is a live control; the theme names are static literals
     // documented for `SetWindowTheme`.
     unsafe {
-        if !is_dark {
-            let _ = SetWindowTheme(
-                raw_hwnd(hwnd),
-                windows::core::w!("Explorer"),
-                PCWSTR::null(),
-            );
-        } else if kind == NativeControlKind::Scrollable {
-            let _ = SetWindowTheme(
-                raw_hwnd(hwnd),
-                windows::core::w!("DarkMode_Explorer"),
-                PCWSTR::null(),
-            );
-        } else {
-            let _ = SetWindowTheme(
-                raw_hwnd(hwnd),
-                windows::core::w!("DarkMode_CFD"),
-                PCWSTR::null(),
-            );
-        }
+        let _ = SetWindowTheme(raw_hwnd(hwnd), name, PCWSTR::null());
     }
 }
 
