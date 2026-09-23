@@ -1,13 +1,14 @@
 //! Per-window input and activation: foreground, focus, enable state, mouse
 //! capture and the cursor.
 
+use windows::Win32::System::Threading::AttachThreadInput;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     EnableWindow, IsWindowEnabled, ReleaseCapture, SetCapture, SetFocus,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    GCLP_HCURSOR, IDC_ARROW, IDC_HAND, IDC_IBEAM, IDC_SIZENS, IDC_SIZEWE, IDC_WAIT, IsIconic,
-    LoadCursorW, SW_RESTORE, SetClassLongPtrW, SetCursor, SetForegroundWindow, ShowWindow,
-    WM_GETDLGCODE,
+    GCLP_HCURSOR, GetForegroundWindow, GetWindowThreadProcessId, IDC_ARROW, IDC_HAND, IDC_IBEAM,
+    IDC_SIZENS, IDC_SIZEWE, IDC_WAIT, IsIconic, LoadCursorW, SW_RESTORE, SetClassLongPtrW,
+    SetCursor, SetForegroundWindow, ShowWindow, WM_GETDLGCODE,
 };
 
 use crate::hwnd::Hwnd;
@@ -17,20 +18,34 @@ use super::raw_hwnd;
 
 /// Brings a window to the foreground, restoring it first if minimized.
 ///
-/// `SetForegroundWindow` is subject to the foreground lock: when the calling
-/// thread does not own the current foreground window, Windows may only flash
-/// the taskbar button instead of raising the window.
+/// `SetForegroundWindow` is subject to the foreground lock: a process that did
+/// not receive the last input event is refused, and Windows only flashes the
+/// taskbar button. When the plain call is refused, the calling thread briefly
+/// shares input state with the current foreground thread (the documented way
+/// past the lock) and asks again.
 pub(crate) fn set_foreground(hwnd: Hwnd) {
+    let target = raw_hwnd(hwnd);
     // SAFETY: `IsIconic`/`ShowWindow` only read and write window state.
-    if unsafe { IsIconic(raw_hwnd(hwnd)) }.as_bool() {
+    if unsafe { IsIconic(target) }.as_bool() {
         unsafe {
-            let _ = ShowWindow(raw_hwnd(hwnd), SW_RESTORE);
+            let _ = ShowWindow(target, SW_RESTORE);
         }
     }
-    // SAFETY: `SetForegroundWindow` takes the handle; the foreground lock may
-    // turn it into a no-op, which is not an error.
+    // SAFETY: each call below takes handles or thread ids and only changes
+    // activation and input-queue state; a refusal is not an error.
     unsafe {
-        let _ = SetForegroundWindow(raw_hwnd(hwnd));
+        if SetForegroundWindow(target).as_bool() {
+            return;
+        }
+        let this_thread = GetWindowThreadProcessId(target, None);
+        let foreground_thread = GetWindowThreadProcessId(GetForegroundWindow(), None);
+        if foreground_thread == 0 || foreground_thread == this_thread {
+            return;
+        }
+        if AttachThreadInput(this_thread, foreground_thread, true).as_bool() {
+            let _ = SetForegroundWindow(target);
+            let _ = AttachThreadInput(this_thread, foreground_thread, false);
+        }
     }
 }
 
@@ -41,6 +56,13 @@ pub(crate) const DLGC_WANTARROWS: isize = 1;
 /// Whether `code` is the `WM_GETDLGCODE` message id.
 pub(crate) fn is_get_dlg_code(code: u32) -> bool {
     code == WM_GETDLGCODE
+}
+
+/// Whether `hwnd` is the foreground window.
+pub(crate) fn is_foreground(hwnd: Hwnd) -> bool {
+    // SAFETY: `GetForegroundWindow` takes no arguments and only reads state.
+    let foreground = unsafe { GetForegroundWindow() };
+    foreground == raw_hwnd(hwnd)
 }
 
 /// Enables or disables a window.

@@ -111,6 +111,27 @@ impl<M: 'static> Ui<M> {
         Px(sys::nc::title_bar_height(hwnd)).to_dip(dpi)
     }
 
+    /// The caption buttons' bounds, relative to the window's top-left corner (as
+    /// DWM reports them), or an empty rectangle
+    /// when DWM reports none (a standard title bar, or a platform without the
+    /// attribute). DWM draws the buttons here, over the extended strip.
+    pub fn caption_buttons(&self) -> Rect {
+        sys::nc::caption_buttons_in_window(self.core.hwnd()).unwrap_or_default()
+    }
+
+    /// The menu bar's bounds (screen coordinates), or an empty rectangle when
+    /// the window has no `HMENU` bar.
+    pub fn menu_bar_rect(&self) -> Rect {
+        sys::nc::menu_bar_rect(self.core.hwnd()).unwrap_or_default()
+    }
+
+    /// The extended frame strip's height (the caption incl. its top frame), in
+    /// device pixels. This is the `cyTopHeight` passed to
+    /// `DwmExtendFrameIntoClientArea`. Zero on a standard title bar.
+    pub fn strip_height(&self) -> Px {
+        Px(crate::window::nc::strip_height(self.core.hwnd()))
+    }
+
     /// Switches the window and every widget created through it to `theme`,
     /// live. Widgets re-derive their colours, update their native parts and
     /// repaint; nothing is recreated.
@@ -124,6 +145,9 @@ impl<M: 'static> Ui<M> {
         );
         if self.core.title_bar() == crate::window::TitleBar::Colored {
             sys::apply_caption_colors(self.core.hwnd(), &theme);
+        }
+        if self.core.title_bar() == crate::window::TitleBar::Extended {
+            sys::apply_extended_colors(self.core.hwnd(), &theme, self.backdrop_active());
         }
         crate::theme::retheme_children(self.core.hwnd(), &theme);
         // Owner-drawn menus must switch between native and themed items live.
@@ -256,6 +280,17 @@ impl<M: 'static> Ui<M> {
     /// Ends the message loop with a specific exit code.
     pub fn quit_with(&self, code: i32) {
         crate::looper::quit(code);
+    }
+
+    /// Brings the window to the foreground. See [`Window::set_foreground`](crate::Window::set_foreground).
+    pub fn set_foreground(&self) {
+        sys::window_input::set_foreground(self.core.hwnd());
+    }
+
+    /// Whether the window is the foreground (active) window. DWM draws the
+    /// backdrop material only for an active window.
+    pub fn is_foreground(&self) -> bool {
+        sys::window_input::is_foreground(self.core.hwnd())
     }
 
     /// Renders the window into an image, for screenshots.

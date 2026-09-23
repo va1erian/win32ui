@@ -14,9 +14,9 @@ use core::ffi::c_void;
 use windows::Win32::Foundation::{COLORREF, ERROR_SUCCESS};
 use windows::Win32::Graphics::Dwm::{
     DWM_WINDOW_CORNER_PREFERENCE, DWMSBT_MAINWINDOW, DWMSBT_TABBEDWINDOW, DWMSBT_TRANSIENTWINDOW,
-    DWMWA_BORDER_COLOR, DWMWA_CAPTION_COLOR, DWMWA_SYSTEMBACKDROP_TYPE, DWMWA_TEXT_COLOR,
-    DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND, DwmExtendFrameIntoClientArea,
-    DwmSetWindowAttribute,
+    DWMWA_BORDER_COLOR, DWMWA_CAPTION_COLOR, DWMWA_COLOR_NONE, DWMWA_SYSTEMBACKDROP_TYPE,
+    DWMWA_TEXT_COLOR, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND, DWMWINDOWATTRIBUTE,
+    DwmExtendFrameIntoClientArea, DwmSetWindowAttribute,
 };
 use windows::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW};
 use windows::Win32::UI::Accessibility::{HCF_HIGHCONTRASTON, HIGHCONTRASTW};
@@ -146,6 +146,43 @@ pub(crate) fn extend_frame(hwnd: Hwnd, top: i32) -> bool {
     // SAFETY: `hwnd` is a live top-level window and `margins` is a correctly
     // sized struct read by DWM for the duration of the call.
     unsafe { DwmExtendFrameIntoClientArea(raw_hwnd(hwnd), &margins) }.is_ok()
+}
+
+/// Colours the extended strip for the theme, returning whether both attributes
+/// were accepted.
+///
+/// With the material active the caption colour is set to "none": otherwise a
+/// user who shows the accent colour on title bars gets the accent painted over
+/// the material (and never sees it). Without a material the strip takes the
+/// theme background, so the caption buttons sit on the same surface as the
+/// client.
+pub(crate) fn apply_extended_colors(hwnd: Hwnd, theme: &Theme, backdrop_active: bool) -> bool {
+    if high_contrast() {
+        return false;
+    }
+    let caption = if backdrop_active {
+        DWMWA_COLOR_NONE
+    } else {
+        theme.background.to_colorref()
+    };
+    let caption = set_color(hwnd, DWMWA_CAPTION_COLOR, caption);
+    let border = set_color(hwnd, DWMWA_BORDER_COLOR, theme.border.to_colorref());
+    caption && border
+}
+
+fn set_color(hwnd: Hwnd, attribute: DWMWINDOWATTRIBUTE, colorref: u32) -> bool {
+    let value = COLORREF(colorref);
+    // SAFETY: `hwnd` is live; `value` is a correctly-sized `COLORREF` that
+    // outlives the call and is only read by DWM.
+    unsafe {
+        DwmSetWindowAttribute(
+            raw_hwnd(hwnd),
+            attribute,
+            &value as *const COLORREF as *const c_void,
+            size_of::<COLORREF>() as u32,
+        )
+    }
+    .is_ok()
 }
 
 /// Paints the standard caption from `theme` (Windows 11 only), returning

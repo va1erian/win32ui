@@ -7,6 +7,10 @@ use std::io::BufWriter;
 use std::path::Path;
 
 use win32ui::prelude::*;
+use windows::Win32::Foundation::POINT;
+use windows::Win32::UI::WindowsAndMessaging::{
+    GetCursorPos, GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN, SetCursorPos,
+};
 
 /// The gap, in pixels, between two stacked windows in a composite screenshot.
 const GAP: u32 = 16;
@@ -34,12 +38,95 @@ pub(crate) fn capture_screen_if_requested<M: 'static>(ui: &Ui<M>) {
     let Ok(path) = std::env::var("WIN32UI_DEMO_SCREENSHOT_SCREEN") else {
         return;
     };
+    let path = Path::new(&path);
     match ui.capture_screen() {
-        Ok(image) => match write_screenshot(&image, Path::new(&path)) {
-            Ok(()) => eprintln!("demo: wrote screen screenshot to {path}"),
-            Err(error) => eprintln!("demo: screen screenshot failed: {error}"),
-        },
+        Ok(image) => {
+            if let Err(error) = write_screenshot(&image, path) {
+                eprintln!("demo: screen screenshot failed: {error}");
+                return;
+            }
+            eprintln!("demo: wrote screen screenshot to {}", path.display());
+            write_extended_crops(&image, path, ui.theme());
+        }
         Err(error) => eprintln!("demo: screen screenshot failed: {error}"),
+    }
+}
+
+/// The zoom applied to the strip crops, by nearest-neighbour so pixels stay
+/// crisp.
+const CROP_ZOOM: u32 = 3;
+
+/// Writes two 330×90 crops of the extended strip's top corners (the caption
+/// buttons and the menu bar) next to the screen capture, named by theme and
+/// zoomed 3× so the strip can be inspected at full size.
+fn write_extended_crops(image: &RgbaImage, path: &Path, theme: Theme) {
+    let suffix = if theme.is_dark { "dark" } else { "light" };
+    let dir = path.parent().unwrap_or_else(|| Path::new("."));
+    let top_right = crop(
+        image,
+        Rect::new(image.width as i32 - 330, 0, image.width as i32, 90),
+    );
+    let top_left = crop(image, Rect::new(0, 0, 330, 90));
+    for (cropped, name) in [
+        (top_right, format!("extended-{suffix}-topright.png")),
+        (top_left, format!("extended-{suffix}-topleft.png")),
+    ] {
+        let Some(cropped) = cropped else {
+            continue;
+        };
+        let target = dir.join(name);
+        match write_screenshot(&zoom(&cropped, CROP_ZOOM), &target) {
+            Ok(()) => eprintln!("demo: wrote crop to {}", target.display()),
+            Err(error) => eprintln!("demo: crop failed: {error}"),
+        }
+    }
+}
+
+/// Scales `image` up by an integer `factor`, repeating each pixel.
+fn zoom(image: &RgbaImage, factor: u32) -> RgbaImage {
+    let mut pixels = Vec::with_capacity((image.pixels.len() as u32 * factor * factor) as usize);
+    for y in 0..image.height * factor {
+        for x in 0..image.width * factor {
+            let source = image.pixel(x / factor, y / factor).unwrap_or_default();
+            pixels.extend_from_slice(&source);
+        }
+    }
+    RgbaImage {
+        width: image.width * factor,
+        height: image.height * factor,
+        pixels,
+    }
+}
+
+/// Where the real pointer was before a screen capture parked it.
+pub(crate) struct PointerParking(Option<POINT>);
+
+/// When a screen capture is requested, moves the real pointer to the primary
+/// screen's far bottom-right corner (so a hover cannot tint the caption buttons)
+/// and returns a guard that puts it back when dropped.
+pub(crate) fn park_pointer_if_requested() -> Option<PointerParking> {
+    std::env::var_os("WIN32UI_DEMO_SCREENSHOT_SCREEN")?;
+    let mut saved = POINT::default();
+    // SAFETY: `saved` is a valid out-pointer; the other calls take plain
+    // integers, and a failure (no interactive desktop) is ignored.
+    unsafe {
+        let saved = GetCursorPos(&mut saved).ok().map(|()| saved);
+        let _ = SetCursorPos(
+            GetSystemMetrics(SM_CXSCREEN) - 1,
+            GetSystemMetrics(SM_CYSCREEN) - 1,
+        );
+        Some(PointerParking(saved))
+    }
+}
+
+impl Drop for PointerParking {
+    fn drop(&mut self) {
+        if let Some(point) = self.0 {
+            // SAFETY: plain integer arguments; a failure is ignored.
+            unsafe {
+                let _ = SetCursorPos(point.x, point.y);
+            }
+        }
     }
 }
 

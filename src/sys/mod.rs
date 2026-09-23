@@ -35,7 +35,7 @@ pub(crate) mod window_ext;
 pub(crate) mod window_icon;
 pub(crate) mod window_input;
 
-pub(crate) use dwm::{apply_backdrop, apply_caption_colors};
+pub(crate) use dwm::{apply_backdrop, apply_caption_colors, apply_extended_colors};
 pub(crate) use theme::{
     NativeControlKind, apply_native_theme, ctlcolor_brush, ctlcolor_msg_btn, ctlcolor_msg_dlg,
     ctlcolor_msg_edit, ctlcolor_msg_listbox, ctlcolor_msg_static, set_class_background,
