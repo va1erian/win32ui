@@ -365,6 +365,7 @@ impl RadioMapperOption {
             text_disabled: theme.text_disabled,
             edge: theme.text_secondary,
             dot: theme.accent,
+            focus: theme.border_focused,
             background: theme.background,
         };
         sys::button_draw::draw_radio(
