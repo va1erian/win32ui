@@ -1,9 +1,13 @@
 //! Pure tree-to-rects tests: no window is created, so the arithmetic is tested
 //! in isolation from Win32.
 
+use std::cell::Cell;
+use std::rc::Rc;
+
 use super::split::Split;
 use super::tabs::Tabs;
 use super::*;
+use crate::hwnd::Hwnd;
 use crate::units::dip;
 
 /// A fake widget at `bounds`, for pure tree-to-rects tests.
