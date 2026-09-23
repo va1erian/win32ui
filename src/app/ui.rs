@@ -33,6 +33,12 @@ impl<M: 'static> Ui<M> {
         Ui { core }
     }
 
+    /// A weak handle to the shared per-window core, for widgets that must not
+    /// keep the window alive (e.g. a split divider whose window the core owns).
+    pub(crate) fn core_weak(&self) -> std::rc::Weak<Core<M>> {
+        Rc::downgrade(&self.core)
+    }
+
     /// The top-level window's handle.
     pub fn hwnd(&self) -> Hwnd {
         self.core.hwnd()
@@ -106,7 +112,7 @@ impl<M: 'static> Ui<M> {
     /// is laid out again automatically whenever the window is resized or its
     /// DPI changes; the application never sees `WM_SIZE`.
     pub fn set_layout(&self, layout: Layout) {
-        self.core.set_layout(layout);
+        self.core.set_layout(layout, self.clone());
     }
 
     /// Lays the installed tree out again. Call this after changing something

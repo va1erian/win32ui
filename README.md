@@ -113,7 +113,8 @@ already retained), and closures that capture shared mutable app state.
 | `Edit` (single/multi-line, password), `ComboBox`, and buttons (`Button`,
   `CheckBox`, `RadioGroup`, `GroupBox`) | exist (#12–#14) |
 | Menus mapped to `Msg`: menu bar, context popups, owner-drawn dark items | exist (#16) |
-| Tabs, tooltips, split/scroll | #11, #15, #17 |
+| Draggable `split_row!`/`split_col!` layout nodes; themed `ScrollView` (native vertical scrollbar, wheel, `scroll_to`) | exist (#11) |
+| Tabs, tooltips | #15-#17 |
 | Direct2D shapes, clips and transforms (`d2d`, anti-aliased); `ProgressBar` draws with it (GDI fallback) | exists (#22) |
 | DirectWrite text, gradients, bitmaps, rounded clips, colour emoji | #22 follow-up |
 
@@ -134,11 +135,12 @@ src/
   app/            `App`, `Ui`, the per-window message queue, `run_app`
   app/child.rs    secondary windows: `open_window`, `open_modal`, `WindowHandle`
   app/layout/     the layout tree: `column!`/`row!`, `fill`/`width`, relayout
+  app/layout/split/   `Split`: `split_row!`/`split_col!` and the divider widget
   gdi/            RAII `Font` / `Brush` / `Pen` / `Bitmap`, `Paint`, `Canvas`
   d2d/            anti-aliased Direct2D `D2dSurface` / `D2dCanvas` for any `HWND`
   controls/       `ListView`, `TreeView`, `Toolbar`, `StatusBar`, `Label`,
                   `Edit`, `ProgressBar`, `TaskDialog`, `Button`, `CheckBox`,
-                  `RadioGroup`, `GroupBox`, `Menu`
+                  `RadioGroup`, `GroupBox`, `Menu`, `ScrollView`
   controls/control.rs   `Control`, `AsControl`, `ControlExt`, `HasText`
   controls/registry.rs  routes a control's own notifications back to it
   sys/            ALL `unsafe` lives here; every block has a `// SAFETY:` note

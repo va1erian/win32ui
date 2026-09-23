@@ -66,7 +66,7 @@ mod sys;
 
 pub use accel::{Shortcut, ShortcutParseError};
 pub use app::{
-    App, IntoLayoutItem, Layout, LayoutExt, LayoutItem, Proxy, Ui, WindowHandle, WindowSpec,
+    App, IntoLayoutItem, Layout, LayoutExt, LayoutItem, Proxy, Split, Ui, WindowHandle, WindowSpec,
     run_app,
 };
 pub use capture::RgbaImage;
@@ -101,6 +101,7 @@ pub use controls::menu::Menu;
 pub use controls::progressbar::{ProgressBar, ProgressState};
 pub use controls::progressbar_theme::ProgressBarTheme;
 pub use controls::radio::{RadioGroup, RadioOption};
+pub use controls::scrollview::ScrollView;
 pub use controls::statusbar::{StatusBar, StatusBarTheme};
 pub use controls::taskdialog::{TaskDialog, TaskDialogIcon};
 pub use controls::toolbar::{Toolbar, ToolbarItem, ToolbarTheme};
@@ -117,12 +118,12 @@ pub mod prelude {
         IntoLayoutItem, Key, LResult, Label, Layout, LayoutExt, LayoutItem, ListModel, ListView,
         ListViewEvent, ListViewTheme, Menu, Message, MinMaxInfo, Modifiers, MouseButton, Notify,
         Placement, Point, ProgressBar, ProgressBarTheme, ProgressState, Proxy, Px, RadioGroup,
-        RadioOption, Rect, Result, RgbaImage, Shortcut, ShortcutParseError, ShowState,
-        SortDirection, Stack, StackDirection, StackSlot, StatusBar, StatusBarTheme, TaskDialog,
-        TaskDialogIcon, Theme, Themed, TimerId, Toolbar, ToolbarItem, ToolbarTheme, TreeEntry,
-        TreeSource, TreeView, TreeViewEvent, Ui, WidgetCx, Win32Error, Window, WindowClass,
-        WindowExStyle, WindowHandle, WindowHandler, WindowSpec, WindowStyle, column, dip,
-        monitor_work_areas, row, run_app,
+        RadioOption, Rect, Result, RgbaImage, ScrollView, Shortcut, ShortcutParseError, ShowState,
+        SortDirection, Split, Stack, StackDirection, StackSlot, StatusBar, StatusBarTheme,
+        TaskDialog, TaskDialogIcon, Theme, Themed, TimerId, Toolbar, ToolbarItem, ToolbarTheme,
+        TreeEntry, TreeSource, TreeView, TreeViewEvent, Ui, WidgetCx, Win32Error, Window,
+        WindowClass, WindowExStyle, WindowHandle, WindowHandler, WindowSpec, WindowStyle, column,
+        dip, monitor_work_areas, row, run_app, split_col, split_row,
     };
     pub use crate::{clipboard, gdi, looper, quit, run, run_modal};
 }

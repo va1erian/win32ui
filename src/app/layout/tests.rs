@@ -1,6 +1,7 @@
 //! Pure tree-to-rects tests: no window is created, so the arithmetic is tested
 //! in isolation from Win32.
 
+use super::split::Split;
 use super::*;
 use crate::units::dip;
 
@@ -182,4 +183,91 @@ fn macros_build_the_same_tree_as_the_builders() {
     let tree = crate::column![Layout::row(), Layout::row().fill(1)].spacing(dip(4.0));
     assert_eq!(tree.slots.len(), 2);
     assert_eq!(tree.spacing, dip(4.0));
+}
+
+fn split_layout(split: Split) -> Layout {
+    Layout::row().item(split)
+}
+
+#[test]
+fn split_row_places_panes_around_an_initial_position() {
+    let split = Split::row()
+        .a(widget(leaf(Rect::default()), Sizing::Fill(1)))
+        .b(widget(leaf(Rect::default()), Sizing::Fill(1)))
+        .position(dip(30.0));
+    let placed = split_layout(split).compute(Rect::new(0, 0, 100, 40), 96);
+    assert_eq!(
+        placed.len(),
+        2,
+        "the divider is not placed without a window"
+    );
+    assert_eq!(placed[0].rect, Rect::new(0, 0, 30, 40), "first pane");
+    assert_eq!(placed[1].rect, Rect::new(35, 0, 100, 40), "second pane");
+}
+
+#[test]
+fn split_columns_default_to_the_middle() {
+    let split = Split::column()
+        .a(widget(leaf(Rect::default()), Sizing::Fill(1)))
+        .b(widget(leaf(Rect::default()), Sizing::Fill(1)));
+    let placed = Layout::column()
+        .item(split)
+        .compute(Rect::new(0, 0, 40, 205), 96);
+    assert_eq!(placed[0].rect, Rect::new(0, 0, 40, 100));
+    assert_eq!(placed[1].rect, Rect::new(0, 105, 40, 205));
+}
+
+#[test]
+fn split_minimums_clamp_the_position() {
+    let split = Split::row()
+        .a(widget(leaf(Rect::default()), Sizing::Fill(1)))
+        .b(widget(leaf(Rect::default()), Sizing::Fill(1)))
+        .position(dip(5.0))
+        .min(dip(20.0), dip(30.0));
+    let placed = split_layout(split).compute(Rect::new(0, 0, 100, 40), 96);
+    assert_eq!(
+        placed[0].rect,
+        Rect::new(0, 0, 20, 40),
+        "clamped up to min_a"
+    );
+
+    let split = Split::row()
+        .a(widget(leaf(Rect::default()), Sizing::Fill(1)))
+        .b(widget(leaf(Rect::default()), Sizing::Fill(1)))
+        .position(dip(95.0))
+        .min(dip(20.0), dip(30.0));
+    let placed = split_layout(split).compute(Rect::new(0, 0, 100, 40), 96);
+    assert_eq!(
+        placed[0].rect,
+        Rect::new(0, 0, 65, 40),
+        "clamped down to leave min_b and the divider"
+    );
+    assert_eq!(placed[1].rect, Rect::new(70, 0, 100, 40));
+}
+
+#[test]
+fn split_collapses_to_the_visible_pane() {
+    let split = Split::row()
+        .a(widget(hidden(Rect::default()), Sizing::Fill(1)))
+        .b(widget(leaf(Rect::default()), Sizing::Fill(1)))
+        .position(dip(30.0));
+    let placed = split_layout(split).compute(Rect::new(0, 0, 100, 40), 96);
+    assert_eq!(placed.len(), 1);
+    assert_eq!(placed[0].rect, Rect::new(0, 0, 100, 40));
+}
+
+#[test]
+fn split_row_macro_builds_a_two_pane_node() {
+    let a = LayoutItem {
+        content: Content::Nested(Box::new(Layout::row())),
+        sizing: Sizing::Fill(1),
+    };
+    let b = LayoutItem {
+        content: Content::Nested(Box::new(Layout::row())),
+        sizing: Sizing::Fill(1),
+    };
+    let tree = crate::column![crate::split_row![a, b].position(dip(10.0))];
+    assert_eq!(tree.slots.len(), 1);
+    let placed = tree.compute(Rect::new(0, 0, 50, 20), 96);
+    assert!(placed.is_empty(), "empty panes have no leaves");
 }

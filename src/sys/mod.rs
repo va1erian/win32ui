@@ -22,6 +22,7 @@ pub(crate) mod looper;
 pub(crate) mod menu;
 pub(crate) mod message;
 pub(crate) mod proxy;
+pub(crate) mod scroll;
 pub(crate) mod taskdialog;
 pub(crate) mod theme;
 pub(crate) mod window;

@@ -22,6 +22,8 @@ use crate::units::{Dip, Px};
 #[cfg(test)]
 mod tests;
 
+pub(crate) mod split;
+
 /// How an item is sized: along the parent's main axis, or, for `width`/
 /// `height`, along a named axis.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -103,9 +105,10 @@ fn widget_item(control: &Control, sizing: Sizing) -> LayoutItem {
 /// divider (#11) or a stack of pages (#15) becomes another variant, handled in
 /// [`Layout::compute`] alongside the nested layout.
 #[derive(Clone)]
-enum Content {
+pub(crate) enum Content {
     Widget(WidgetHandle),
     Nested(Box<Layout>),
+    Split(Box<split::SplitNode>),
 }
 
 /// One entry in a [`Layout`]: a widget or a nested layout, with its sizing.
@@ -123,6 +126,24 @@ impl LayoutItem {
         match &self.content {
             Content::Widget(handle) => handle.is_visible(),
             Content::Nested(nested) => nested.slots.iter().any(LayoutItem::is_visible),
+            Content::Split(node) => node.is_visible(),
+        }
+    }
+
+    /// The item's content kind, for the window's split-binding pass.
+    pub(crate) fn content(&self) -> &Content {
+        &self.content
+    }
+
+    /// Lays this item out inside `rect`, appending its visible leaves to `out`.
+    pub(crate) fn compute(&self, rect: Rect, dpi: u32, out: &mut Vec<Placed>) {
+        match &self.content {
+            Content::Widget(handle) => out.push(Placed {
+                handle: handle.clone(),
+                rect,
+            }),
+            Content::Nested(nested) => out.extend(nested.compute(rect, dpi)),
+            Content::Split(node) => node.compute(rect, dpi, out),
         }
     }
 
@@ -139,7 +160,7 @@ impl LayoutItem {
             // cross axis instead, so the main axis keeps its natural size.
             Sizing::Auto | Sizing::Width(_) | Sizing::Height(_) => match &self.content {
                 Content::Widget(handle) => StackSlot::FixedPx(Px(handle.natural(direction))),
-                Content::Nested(_) => StackSlot::Fill(1),
+                Content::Nested(_) | Content::Split(_) => StackSlot::Fill(1),
             },
         }
     }
@@ -206,6 +227,11 @@ impl Layout {
         self
     }
 
+    /// The installed items, for the window's split-binding pass.
+    pub(crate) fn items(&self) -> &[LayoutItem] {
+        &self.slots
+    }
+
     /// Wraps this layout as a weighted item of its parent.
     pub fn fill(self, weight: u32) -> LayoutItem {
         self.item_with(Sizing::Fill(weight))
@@ -263,13 +289,7 @@ impl Layout {
                 Some(size) => cross_rect(area, self.direction, size.to_px(dpi).value()),
                 None => area,
             };
-            match &item.content {
-                Content::Widget(handle) => placed.push(Placed {
-                    handle: handle.clone(),
-                    rect: area,
-                }),
-                Content::Nested(nested) => placed.extend(nested.compute(area, dpi)),
-            }
+            item.compute(area, dpi, &mut placed);
         }
         placed
     }
@@ -385,5 +405,28 @@ macro_rules! column {
 macro_rules! row {
     ($($item:expr),* $(,)?) => {
         $crate::Layout::row()$(.item(&$item))*
+    };
+}
+
+/// Builds a [`Split`](crate::Split) with two side-by-side panes.
+///
+/// ```ignore
+/// split_row![tree, list]
+///     .position(dip(220.0))
+///     .min(dip(120.0), dip(200.0))
+///     .on_moved(|p| Some(Msg::SplitMoved(p)))
+/// ```
+#[macro_export]
+macro_rules! split_row {
+    ($a:expr, $b:expr $(,)?) => {
+        $crate::Split::row().a(&$a).b(&$b)
+    };
+}
+
+/// Builds a [`Split`](crate::Split) with two stacked panes.
+#[macro_export]
+macro_rules! split_col {
+    ($a:expr, $b:expr $(,)?) => {
+        $crate::Split::column().a(&$a).b(&$b)
     };
 }

@@ -1,0 +1,337 @@
+#![forbid(unsafe_code)]
+
+//! Split layout nodes: two panes separated by a draggable divider.
+//!
+//! [`Split`] is a layout node, not a free-standing control: build it with
+//! [`split_row!`](crate::split_row) / [`split_col!`](crate::split_col), size it
+//! with [`Split::position`] and [`Split::min`], and install it with
+//! [`Ui::set_layout`](crate::Ui::set_layout). The divider is a small owner-drawn
+//! child window ([`CustomWidget`](crate::CustomWidget)): it shows a resize
+//! cursor on hover, captures the mouse while dragging, relayouts live, and moves
+//! by arrow keys when focused. [`Split::on_moved`] maps a move to the app's
+//! `Msg` so the position can be persisted.
+
+mod divider;
+
+use std::any::Any;
+use std::cell::{Cell, RefCell};
+use std::rc::Rc;
+
+use crate::app::Ui;
+use crate::geometry::Rect;
+use crate::hwnd::Hwnd;
+use crate::layout::StackDirection;
+use crate::sys;
+use crate::units::Dip;
+use crate::window::{Window, WindowClass, WindowExStyle, WindowStyle};
+
+use super::{Content, IntoLayoutItem, LayoutItem, Placed, Sizing, WidgetHandle};
+
+use divider::{Divider, DividerHandler, SplitEvent};
+
+/// The divider's thickness, in design units.
+const DIVIDER_DIP: f32 = 5.0;
+/// How far an arrow key moves the divider, in design units.
+const ARROW_STEP_DIP: f32 = 8.0;
+
+/// The state a split shares with its divider window and the layout tree.
+pub(crate) struct SplitShared {
+    direction: StackDirection,
+    /// The first pane's extent, in design units; `None` until first laid out.
+    position: Cell<Option<f32>>,
+    /// Minimum extents for the first and second pane, in design units.
+    min_a: Cell<f32>,
+    min_b: Cell<f32>,
+    /// The split's rectangle, in the parent's coordinates.
+    area: Cell<Rect>,
+    dpi: Cell<u32>,
+    /// The divider's thickness in device pixels, set by [`SplitNode::compute`].
+    thickness: Cell<i32>,
+    /// The divider child window, once bound by [`Core`](crate::app::Core).
+    hwnd: Cell<Hwnd>,
+    /// The divider's layout bounds and visibility, shared with the tree.
+    bounds: Rc<Cell<Rect>>,
+    visible: Rc<Cell<bool>>,
+    /// The type-erased [`Split::on_moved`] mapper, bound by `Core`.
+    mapper: RefCell<Option<Box<dyn Any>>>,
+}
+
+impl SplitShared {
+    fn new(direction: StackDirection) -> SplitShared {
+        SplitShared {
+            direction,
+            position: Cell::new(None),
+            min_a: Cell::new(0.0),
+            min_b: Cell::new(0.0),
+            area: Cell::new(Rect::default()),
+            dpi: Cell::new(96),
+            thickness: Cell::new(0),
+            hwnd: Cell::new(Hwnd::NULL),
+            bounds: Rc::new(Cell::new(Rect::default())),
+            visible: Rc::new(Cell::new(true)),
+            mapper: RefCell::new(None),
+        }
+    }
+
+    fn handle(&self) -> WidgetHandle {
+        WidgetHandle {
+            hwnd: self.hwnd.get(),
+            bounds: Rc::clone(&self.bounds),
+            visible: Rc::clone(&self.visible),
+        }
+    }
+
+    fn is_horizontal(&self) -> bool {
+        self.direction == StackDirection::Horizontal
+    }
+
+    /// The divider's current position in device pixels, defaulting to half.
+    fn position_px(&self) -> i32 {
+        let dpi = self.dpi.get().max(96);
+        let area = self.area.get();
+        let total = if self.is_horizontal() {
+            area.width()
+        } else {
+            area.height()
+        };
+        let available = (total - self.thickness.get()).max(0);
+        match self.position.get() {
+            Some(value) => Dip(value).to_px(dpi).value(),
+            None => available / 2,
+        }
+    }
+
+    /// Takes the erased `on_moved` mapper, downcasting it to this app's `Msg`.
+    fn take_mapper<M: 'static>(&self) -> Option<Box<dyn Fn(Dip) -> Option<M>>> {
+        let erased = self.mapper.borrow_mut().take()?;
+        erased
+            .downcast::<Box<dyn Fn(Dip) -> Option<M>>>()
+            .ok()
+            .map(|mapper| *mapper)
+    }
+}
+
+/// A split of two layout items with a draggable divider.
+///
+/// Built by [`split_row!`](crate::split_row) / [`split_col!`](crate::split_col).
+pub struct Split {
+    shared: Rc<SplitShared>,
+    a: Option<LayoutItem>,
+    b: Option<LayoutItem>,
+}
+
+impl Split {
+    /// A split whose panes are side by side.
+    pub fn row() -> Split {
+        Split::new(StackDirection::Horizontal)
+    }
+
+    /// A split whose panes are stacked.
+    pub fn column() -> Split {
+        Split::new(StackDirection::Vertical)
+    }
+
+    fn new(direction: StackDirection) -> Split {
+        Split {
+            shared: Rc::new(SplitShared::new(direction)),
+            a: None,
+            b: None,
+        }
+    }
+
+    /// Sets the first (left/top) pane.
+    pub fn a(mut self, item: impl IntoLayoutItem) -> Split {
+        self.a = Some(item.into_layout_item());
+        self
+    }
+
+    /// Sets the second (right/bottom) pane.
+    pub fn b(mut self, item: impl IntoLayoutItem) -> Split {
+        self.b = Some(item.into_layout_item());
+        self
+    }
+
+    /// The first pane's initial extent, in design units.
+    pub fn position(self, position: Dip) -> Split {
+        self.shared.position.set(Some(position.value()));
+        self
+    }
+
+    /// The minimum extents of the first and second pane, in design units.
+    pub fn min(self, a: Dip, b: Dip) -> Split {
+        self.shared.min_a.set(a.value().max(0.0));
+        self.shared.min_b.set(b.value().max(0.0));
+        self
+    }
+
+    /// Maps a divider move to an app message: the closure returns `Some(msg)`
+    /// to raise it, or `None` to ignore the move (it is still applied).
+    pub fn on_moved<M: 'static>(self, f: impl Fn(Dip) -> Option<M> + 'static) -> Split {
+        let mapper: Box<dyn Fn(Dip) -> Option<M>> = Box::new(f);
+        self.shared.mapper.replace(Some(Box::new(mapper)));
+        self
+    }
+
+    fn node(&self) -> SplitNode {
+        SplitNode {
+            shared: Rc::clone(&self.shared),
+            a: Box::new(self.a.clone().unwrap_or_else(empty_item)),
+            b: Box::new(self.b.clone().unwrap_or_else(empty_item)),
+        }
+    }
+}
+
+fn empty_item() -> LayoutItem {
+    LayoutItem {
+        content: Content::Nested(Box::new(crate::Layout::row())),
+        sizing: Sizing::Fill(1),
+    }
+}
+
+impl IntoLayoutItem for &Split {
+    fn into_layout_item(self) -> LayoutItem {
+        LayoutItem {
+            content: Content::Split(Box::new(self.node())),
+            sizing: Sizing::Fill(1),
+        }
+    }
+}
+
+impl IntoLayoutItem for Split {
+    fn into_layout_item(self) -> LayoutItem {
+        (&self).into_layout_item()
+    }
+}
+
+/// A bound split node inside a [`Layout`](super::Layout).
+#[derive(Clone)]
+pub(crate) struct SplitNode {
+    pub(crate) shared: Rc<SplitShared>,
+    a: Box<LayoutItem>,
+    b: Box<LayoutItem>,
+}
+
+impl SplitNode {
+    /// Whether either pane is visible.
+    pub(crate) fn is_visible(&self) -> bool {
+        self.a.is_visible() || self.b.is_visible()
+    }
+
+    /// Lays the two panes and the divider into `rect`.
+    pub(crate) fn compute(&self, rect: Rect, dpi: u32, out: &mut Vec<Placed>) {
+        let shared = &self.shared;
+        shared.area.set(rect);
+        shared.dpi.set(dpi);
+        let thickness = Dip(DIVIDER_DIP).to_px(dpi).value();
+        shared.thickness.set(thickness);
+
+        match (self.a.is_visible(), self.b.is_visible()) {
+            (false, false) => {}
+            (true, false) => self.a.compute(rect, dpi, out),
+            (false, true) => self.b.compute(rect, dpi, out),
+            (true, true) => {
+                let horizontal = shared.is_horizontal();
+                let total = if horizontal {
+                    rect.width()
+                } else {
+                    rect.height()
+                };
+                let available = (total - thickness).max(0);
+                let min_a = Dip(shared.min_a.get()).to_px(dpi).value();
+                let min_b = Dip(shared.min_b.get()).to_px(dpi).value();
+                let position = shared.position_px();
+                let position = if min_a + min_b <= available {
+                    position.clamp(min_a, available - min_b)
+                } else {
+                    available / 2
+                };
+
+                let (a_rect, divider_rect, b_rect) = if horizontal {
+                    let a_right = rect.left + position;
+                    let divider_right = a_right + thickness;
+                    (
+                        Rect::new(rect.left, rect.top, a_right, rect.bottom),
+                        Rect::new(a_right, rect.top, divider_right, rect.bottom),
+                        Rect::new(divider_right, rect.top, rect.right, rect.bottom),
+                    )
+                } else {
+                    let a_bottom = rect.top + position;
+                    let divider_bottom = a_bottom + thickness;
+                    (
+                        Rect::new(rect.left, rect.top, rect.right, a_bottom),
+                        Rect::new(rect.left, a_bottom, rect.right, divider_bottom),
+                        Rect::new(rect.left, divider_bottom, rect.right, rect.bottom),
+                    )
+                };
+                self.a.compute(a_rect, dpi, out);
+                self.b.compute(b_rect, dpi, out);
+                if shared.hwnd.get().is_alive() {
+                    out.push(Placed {
+                        handle: shared.handle(),
+                        rect: divider_rect,
+                    });
+                }
+            }
+        }
+    }
+}
+
+/// Creates and binds the divider child window for `node`.
+///
+/// Called by [`Core`](crate::app::Core) when a layout is installed; returns
+/// `None` if the divider already exists or the window cannot be created.
+pub(crate) fn build_divider<M: 'static>(ui: &Ui<M>, node: &SplitNode) -> Option<Window> {
+    let shared = Rc::clone(&node.shared);
+    if shared.hwnd.get().is_alive() {
+        return None;
+    }
+    let mapper = shared.take_mapper::<M>();
+    let core = ui.core_weak();
+    let emit: Rc<dyn Fn(SplitEvent)> = {
+        let shared = Rc::clone(&shared);
+        let core = core.clone();
+        Rc::new(move |event| {
+            let SplitEvent::Moved(position) = event;
+            shared.position.set(Some(position.value()));
+            if let Some(core) = core.upgrade() {
+                let ui = Ui::new(core);
+                ui.relayout();
+                if let Some(msg) = mapper.as_ref().and_then(|f| f(position)) {
+                    ui.emit(msg);
+                }
+            }
+        })
+    };
+
+    let dpi = ui.dpi();
+    let thickness = Dip(DIVIDER_DIP).to_px(dpi).value();
+    let handler = DividerHandler {
+        core,
+        bounds: Rc::new(Cell::new(Rect::new(0, 0, thickness, thickness))),
+        emit,
+        widget: Divider::new(Rc::clone(&shared)),
+    };
+    let class = WindowClass::register("win32ui.split", ui.theme().background).ok()?;
+    let window = Window::create(
+        class,
+        Some(ui.hwnd()),
+        WindowStyle::new().child().visible().tab_stop(),
+        WindowExStyle::new(),
+        Rect::new(0, 0, thickness, thickness),
+        "splitter",
+        handler,
+    )
+    .ok()?;
+
+    let hwnd = window.hwnd();
+    shared.hwnd.set(hwnd);
+    crate::theme::register_themed(
+        ui.hwnd(),
+        hwnd,
+        Rc::new(move |applied| {
+            sys::set_class_background(hwnd, applied.background);
+            sys::window::invalidate(hwnd);
+        }),
+    );
+    Some(window)
+}
