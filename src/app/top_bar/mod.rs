@@ -16,12 +16,14 @@
 //! The bar's items are set as a list on each sync; painting and layout allocate
 //! nothing per frame. A [`Native`](TopBarItem::native) item is a slot the app
 //! fills with its own child control (an `Edit` search box): it stays opaque,
-//! because native input needs IME and accessibility, and the app positions the
-//! child in the slot returned by
+//! because native input needs IME and accessibility, and the app either hands
+//! the child to the slot with [`TopBarItem::child`], so the bar keeps it
+//! positioned across resizes, or positions it itself in the slot returned by
 //! [`Ui::material_top_bar_slot`](crate::Ui::material_top_bar_slot).
 
 mod input;
 mod layout;
+mod native;
 mod paint;
 mod state;
 
@@ -29,6 +31,7 @@ use std::ops::RangeInclusive;
 use std::rc::Rc;
 
 use crate::app::Ui;
+use crate::controls::AsControl;
 use crate::error::{Error, Result};
 use crate::units::Dip;
 
@@ -117,6 +120,8 @@ pub struct TopBarItem {
     pub(crate) enabled: bool,
     pub(crate) width: Option<Dip>,
     pub(crate) expand: bool,
+    pub(crate) height: Option<Dip>,
+    pub(crate) child: Option<native::Child>,
 }
 
 impl TopBarItem {
@@ -131,6 +136,8 @@ impl TopBarItem {
             enabled: true,
             width: None,
             expand: false,
+            height: None,
+            child: None,
         }
     }
 
@@ -144,6 +151,8 @@ impl TopBarItem {
             enabled: true,
             width: None,
             expand: false,
+            height: None,
+            child: None,
         }
     }
 
@@ -161,6 +170,8 @@ impl TopBarItem {
             enabled: true,
             width: None,
             expand: false,
+            height: None,
+            child: None,
         }
     }
 
@@ -174,6 +185,8 @@ impl TopBarItem {
             enabled: true,
             width: None,
             expand: false,
+            height: None,
+            child: None,
         }
     }
 
@@ -187,6 +200,8 @@ impl TopBarItem {
             enabled: true,
             width: None,
             expand: false,
+            height: None,
+            child: None,
         }
     }
 
@@ -201,6 +216,8 @@ impl TopBarItem {
             enabled: true,
             width: None,
             expand: false,
+            height: None,
+            child: None,
         }
     }
 
@@ -217,6 +234,8 @@ impl TopBarItem {
             enabled: true,
             width: Some(width),
             expand: false,
+            height: None,
+            child: None,
         }
     }
 
@@ -243,6 +262,24 @@ impl TopBarItem {
     /// to a sensible width; a label defaults to its text width.
     pub fn width(mut self, width: Dip) -> TopBarItem {
         self.width = Some(width);
+        self
+    }
+
+    /// Sets a native slot's height, in design units, centred vertically in the
+    /// band. Without it the slot fills the band minus a small vertical inset;
+    /// set it to the child's natural height (a single-line `Edit`) so the child
+    /// is not stretched. Ignored by other kinds.
+    pub fn height(mut self, height: Dip) -> TopBarItem {
+        self.height = Some(height);
+        self
+    }
+
+    /// Hosts `control` in a native slot: the bar moves and resizes it to the
+    /// slot on every layout (window resize, DPI change, item change), so the
+    /// app never has to track the slot's rectangle. The control stays owned by
+    /// the app and must outlive the items that name it. Ignored by other kinds.
+    pub fn child(mut self, control: &impl AsControl) -> TopBarItem {
+        self.child = Some(native::Child::of(control));
         self
     }
 

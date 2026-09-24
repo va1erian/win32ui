@@ -61,13 +61,27 @@ fn the_top_bar_reserves_its_band_and_paints() {
     let shots_for_app = Rc::clone(&shots);
     let Some(run) = common::run_app_spec_with_watchdog(spec(), move |ui| {
         let bar = MaterialTopBar::new(ui).expect("material top bar");
+        let search = Edit::single_line(ui).expect("edit");
         bar.set_items(vec![
             TopBarItem::icon_button(1u32, Fluent::PLAY).tooltip("Play"),
             TopBarItem::flexible_spacer(),
             TopBarItem::slider(2u32, 0.5, 0.0..=1.0),
             TopBarItem::label(3u32, "0:42"),
-            TopBarItem::native(4u32, dip(100.0)),
+            TopBarItem::native(4u32, dip(100.0))
+                .height(dip(22.0))
+                .child(&search),
         ]);
+        let slot = ui.material_top_bar_slot(4u32).expect("native slot");
+        assert_eq!(
+            search.bounds(),
+            slot,
+            "the bar moves the hosted child into its slot"
+        );
+        assert_eq!(
+            slot.height(),
+            dip(22.0).to_px(ui.dpi()).value(),
+            "the slot takes its explicit height"
+        );
         // The band is reserved below the strip, so `title_bar_height` grew.
         assert!(
             ui.title_bar_height().value() > ui.strip_height().value() as f32,

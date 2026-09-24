@@ -481,7 +481,7 @@ impl win32ui::App for App {
             }
             Msg::Tick(tick) => {
                 if let Some(bar) = &self.top_bar {
-                    bar.tick(ui);
+                    bar.tick();
                 }
                 self.set_status(&format!("Worker tick {tick}"));
             }

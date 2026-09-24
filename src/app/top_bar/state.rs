@@ -16,6 +16,7 @@ use crate::d2d::{Font, FontSpec, Layout, TextSystem};
 use crate::geometry::Rect;
 
 use super::layout::{self, Span};
+use super::native::{self, Child};
 use super::{DEFAULT_HEIGHT_DIP, TopBarId, TopBarItem, TopBarSpec};
 
 /// A square icon/toggle button's design size.
@@ -28,9 +29,6 @@ pub(super) const LABEL_PAD_DIP: f32 = 6.0;
 const GAP_DIP: f32 = 6.0;
 /// The left/right inset of the whole row.
 pub(super) const SIDE_PAD_DIP: f32 = 8.0;
-/// The vertical inset of a native slot, so a child `Edit` sits comfortably in
-/// the band.
-pub(super) const NATIVE_V_PAD_DIP: f32 = 6.0;
 /// The icon glyph size, in device-independent pixels.
 const ICON_SIZE: f32 = 16.0;
 /// The label font size, in device-independent pixels.
@@ -64,6 +62,10 @@ pub(super) struct Item {
     pub(super) text: Option<Layout>,
     pub(super) slider: Option<SliderState>,
     pub(super) width_dip: f32,
+    /// A native slot's own height, centred in the band.
+    pub(super) height_dip: Option<f32>,
+    /// The control a native slot keeps positioned.
+    pub(super) child: Option<Child>,
 }
 
 /// The shared, `M`-free state behind a [`MaterialTopBar`](super::MaterialTopBar).
@@ -129,6 +131,8 @@ fn resolve(item: TopBarItem) -> Item {
         enabled,
         width,
         expand,
+        height,
+        child,
     } = item;
     let fill = matches!(&spec, TopBarSpec::Spacer { fill: true });
     let (kind, glyph, text, slider, default_width) = match spec {
@@ -167,6 +171,8 @@ fn resolve(item: TopBarItem) -> Item {
         text,
         slider,
         width_dip,
+        height_dip: height.map(|height| height.value()),
+        child,
     }
 }
 
@@ -225,7 +231,6 @@ impl TopBarState {
             width_px as f32 - SIDE_PAD_DIP * scale,
         );
         let control = (BUTTON_DIP * scale).min((height_px as f32 - 4.0).max(0.0));
-        let native_inset = NATIVE_V_PAD_DIP * scale;
         let rects = items
             .iter()
             .zip(placed)
@@ -235,10 +240,7 @@ impl TopBarState {
                         let t = top_px as f32 + (height_px as f32 - control) / 2.0;
                         (t, t + control)
                     }
-                    Kind::Native => (
-                        top_px as f32 + native_inset,
-                        top_px as f32 + height_px as f32 - native_inset,
-                    ),
+                    Kind::Native => native::slot_span(top_px, height_px, scale, item.height_dip),
                     _ => (top_px as f32, top_px as f32 + height_px as f32),
                 };
                 Rect::new(
@@ -248,7 +250,8 @@ impl TopBarState {
                     bottom.round() as i32,
                 )
             })
-            .collect();
+            .collect::<Vec<Rect>>();
+        native::place_children(&items, &rects);
         *self.rects.borrow_mut() = rects;
     }
 
