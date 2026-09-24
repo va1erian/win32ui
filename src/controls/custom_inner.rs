@@ -92,9 +92,10 @@ impl<W: CustomWidget, M: 'static> CustomHandler<W, M> {
         let painted = renderer.paint(hwnd, |canvas| {
             canvas.clear(theme.background);
             let viewport = canvas.bounds();
-            if offset != 0 {
-                canvas.set_translation(0.0, -viewport_offset);
-            }
+            // Always reset the translation: the render target keeps its
+            // transform between frames, so skipping it at offset zero would
+            // leave the previous scroll transform applied.
+            canvas.set_translation(0.0, -viewport_offset);
             widget.paint_d2d(canvas, viewport, &theme);
         });
         drop(renderer);
