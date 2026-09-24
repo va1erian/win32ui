@@ -163,7 +163,10 @@ impl<W: CustomWidget, M: 'static> CustomHandler<W, M> {
 
 impl<W: CustomWidget, M: 'static> WindowHandler for CustomHandler<W, M> {
     fn message(&self, window: &Window, message: Message) -> Option<LResult> {
-        if D2dSurface::is_erase_background(&message) && self.renderer.borrow().is_direct2d() {
+        // Every widget paints its whole client area (the GDI path through a
+        // back buffer), so the default erase to the class brush would only show
+        // as a flash before each repaint.
+        if D2dSurface::is_erase_background(&message) {
             return Some(1);
         }
         match message {

@@ -1,7 +1,6 @@
 //! The subclass on the tab control: themed background, hover and `Ctrl+Tab`.
 
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
-use windows::Win32::Graphics::Gdi::{GetDC, ReleaseDC};
 use windows::Win32::UI::Controls::WM_MOUSELEAVE;
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_CONTROL, VK_SHIFT};
 use windows::Win32::UI::Shell::DefSubclassProc;
@@ -81,6 +80,9 @@ impl TabHost {
 impl Drop for TabHost {
     fn drop(&mut self) {
         crate::sys::window::remove_subclass(self.child, Some(tab_proc), TAB_SUBCLASS_ID);
+        // The control is not created through the crate's window class, so its
+        // off-screen paint buffer is not released on `WM_NCDESTROY`.
+        crate::sys::gdi::release_back_buffer(self.child);
         // SAFETY: allocated in `install` and reclaimed exactly once.
         unsafe { drop(Box::from_raw(self.raw)) };
     }
@@ -127,30 +129,21 @@ unsafe extern "system" fn tab_proc(
     }
     let bounds = crate::sys::window::client_rect(crate::sys::hwnd_from(hwnd));
     if msg == WM_PAINT {
-        // Let the control draw the tabs (through `WM_DRAWITEM`) and its frame,
-        // then offer the chrome to the widget, which repaints the frame from
+        // The control draws the tabs (through `WM_DRAWITEM`) and its frame into
+        // an off-screen buffer, then the widget repaints the frame there from
         // theme tokens because the native one ignores dark mode.
-        // SAFETY: forward WM_PAINT down the subclass chain.
-        let result = unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) };
-        // SAFETY: `GetDC`/`ReleaseDC` are the documented pair for a temporary
-        // device context on a live window.
-        let hdc = unsafe { GetDC(Some(hwnd)) };
-        if !hdc.0.is_null() {
-            let _ = unsafe {
-                forward(
-                    refdata,
-                    TabEvent::Chrome {
-                        dc: hdc.0 as isize,
-                        bounds,
-                    },
-                )
-            };
-            // SAFETY: `hdc` came from `GetDC` just above.
-            unsafe {
-                let _ = ReleaseDC(Some(hwnd), hdc);
-            }
-        }
-        return result;
+        // SAFETY: called from the subclass procedure while handling `WM_PAINT`;
+        // `refdata` is the live `TabRefdata`.
+        return unsafe {
+            super::buffered::paint(hwnd, bounds, |dc| {
+                let _ = forward(refdata, TabEvent::Chrome { dc, bounds });
+            })
+        };
+    }
+    // The off-screen pass erases its own buffer; erasing the screen first would
+    // blank the strip before the finished frame is blitted.
+    if msg == WM_ERASEBKGND && !super::buffered::printing() {
+        return LRESULT(1);
     }
     let event = match msg {
         WM_ERASEBKGND => TabEvent::Erase {

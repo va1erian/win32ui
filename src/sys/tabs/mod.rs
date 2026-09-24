@@ -10,6 +10,7 @@
 //! `// SAFETY:` note. Constants come from the `windows` crate (generated from
 //! `CommCtrl.h`).
 
+mod buffered;
 mod draw;
 mod host;
 

@@ -45,6 +45,7 @@ impl<K: Clone + Eq + Hash + 'static> TreeViewInner<K> {
             if let Some(handle) = self.handles.get(&entry.key).copied() {
                 let image = self.image_of(&style);
                 sys::treeview::tv_set_item(hwnd, handle, None, None, Some(image));
+                sys::treeview::tv_set_bold(hwnd, handle, style.bold);
             }
             self.styles.insert(entry.token, style);
             if let Some(children) = &entry.children {
@@ -114,6 +115,9 @@ impl<K: Clone + Eq + Hash + 'static> TreeViewInner<K> {
             image,
         );
         self.handles.insert(desired.key.clone(), handle);
+        if style.bold {
+            sys::treeview::tv_set_bold(hwnd, handle, true);
+        }
         self.keys.insert(token, desired.key.clone());
         self.styles.insert(token, style);
         let mut entry = Entry {

@@ -173,6 +173,10 @@ pub(crate) unsafe extern "system" fn window_proc(
         None => default_proc(hwnd, msg, wparam, lparam),
     };
 
+    // The system has just drawn the non-client area; paint over the light seam
+    // it leaves under a dark menu bar.
+    super::menu_seam::after_message(hwnd, msg);
+
     // `DefWindowProcW` fills in default limits, so re-apply the configured ones
     // when the handler did not claim the message.
     if msg == WM_GETMINMAXINFO && handled.is_none() {
@@ -184,6 +188,7 @@ pub(crate) unsafe extern "system" fn window_proc(
         // `HWND` never keeps a thread-local bitmap alive.
         super::gdi::release_back_buffer(hwnd_from(hwnd));
         super::window_ext::forget_track_limits(hwnd_from(hwnd));
+        super::menu_seam::forget(hwnd_from(hwnd));
         super::looper::forget_keyboard(hwnd_from(hwnd));
         crate::theme::forget_window_theme(hwnd_from(hwnd));
         crate::controls::tooltip::forget_window(hwnd_from(hwnd));

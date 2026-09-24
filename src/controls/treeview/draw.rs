@@ -32,9 +32,6 @@ impl<K: Clone + Eq + Hash + 'static> TreeViewInner<K> {
             // Selection and hover win over a node's own background.
             ctx.background = background.or(style.background);
             ctx.text = text.or(style.text);
-            if style.bold {
-                let _ = sys::treeview::select_font(ctx.hdc, self.bold_font.raw());
-            }
             if style.badge.is_some() {
                 return CustomDrawResult::NewFontAndPostPaint;
             }
