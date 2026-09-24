@@ -90,7 +90,7 @@ pub use controls::button::Button;
 pub use controls::checkbox::CheckBox;
 pub use controls::combobox::ComboBox;
 pub use controls::control::{AsControl, Control, ControlExt, HasText};
-pub use controls::custom::{Custom, CustomWidget, Input, Renderer, WidgetCx};
+pub use controls::custom::{Custom, CustomWidget, Input, KeyResult, Renderer, WidgetCx};
 pub use controls::edit::Edit;
 pub use controls::flow_text::{FlowText, Run, RunStyle};
 pub use controls::groupbox::GroupBox;

@@ -34,7 +34,7 @@ pub(crate) mod tooltip;
 pub mod treeview;
 
 pub use control::{AsControl, Control, ControlExt, HasText};
-pub use custom::{Custom, CustomWidget, Input, Renderer, WidgetCx};
+pub use custom::{Custom, CustomWidget, Input, KeyResult, Renderer, WidgetCx};
 pub use listview::ListViewTheme;
 pub use progressbar_theme::ProgressBarTheme;
 pub use toolbar_icon::ToolbarIcon;
@@ -45,7 +45,7 @@ pub mod prelude {
     pub use super::checkbox::CheckBox;
     pub use super::combobox::ComboBox;
     pub use super::control::{AsControl, Control, ControlExt, HasText};
-    pub use super::custom::{Custom, CustomWidget, Input, Renderer, WidgetCx};
+    pub use super::custom::{Custom, CustomWidget, Input, KeyResult, Renderer, WidgetCx};
     pub use super::edit::Edit;
     pub use super::flow_text::{FlowText, Run, RunStyle};
     pub use super::groupbox::GroupBox;

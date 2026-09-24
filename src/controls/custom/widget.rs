@@ -175,6 +175,16 @@ impl Input {
     }
 }
 
+/// What [`CustomWidget::key`](super::CustomWidget::key) did with a navigation
+/// key: consumed it, or left it to the scroll host.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum KeyResult {
+    /// The widget handled the key; the scroll host must not also act on it.
+    Handled,
+    /// The widget did not handle the key, so the scroll host may act on it.
+    Ignored,
+}
+
 /// The context a [`CustomWidget`](super::CustomWidget) is given while handling
 /// [`Input`].
 ///
