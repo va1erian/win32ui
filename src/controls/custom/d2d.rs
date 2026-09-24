@@ -66,9 +66,4 @@ impl RendererState {
             surface.resize(width, height);
         }
     }
-
-    /// Whether the next [`RendererState::paint`] will draw with Direct2D.
-    pub(crate) fn is_direct2d(&self) -> bool {
-        matches!(self, RendererState::Direct2d(_))
-    }
 }

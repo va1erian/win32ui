@@ -135,6 +135,7 @@ impl<T: 'static, M: 'static> ListView<T, M> {
             Rect::default(),
         )?;
 
+        sys::client_edge::set(hwnd, !ui.theme().is_dark);
         sys::listview::lv_set_extended_style(hwnd, LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
         sys::listview::lv_set_colors(hwnd, theme.background, theme.text);
         sys::listview::lv_set_item_count(hwnd, 0);
@@ -218,6 +219,7 @@ impl<T: 'static, M: 'static> ListView<T, M> {
                             sys::NativeControlKind::Scrollable,
                             applied.is_dark,
                         );
+                        sys::client_edge::set(hwnd, !applied.is_dark);
                         if !header_copy.is_null() {
                             sys::apply_native_theme(
                                 header_copy,
@@ -272,6 +274,7 @@ impl<T, M> Themed for ListView<T, M> {
             );
             sys::window::invalidate(self.header);
         }
+        sys::client_edge::set(self.control.hwnd(), !theme.is_dark);
         sys::window::invalidate(self.control.hwnd());
     }
 }
