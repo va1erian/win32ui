@@ -66,7 +66,7 @@ pub mod prelude {
     pub use super::taskdialog::{TaskDialog, TaskDialogIcon};
     pub use super::toolbar::{Toolbar, ToolbarItem, ToolbarTheme};
     pub use super::toolbar_icon::ToolbarIcon;
-    pub use super::treeview::{TreeEntry, TreeSource, TreeView, TreeViewEvent};
+    pub use super::treeview::{ImageList, Node, NodeStyle, TreeModel, TreeView, TreeViewEvent};
 }
 
 use crate::error::{Error, Result};

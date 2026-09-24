@@ -4,7 +4,7 @@ use windows::Win32::Foundation::LPARAM;
 use windows::Win32::UI::Controls::{
     LVIS_SELECTED, LVN_COLUMNCLICK, LVN_ITEMCHANGED, LVN_KEYDOWN, LVN_ODSTATECHANGED, NM_CLICK,
     NM_DBLCLK, NM_RCLICK, NM_RETURN, NMITEMACTIVATE, NMLISTVIEW, NMLVKEYDOWN, NMLVODSTATECHANGE,
-    NMTREEVIEWW, TVN_ITEMEXPANDED, TVN_SELCHANGED,
+    NMTREEVIEWW, TVIS_EXPANDED, TVN_ITEMEXPANDED, TVN_SELCHANGED,
 };
 
 use crate::controls::listview::ListViewEvent;
@@ -26,8 +26,6 @@ pub(crate) fn decode_notify(lparam: LPARAM) -> Notify {
             };
         }
     };
-    let kind = registry::kind(hwnd_from(from));
-
     if code == LVN_ITEMCHANGED {
         let info = read::<NMLISTVIEW>(lparam);
         return Notify::ListView {
@@ -75,7 +73,10 @@ pub(crate) fn decode_notify(lparam: LPARAM) -> Notify {
         };
     }
     if code == NM_DBLCLK || code == NM_CLICK || code == NM_RCLICK {
-        if kind == Some(ControlKind::TreeView) {
+        // Only these codes are shared between control kinds, so the registry
+        // lookup is deferred to here: a nested notification (custom draw during
+        // an owner-draw callback) must not re-borrow a control that is busy.
+        if registry::kind(hwnd_from(from)) == Some(ControlKind::TreeView) {
             let event = if code == NM_DBLCLK {
                 TreeViewEvent::DoubleClick
             } else if code == NM_RCLICK {
@@ -116,7 +117,8 @@ pub(crate) fn decode_notify(lparam: LPARAM) -> Notify {
         return Notify::TreeView {
             id,
             event: TreeViewEvent::Expanded {
-                item: node_id(info.itemNew.lParam).unwrap_or(0),
+                item: info.itemNew.lParam.0 as i64,
+                expanded: info.itemNew.state.0 & TVIS_EXPANDED.0 != 0,
             },
         };
     }

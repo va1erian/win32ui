@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::rc::Rc;
 
 use win32ui::prelude::*;
@@ -43,35 +44,98 @@ impl ListModel for TrackModel {
     }
 }
 
-/// Lazily-populated library tree.
-pub(super) struct LibraryTree;
+/// One folder in the demo's mail tree.
+pub(super) struct Folder {
+    pub(super) id: u32,
+    pub(super) name: String,
+    pub(super) unread: u32,
+    /// Draws the inbox glyph instead of the folder one.
+    pub(super) inbox: bool,
+    pub(super) children: Vec<Folder>,
+}
 
-impl TreeSource for LibraryTree {
-    fn children(&self, parent: Option<i64>) -> Vec<TreeEntry> {
-        match parent {
-            None => vec![
-                TreeEntry::branch("Music", 1),
-                TreeEntry::branch("Playlists", 2),
-                TreeEntry::branch("Folders", 3),
-            ],
-            Some(1) => ["Rock", "Jazz", "Classical", "Electronic", "Soundtrack"]
-                .iter()
-                .enumerate()
-                .map(|(index, name)| TreeEntry::leaf(*name, 10 + index as i64))
-                .collect(),
-            Some(2) => ["Favourites", "Recently added", "Late night"]
-                .iter()
-                .enumerate()
-                .map(|(index, name)| TreeEntry::leaf(*name, 20 + index as i64))
-                .collect(),
-            Some(3) => ["C:\\Music", "D:\\Albums"]
-                .iter()
-                .enumerate()
-                .map(|(index, name)| TreeEntry::leaf(*name, 30 + index as i64))
-                .collect(),
-            _ => Vec::new(),
+/// A lazily-loaded, keyed mail folder tree. The `Rc<RefCell<…>>` is shared
+/// with the app, so refreshing after an unread count changes re-reads the same
+/// store.
+pub(super) struct FolderModel {
+    pub(super) roots: Rc<RefCell<Vec<Folder>>>,
+}
+
+impl TreeModel for FolderModel {
+    type Key = u32;
+
+    fn children(&self, parent: Option<&u32>) -> Vec<Node<u32>> {
+        let roots = self.roots.borrow();
+        let list: &[Folder] = match parent {
+            None => roots.as_slice(),
+            Some(id) => find_folder(roots.as_slice(), *id)
+                .map(|folder| folder.children.as_slice())
+                .unwrap_or(&[]),
+        };
+        list.iter()
+            .map(|folder| {
+                if folder.children.is_empty() {
+                    Node::leaf(folder.id, folder.name.as_str())
+                } else {
+                    Node::branch(folder.id, folder.name.as_str())
+                }
+            })
+            .collect()
+    }
+}
+
+/// Finds a folder by key at any depth.
+pub(super) fn find_folder(folders: &[Folder], id: u32) -> Option<&Folder> {
+    for folder in folders {
+        if folder.id == id {
+            return Some(folder);
+        }
+        if let Some(found) = find_folder(&folder.children, id) {
+            return Some(found);
         }
     }
+    None
+}
+
+/// The demo's starting folder tree, with a couple of unread badges.
+pub(super) fn folder_tree() -> Vec<Folder> {
+    fn leaf(id: u32, name: &str, unread: u32) -> Folder {
+        Folder {
+            id,
+            name: name.to_string(),
+            unread,
+            inbox: false,
+            children: Vec::new(),
+        }
+    }
+    vec![
+        Folder {
+            id: 1,
+            name: "Inbox".to_string(),
+            unread: 3,
+            inbox: true,
+            children: vec![
+                leaf(11, "Work", 2),
+                leaf(12, "Personal", 1),
+                leaf(13, "Receipts", 0),
+            ],
+        },
+        Folder {
+            id: 4,
+            name: "Drafts".to_string(),
+            unread: 0,
+            inbox: false,
+            children: vec![leaf(41, "Quarterly report", 0)],
+        },
+        leaf(2, "Sent", 0),
+        Folder {
+            id: 5,
+            name: "Archive".to_string(),
+            unread: 0,
+            inbox: false,
+            children: vec![leaf(51, "2025", 0), leaf(52, "2024", 0)],
+        },
+    ]
 }
 
 pub(super) fn generate_tracks(count: usize) -> Vec<Track> {

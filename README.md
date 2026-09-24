@@ -332,6 +332,35 @@ the control is `TCS_OWNERDRAWFIXED` and each tab is painted from theme tokens on
 `WM_DRAWITEM` — including hover, selected and focus states — with a small
 subclass tracking the hot tab and `Ctrl+Tab`.
 
+## Trees
+
+`TreeView<K, M>` is keyed and lazily loaded. The app implements `TreeModel`
+for a key type `K`; only the roots are
+read up front, and a branch's `children` are fetched the first time it is
+expanded. `refresh` then diffs the materialized tree against the model *by key*
+(a pure function, unit-tested in `controls/treeview/diff.rs`), so a changing
+unread count updates in place while expansion, selection and scroll survive:
+
+```rust
+let tree = TreeView::new(ui, folders)?
+    .images(folder_icons)                       // RAII ImageList
+    .style(|id| NodeStyle::new().badge(unread(*id)).icon(icon(*id)))
+    .on_select(|id| Some(Msg::OpenFolder(*id)))
+    .on_toggle(|id, expanded| Some(Msg::Folded(*id, expanded)));
+
+tree.refresh();                                 // diff by key; keeps state
+tree.select(&inbox); tree.expand(&archive, true);
+```
+
+`NodeStyle` is read when nodes are inserted and on `refresh` (never in the
+paint path), and the widget caches it per node; selection is owner-drawn from
+theme tokens, and the native tree draws the expand glyphs and the icons from
+the `ImageList` you hand it. `select` and `expand` are programmatic: they emit
+no `on_select`/`on_toggle` of their own beyond the one selection message, so
+calling them from those handlers cannot loop. (The issue's
+`TreeView::<K>::new(ui, …)` shorthand is `TreeView<K, M>` here, matching
+`ListView<T, M>`: `M` is the app's message type.)
+
 ## Tooltips
 
 Every widget gets a tooltip through the shared `ControlExt` capability, and a
