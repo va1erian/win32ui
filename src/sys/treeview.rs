@@ -6,15 +6,16 @@
 //! key.
 
 use windows::Win32::Foundation::COLORREF;
-use windows::Win32::Graphics::Gdi::{HDC, HGDIOBJ};
+use windows::Win32::Graphics::Gdi::HDC;
 use windows::Win32::UI::Controls::{
     CDIS_HOT, CDIS_SELECTED, CDRF_DODEFAULT, CDRF_NEWFONT, CDRF_NOTIFYITEMDRAW,
     CDRF_NOTIFYPOSTPAINT, HIMAGELIST, HTREEITEM, I_IMAGENONE, NMTREEVIEWW, NMTVCUSTOMDRAW,
-    TVE_COLLAPSE, TVE_EXPAND, TVGN_CARET, TVIF_CHILDREN, TVIF_HANDLE, TVIF_IMAGE, TVIF_PARAM,
-    TVIF_STATE, TVIF_TEXT, TVINSERTSTRUCTW, TVINSERTSTRUCTW_0, TVIS_EXPANDED, TVITEMEXW_CHILDREN,
-    TVITEMW, TVM_DELETEITEM, TVM_ENSUREVISIBLE, TVM_EXPAND, TVM_GETCOUNT, TVM_GETITEMW,
-    TVM_GETNEXTITEM, TVM_INSERTITEMW, TVM_SELECTITEM, TVM_SETBKCOLOR, TVM_SETEXTENDEDSTYLE,
-    TVM_SETIMAGELIST, TVM_SETITEMHEIGHT, TVM_SETITEMW, TVM_SETTEXTCOLOR, TVSIL_NORMAL,
+    TREE_VIEW_ITEM_STATE_FLAGS, TVE_COLLAPSE, TVE_EXPAND, TVGN_CARET, TVIF_CHILDREN, TVIF_HANDLE,
+    TVIF_IMAGE, TVIF_PARAM, TVIF_STATE, TVIF_TEXT, TVINSERTSTRUCTW, TVINSERTSTRUCTW_0, TVIS_BOLD,
+    TVIS_EXPANDED, TVITEMEXW_CHILDREN, TVITEMW, TVM_DELETEITEM, TVM_ENSUREVISIBLE, TVM_EXPAND,
+    TVM_GETCOUNT, TVM_GETITEMW, TVM_GETNEXTITEM, TVM_INSERTITEMW, TVM_SELECTITEM, TVM_SETBKCOLOR,
+    TVM_SETEXTENDEDSTYLE, TVM_SETIMAGELIST, TVM_SETITEMHEIGHT, TVM_SETITEMW, TVM_SETTEXTCOLOR,
+    TVSIL_NORMAL,
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::GetFocus;
 use windows::core::PWSTR;
@@ -277,9 +278,16 @@ pub(crate) fn tv_custom_draw(
     }
 }
 
-/// Selects `font` into `hdc`, returning the previously selected object so the
-/// caller can restore it (comctl restores it for a `CDRF_NEWFONT` item too, so
-/// this is only needed when the widget draws after the callback).
-pub(crate) fn select_font(hdc: HDC, font: windows::Win32::Graphics::Gdi::HFONT) -> HGDIOBJ {
-    crate::sys::gdi::select_font(hdc, font)
+/// Turns the native bold state (`TVIS_BOLD`) of `handle` on or off. The control
+/// measures a bold item with its own bold font, so the label is never clipped
+/// the way text drawn in a wider font than the one it was measured in is.
+pub(crate) fn tv_set_bold(hwnd: Hwnd, handle: isize, bold: bool) {
+    let mut item = TVITEMW {
+        mask: TVIF_HANDLE | TVIF_STATE,
+        hItem: HTREEITEM(handle),
+        state: TREE_VIEW_ITEM_STATE_FLAGS(if bold { TVIS_BOLD.0 } else { 0 }),
+        stateMask: TVIS_BOLD,
+        ..Default::default()
+    };
+    send(hwnd, TVM_SETITEMW, 0, &mut item as *mut TVITEMW as isize);
 }

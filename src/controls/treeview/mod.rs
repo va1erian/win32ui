@@ -54,7 +54,7 @@ use std::hash::Hash;
 use crate::controls::treeview::inner::TreeViewInner;
 use crate::controls::{create_child, next_id, style as window_style};
 use crate::error::Result;
-use crate::gdi::{Font, FontWeight};
+use crate::gdi::Font;
 use crate::geometry::Rect;
 use crate::sys;
 use crate::theme::{Theme, Themed};
@@ -150,13 +150,13 @@ impl<K: Clone + Eq + Hash + 'static, M: 'static> TreeView<K, M> {
             Rect::default(),
         )?;
 
+        sys::client_edge::set(hwnd, !theme.is_dark);
         sys::treeview::tv_set_extended_style(hwnd, TVS_EX_DOUBLEBUFFER);
         sys::treeview::tv_set_item_height(hwnd, dip(20.0).to_px(dpi).value());
         sys::treeview::tv_set_colors(hwnd, theme.background, theme.text);
         sys::apply_native_theme(hwnd, sys::NativeControlKind::Scrollable, theme.is_dark);
 
         let font = Font::system_ui(dpi)?;
-        let bold_font = Font::new("Segoe UI", 9.75, FontWeight::Bold, dpi)?;
         sys::control::set_control_font(hwnd, font.raw());
 
         let inner = Rc::new(RefCell::new(TreeViewInner {
@@ -168,7 +168,6 @@ impl<K: Clone + Eq + Hash + 'static, M: 'static> TreeView<K, M> {
             next_token: 0,
             theme,
             font,
-            bold_font,
             style: None,
             image_list: None,
             dpi,
@@ -200,6 +199,7 @@ impl<K: Clone + Eq + Hash + 'static, M: 'static> TreeView<K, M> {
                             sys::NativeControlKind::Scrollable,
                             applied.is_dark,
                         );
+                        sys::client_edge::set(hwnd, !applied.is_dark);
                         sys::window::invalidate(hwnd);
                     }
                 }),
@@ -282,6 +282,7 @@ impl<K, M> Themed for TreeView<K, M> {
             sys::NativeControlKind::Scrollable,
             theme.is_dark,
         );
+        sys::client_edge::set(self.control.hwnd(), !theme.is_dark);
         sys::window::invalidate(self.control.hwnd());
     }
 }

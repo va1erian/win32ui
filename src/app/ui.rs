@@ -159,6 +159,9 @@ impl<M: 'static> Ui<M> {
             let handle = menu.build(true, theme.is_dark, theme.raised);
             sys::menu::set_bar(self.core.hwnd(), handle);
         }
+        if !self.core.has_title_menu() && self.core.menu_bar().is_some() {
+            sys::menu_seam::set(self.core.hwnd(), theme.is_dark.then_some(theme.raised));
+        }
         sys::window::invalidate(self.core.hwnd());
     }
 
@@ -257,6 +260,7 @@ impl<M: 'static> Ui<M> {
         // messages raised while the bar is first laid out can find it.
         self.core.install_menu_bar(menu.clone());
         sys::menu::set_bar(hwnd, handle);
+        sys::menu_seam::set(hwnd, theme.is_dark.then_some(theme.raised));
         for (shortcut, action) in menu.shortcuts() {
             self.core.add_accelerator(shortcut, move || Some(action()));
         }

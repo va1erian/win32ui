@@ -37,9 +37,6 @@ pub(crate) struct TreeViewInner<K> {
     pub(crate) next_token: i64,
     pub(crate) theme: Theme,
     pub(crate) font: Font,
-    /// The bold variant of `font`, created once so the custom-draw hot path
-    /// allocates no GDI object.
-    pub(crate) bold_font: Font,
     pub(crate) style: Option<StyleFn<K>>,
     pub(crate) image_list: Option<ImageList>,
     pub(crate) dpi: u32,

@@ -143,9 +143,8 @@ pub(crate) fn check_item(menu: isize, command: u16, checked: bool, radio: bool) 
 /// between owner-drawn items are themed too.
 ///
 /// The one-pixel highlight the system draws along the bottom of a menu bar is
-/// *not* covered by `MIM_BACKGROUND`: it is part of the system menu frame and
-/// changing it needs the undocumented `WM_UAHDRAWMENU`. It is therefore left
-/// in place (#67).
+/// *not* covered by `MIM_BACKGROUND`: it is part of the system menu frame, so
+/// [`menu_seam`](super::menu_seam) paints over it after each non-client paint.
 pub(crate) fn set_background(menu: isize, brush: HBRUSH) {
     let info = MENUINFO {
         cbSize: size_of::<MENUINFO>() as u32,
