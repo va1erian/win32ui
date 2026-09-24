@@ -34,6 +34,7 @@ impl Win32Error {
 
 /// Things that can go wrong while talking to Win32.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum Error {
     /// A Win32 call returned an error status.
     #[error("Win32 call failed: {0}")]
@@ -104,10 +105,15 @@ pub enum Error {
 /// may be retried, and an unavailable backend means falling back to
 /// [`Window::capture`](crate::Window::capture).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
 pub enum CaptureError {
     /// The window is minimised, so it has no composited surface to capture.
     #[error("the window is minimised")]
     Minimized,
+    /// The window had no content to capture (a zero-sized surface), for example
+    /// one that has not been laid out yet.
+    #[error("the window has no content to capture")]
+    EmptyWindow,
     /// No frame arrived within the capture timeout.
     #[error("no capture frame arrived before the timeout")]
     Timeout,

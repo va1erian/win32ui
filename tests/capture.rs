@@ -118,7 +118,9 @@ mod composited {
         watchdog_timer: Rc<Cell<Option<TimerId>>>,
         under: Rc<RefCell<Option<RgbaImage>>>,
         over: Rc<RefCell<Option<RgbaImage>>>,
+        under_screen: Rc<RefCell<Option<RgbaImage>>>,
         occluder: RefCell<Option<Window>>,
+        setup_failed: Rc<Cell<bool>>,
     }
 
     impl WindowHandler for OccludedHandler {
@@ -134,8 +136,12 @@ mod composited {
                 }
                 Message::Timer { id } if Some(id) == self.setup_timer.get() => {
                     let bounds = window.window_rect();
-                    if let Ok(class) = WindowClass::register("win32ui.capture.occluder", OCCLUDER)
-                        && let Ok(occluder) = Window::create(
+                    // The occluder is required: without it the test would pass
+                    // vacuously. Failures are recorded and asserted after the
+                    // loop, because panicking here would unwind across the
+                    // window procedure.
+                    match WindowClass::register("win32ui.capture.occluder", OCCLUDER) {
+                        Ok(class) => match Window::create(
                             class,
                             None,
                             WindowStyle::new().popup().visible(),
@@ -143,14 +149,22 @@ mod composited {
                             bounds,
                             "occluder",
                             Null,
-                        )
-                    {
-                        occluder.show();
-                        *self.occluder.borrow_mut() = Some(occluder);
+                        ) {
+                            Ok(occluder) => {
+                                occluder.show();
+                                *self.occluder.borrow_mut() = Some(occluder);
+                            }
+                            Err(_) => self.setup_failed.set(true),
+                        },
+                        Err(_) => self.setup_failed.set(true),
                     }
                 }
                 Message::Timer { id } if Some(id) == self.capture_timer.get() => {
                     *self.under.borrow_mut() = window.capture_composited().ok();
+                    // Negative control: a *screen* capture of the under window
+                    // is occluded, so it shows the occluder, proving the two
+                    // colours are distinguishable on this desktop.
+                    *self.under_screen.borrow_mut() = window.capture_screen().ok();
                     if let Some(occluder) = self.occluder.borrow().as_ref() {
                         *self.over.borrow_mut() = occluder.capture_composited().ok();
                         occluder.destroy();
@@ -177,6 +191,8 @@ mod composited {
         };
         let under = Rc::new(RefCell::new(None));
         let over = Rc::new(RefCell::new(None));
+        let under_screen = Rc::new(RefCell::new(None));
+        let setup_failed = Rc::new(Cell::new(false));
         let Ok(window) = Window::create(
             class,
             None,
@@ -190,7 +206,9 @@ mod composited {
                 watchdog_timer: Rc::new(Cell::new(None)),
                 under: Rc::clone(&under),
                 over: Rc::clone(&over),
+                under_screen: Rc::clone(&under_screen),
                 occluder: RefCell::new(None),
+                setup_failed: Rc::clone(&setup_failed),
             },
         ) else {
             return;
@@ -199,22 +217,45 @@ mod composited {
         window.show();
         win32ui::run();
 
+        assert!(
+            !setup_failed.get(),
+            "the occluder window could not be created; the occlusion check is \
+             meaningless without it"
+        );
+
+        // The composited capture of the under window must show its own content
+        // at several points, not the occluder on top of it.
         let under_image = under.borrow();
         let image = under_image
             .as_ref()
             .expect("the composited capture failed or the watchdog won");
-        let pixel = image.pixel(40, 40).unwrap();
+        for (x, y) in [(20, 20), (40, 40), (60, 60)] {
+            let pixel = image.pixel(x, y).expect("sample is in bounds");
+            assert_eq!(
+                &pixel[..3],
+                &[UNDER.r, UNDER.g, UNDER.b],
+                "the composited capture at ({x}, {y}) shows the occluder instead \
+                 of the window's own content"
+            );
+        }
+
+        // Negative control: on screen the under window *is* occluded, and the
+        // occluder itself renders, so the distinct colours above are real.
+        let screen = under_screen.borrow();
+        let screen_image = screen.as_ref().expect("the screen capture failed");
+        let pixel = screen_image.pixel(40, 40).expect("centre is in bounds");
         assert_eq!(
             &pixel[..3],
-            &[UNDER.r, UNDER.g, UNDER.b],
-            "the capture shows the occluder instead of the window's own content"
+            &[OCCLUDER.r, OCCLUDER.g, OCCLUDER.b],
+            "the screen capture must show the occluder on top of the under window"
         );
-        // The occluder itself renders too, proving the two colours differ on
-        // screen and the assertion above is meaningful.
-        if let Some(over_image) = over.borrow().as_ref() {
-            let occluder_pixel = over_image.pixel(40, 40).unwrap();
-            assert_eq!(&occluder_pixel[..3], &[OCCLUDER.r, OCCLUDER.g, OCCLUDER.b]);
-        }
+
+        let over_image = over.borrow();
+        let over_image = over_image
+            .as_ref()
+            .expect("the occluder's composited capture failed");
+        let pixel = over_image.pixel(40, 40).expect("centre is in bounds");
+        assert_eq!(&pixel[..3], &[OCCLUDER.r, OCCLUDER.g, OCCLUDER.b]);
     }
 
     struct MinimizedHandler {
@@ -270,6 +311,8 @@ mod composited {
             return;
         };
 
+        // `show` is called after the handler minimised the window and must not
+        // restore it (it uses `SW_SHOWMINNOACTIVE` without activating).
         window.show();
         win32ui::run();
 

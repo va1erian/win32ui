@@ -21,8 +21,8 @@ mod tool {
     use win32ui::prelude::*;
     use windows::Win32::Foundation::{HWND, LPARAM};
     use windows::Win32::UI::WindowsAndMessaging::{
-        EnumWindows, GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId,
-        IsWindowVisible,
+        EnumWindows, GW_OWNER, GetWindow, GetWindowTextLengthW, GetWindowTextW,
+        GetWindowThreadProcessId, IsWindowVisible,
     };
     use windows::core::BOOL;
 
@@ -33,10 +33,18 @@ mod tool {
         Pid(u32),
     }
 
-    /// What the callback is searching for, plus the handles it has found.
+    /// One window the enumeration found.
+    struct WindowMatch {
+        hwnd: usize,
+        pid: u32,
+        title: String,
+        owned: bool,
+    }
+
+    /// What the callback is searching for, plus the windows it has found.
     struct Search {
         selector: Selector,
-        matches: Vec<usize>,
+        matches: Vec<WindowMatch>,
     }
 
     struct Options {
@@ -110,6 +118,11 @@ mod tool {
 
     /// Resolves the selector to a live window handle, enumerating visible
     /// top-level windows only for the opt-in `--title`/`--pid` flags.
+    ///
+    /// Cloaked (virtual-desktop) and owned windows are skipped, the title match
+    /// is case-insensitive, and an ambiguous selector is a hard error: the
+    /// candidates are listed and the tool exits non-zero rather than silently
+    /// capturing the first match in Z-order.
     fn resolve(selector: Selector) -> Option<Hwnd> {
         match selector {
             Selector::Hwnd(hwnd) => hwnd.is_alive().then_some(hwnd),
@@ -127,9 +140,64 @@ mod tool {
                     )
                 }
                 .ok()?;
-                search.matches.first().map(|&raw| Hwnd::from_raw(raw))
+                // Prefer unowned top-level windows; fall back to owned ones only
+                // when nothing unowned matched.
+                let unowned: Vec<&WindowMatch> =
+                    search.matches.iter().filter(|m| !m.owned).collect();
+                let matches = if unowned.is_empty() {
+                    search.matches.iter().collect::<Vec<_>>()
+                } else {
+                    unowned
+                };
+                match matches.as_slice() {
+                    [] => None,
+                    [only] => Some(Hwnd::from_raw(only.hwnd)),
+                    many => {
+                        eprintln!(
+                            "capture: {} windows matched; narrow the selector with --hwnd:",
+                            many.len()
+                        );
+                        for window in many {
+                            eprintln!(
+                                "  hwnd 0x{:x}  pid {}  \"{}\"",
+                                window.hwnd, window.pid, window.title
+                            );
+                        }
+                        std::process::exit(1);
+                    }
+                }
             }
         }
+    }
+
+    /// Whether a window is cloaked (on another virtual desktop or suspended);
+    /// such a window has no composited surface.
+    fn is_cloaked(hwnd: HWND) -> bool {
+        use windows::Win32::Graphics::Dwm::{DWMWA_CLOAKED, DwmGetWindowAttribute};
+        let mut cloaked = 0u32;
+        // SAFETY: `hwnd` is live; `cloaked` is a correctly-sized out-value.
+        let read = unsafe {
+            DwmGetWindowAttribute(
+                hwnd,
+                DWMWA_CLOAKED,
+                &mut cloaked as *mut _ as *mut core::ffi::c_void,
+                size_of::<u32>() as u32,
+            )
+        };
+        read.is_ok() && cloaked != 0
+    }
+
+    /// The window's title, or an empty string when it has none.
+    fn window_title(hwnd: HWND) -> String {
+        // SAFETY: `hwnd` is live for the duration of the callback.
+        let len = unsafe { GetWindowTextLengthW(hwnd) };
+        if len <= 0 {
+            return String::new();
+        }
+        let mut buf = vec![0u16; len as usize + 1];
+        // SAFETY: `buf` has room for `len` code units plus the NUL.
+        let written = unsafe { GetWindowTextW(hwnd, &mut buf) };
+        String::from_utf16_lossy(&buf[..written as usize])
     }
 
     unsafe extern "system" fn enum_proc(hwnd: HWND, lparam: LPARAM) -> BOOL {
@@ -139,29 +207,29 @@ mod tool {
         if !unsafe { IsWindowVisible(hwnd) }.as_bool() {
             return BOOL(1);
         }
-        match &search.selector {
-            Selector::Pid(pid) => {
-                let mut window_pid = 0u32;
-                // SAFETY: plain out-pointer to a local.
-                unsafe { GetWindowThreadProcessId(hwnd, Some(&mut window_pid)) };
-                if window_pid == *pid {
-                    search.matches.push(hwnd.0 as usize);
-                }
-            }
-            Selector::Title(needle) => {
-                // SAFETY: `hwnd` is live for the duration of the callback.
-                let len = unsafe { GetWindowTextLengthW(hwnd) };
-                if len > 0 {
-                    let mut buf = vec![0u16; len as usize + 1];
-                    // SAFETY: `buf` has room for `len` code units plus the NUL.
-                    let written = unsafe { GetWindowTextW(hwnd, &mut buf) };
-                    let text = String::from_utf16_lossy(&buf[..written as usize]);
-                    if text.contains(needle.as_str()) {
-                        search.matches.push(hwnd.0 as usize);
-                    }
-                }
-            }
-            Selector::Hwnd(_) => {}
+        if is_cloaked(hwnd) {
+            return BOOL(1);
+        }
+        let mut pid = 0u32;
+        // SAFETY: plain out-pointer to a local.
+        unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)) };
+        // SAFETY: `hwnd` is live; a null return means "no owner".
+        let owned = unsafe { GetWindow(hwnd, GW_OWNER) }
+            .map(|owner| !owner.0.is_null())
+            .unwrap_or(false);
+        let title = window_title(hwnd);
+        let matched = match &search.selector {
+            Selector::Pid(want) => pid == *want,
+            Selector::Title(needle) => title.to_lowercase().contains(&needle.to_lowercase()),
+            Selector::Hwnd(_) => false,
+        };
+        if matched {
+            search.matches.push(WindowMatch {
+                hwnd: hwnd.0 as usize,
+                pid,
+                title,
+                owned,
+            });
         }
         BOOL(1)
     }

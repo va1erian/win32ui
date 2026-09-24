@@ -14,7 +14,9 @@
 //!   exact composited surface — frame, caption buttons, backdrop — even when
 //!   the window is occluded or owned by another process, without raising it or
 //!   moving the pointer. Prefer it for screenshots and visual tests when the
-//!   feature is enabled.
+//!   feature is enabled. Its region is the window's *visible* frame (the DWM
+//!   extended frame bounds), which excludes the invisible resize border that
+//!   `capture` includes, so the two images differ in size.
 
 use crate::error::Result;
 use crate::geometry::Size;
@@ -25,6 +27,10 @@ use crate::window::Window;
 
 /// A tightly packed RGBA image, row-major and top-down: `pixels` holds
 /// `width * height * 4` bytes (red, green, blue, alpha per pixel).
+///
+/// The channels are *straight* (not premultiplied) alpha, so the image can be
+/// composited over any background: a translucent pixel's colour is its own, not
+/// already scaled by its alpha. A fully transparent pixel is `[0, 0, 0, 0]`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RgbaImage {
     /// Width in pixels.
@@ -78,8 +84,12 @@ impl Window {
     /// the window never has to be raised, focused or unoccluded, and the
     /// pointer is never moved. Requires the `wgc` feature.
     ///
-    /// The captured region is the whole window rectangle at its current DPI,
-    /// including the frame. Returns
+    /// The captured region is the window's *visible* frame — the DWM extended
+    /// frame bounds — which excludes the invisible resize border and drop
+    /// shadow that [`capture`](Window::capture) and
+    /// [`window_rect`](Window::window_rect) include, so its size is slightly
+    /// smaller. The pixels are straight RGBA (premultiplied alpha is undone).
+    /// Returns
     /// [`CaptureError::Minimized`](crate::CaptureError::Minimized) for a
     /// minimised window (which it does not restore).
     #[cfg(feature = "wgc")]
@@ -111,11 +121,20 @@ impl Window {
 /// Works on a window this process does not own (for example an app a test
 /// harness or an agent launched), without raising it, focusing it or moving
 /// the pointer, and even when it is occluded. The captured region is the
-/// window rectangle at its current DPI, frame included. Requires the `wgc`
+/// window's *visible* frame (the DWM extended frame bounds), which excludes the
+/// invisible resize border and drop shadow that `Window::window_rect` and
+/// `Window::capture` include; the pixels are straight RGBA. Requires the `wgc`
 /// feature.
 ///
+/// The crate does not initialise COM; `Windows.Graphics.Capture` expects an
+/// already-initialised, usually single-threaded (`STA`) apartment on the
+/// calling thread. A caller that has initialised COM with another threading
+/// model may get `RPC_E_CHANGED_MODE`. The capture itself does not need a
+/// message loop and does not touch focus or the pointer.
+///
 /// Returns [`CaptureError::Minimized`](crate::CaptureError::Minimized) for a
-/// minimised window, [`CaptureError::Timeout`](crate::CaptureError::Timeout)
+/// minimised window, [`CaptureError::EmptyWindow`](crate::CaptureError::EmptyWindow)
+/// when the window has no content, [`CaptureError::Timeout`](crate::CaptureError::Timeout)
 /// if no frame arrives within about a second, and
 /// [`CaptureError::Unavailable`](crate::CaptureError::Unavailable) when
 /// Windows.Graphics.Capture is not available on the system.

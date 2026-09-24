@@ -19,6 +19,21 @@ jobs:
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
 
+  # The occlusion-proof capture backend is behind the off-by-default `wgc`
+  # feature, so it needs its own build and test pass. Tests that require a real
+  # capture device skip on `Unavailable`/`DeviceLost`.
+  check-wgc:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --all-targets --features wgc
+      - run: cargo clippy --all-targets --features wgc -- -D warnings
+      - run: cargo test --features wgc
+
   # The crate is Win32-only and compiles to an empty crate elsewhere; this
   # keeps it buildable from a cross-platform workspace on Linux.
   cross-check:

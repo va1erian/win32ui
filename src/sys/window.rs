@@ -15,7 +15,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     CS_DBLCLKS, CWP_SKIPDISABLED, CWP_SKIPINVISIBLE, ChildWindowFromPointEx, CreateWindowExW,
     DestroyWindow, GWL_STYLE, GetClientRect, GetWindowLongPtrW, GetWindowRect, HCURSOR, HMENU,
     HWND_BOTTOM, IDC_ARROW, KillTimer, LoadCursorW, MoveWindow, RegisterClassExW, SW_HIDE, SW_SHOW,
-    SW_SHOWMAXIMIZED, SW_SHOWMINIMIZED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetTimer,
+    SW_SHOWMAXIMIZED, SW_SHOWMINNOACTIVE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetTimer,
     SetWindowLongPtrW, SetWindowPos, SetWindowTextW, ShowWindow, UnregisterClassW, WINDOW_EX_STYLE,
     WINDOW_STYLE, WNDCLASSEXW, WS_TABSTOP,
 };
@@ -454,10 +454,13 @@ pub(crate) fn validate_rect(hwnd: Hwnd, rect: Rect) {
 }
 
 /// Shows, hides or minimizes a window.
+///
+/// Minimising uses `SW_SHOWMINNOACTIVE`: a programmatic minimise must not
+/// activate the window or move focus to it.
 pub(crate) fn show(hwnd: Hwnd, kind: ShowKind) {
     let cmd = match kind {
         ShowKind::Normal => SW_SHOW,
-        ShowKind::Minimized => SW_SHOWMINIMIZED,
+        ShowKind::Minimized => SW_SHOWMINNOACTIVE,
         ShowKind::Maximized => SW_SHOWMAXIMIZED,
         ShowKind::Hidden => SW_HIDE,
     };
