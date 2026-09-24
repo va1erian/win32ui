@@ -28,11 +28,25 @@ use super::proxy::Proxy;
 /// messages from its own event handlers.
 pub struct Ui<M> {
     core: Rc<Core<M>>,
+    /// A container this handle was scoped to, so widgets it creates parent to
+    /// the container instead of the top-level window. `None` for the window
+    /// itself.
+    parent: Option<Hwnd>,
 }
 
 impl<M: 'static> Ui<M> {
     pub(crate) fn new(core: Rc<Core<M>>) -> Ui<M> {
-        Ui { core }
+        Ui { core, parent: None }
+    }
+
+    /// A handle scoped to the container `parent`: widgets created through it
+    /// become children of `parent`, while messages, theme and layout still
+    /// belong to the top-level window.
+    pub(crate) fn with_parent(&self, parent: Hwnd) -> Ui<M> {
+        Ui {
+            core: Rc::clone(&self.core),
+            parent: Some(parent),
+        }
     }
 
     /// A weak handle to the shared per-window core, for widgets that must not
@@ -41,9 +55,11 @@ impl<M: 'static> Ui<M> {
         Rc::downgrade(&self.core)
     }
 
-    /// The top-level window's handle.
+    /// The handle widgets created through this `Ui` parent to: the top-level
+    /// window, or the container this handle was scoped to with
+    /// [`Ui::with_parent`].
     pub fn hwnd(&self) -> Hwnd {
-        self.core.hwnd()
+        self.parent.unwrap_or_else(|| self.core.hwnd())
     }
 
     /// The window's dots-per-inch.
@@ -427,6 +443,7 @@ impl<M> Clone for Ui<M> {
     fn clone(&self) -> Ui<M> {
         Ui {
             core: Rc::clone(&self.core),
+            parent: self.parent,
         }
     }
 }

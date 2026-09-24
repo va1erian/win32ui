@@ -345,7 +345,7 @@ fn tabs_honour_the_initial_selection() {
     let tabs = Tabs::new()
         .page("One", widget(first, Sizing::Fill(1)))
         .page("Two", widget(second, Sizing::Fill(1)))
-        .selected(1);
+        .initial(1);
     let placed = Layout::row()
         .item(tabs)
         .compute(Rect::new(0, 0, 200, 100), 96);

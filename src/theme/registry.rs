@@ -82,7 +82,12 @@ pub(crate) fn window_background(_window: Hwnd, theme: Theme) -> Color {
 
 /// Registers `child` (created under `window`) with its re-theme callback.
 /// Re-registering the same child replaces its callback.
+///
+/// The callback is keyed on the top-level window even when `child` lives in a
+/// nested container (a [`Panel`](crate::Panel)), so a live theme switch on the
+/// window reaches every widget however deep it is.
 pub(crate) fn register_child(window: Hwnd, child: Hwnd, apply: ApplyTheme) {
+    let window = crate::sys::window::root(window);
     WINDOWS.with(|map| {
         let mut map = map.borrow_mut();
         let entry = map.entry(window.raw()).or_default();
