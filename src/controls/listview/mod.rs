@@ -75,12 +75,12 @@ mod draw;
 pub(crate) mod events;
 mod header;
 mod model;
-mod style;
+mod row_style;
 mod theme;
 
 pub use self::events::ListViewEvent;
 pub use self::model::{Column, ColumnWidth, Fill, ListModel, SortDirection};
-pub use self::style::{RowState, RowStyle};
+pub use self::row_style::{RowState, RowStyle};
 pub use self::theme::ListViewTheme;
 
 const LVS_REPORT: u32 = 0x0000_0001;

@@ -5,7 +5,7 @@
 
 use crate::controls::listview::ListView;
 use crate::controls::listview::model::{Column, ColumnWidth};
-use crate::controls::listview::style::{RowState, RowStyle};
+use crate::controls::listview::row_style::{RowState, RowStyle};
 use crate::gdi::Canvas;
 use crate::geometry::Rect;
 use crate::message::{Key, Modifiers};
