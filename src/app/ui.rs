@@ -166,7 +166,7 @@ impl<M: 'static> Ui<M> {
     /// theme changed. Off by default.
     pub fn follow_system_theme(&self, follow: bool) {
         let hwnd = self.core.hwnd();
-        let apply: Option<Rc<dyn Fn(&Theme)>> = follow.then(|| {
+        let apply: Option<crate::theme::ApplyTheme> = follow.then(|| {
             let ui = self.clone();
             Rc::new(move |theme: &Theme| ui.set_theme(*theme)) as _
         });

@@ -16,9 +16,10 @@ pub use tokens::Theme;
 
 pub(crate) use ctlcolor::{answer as ctlcolor_answer, is_ctlcolor};
 pub(crate) use registry::{
-    backdrop_active, forget_window as forget_window_theme, register_child as register_themed,
-    retheme_children, set_backdrop_active, set_follow_system as set_window_follow_system,
-    set_window_theme, unregister_child as unregister_themed, window_background, window_theme,
+    ApplyTheme, backdrop_active, forget_window as forget_window_theme,
+    register_child as register_themed, retheme_children, set_backdrop_active,
+    set_follow_system as set_window_follow_system, set_window_theme,
+    unregister_child as unregister_themed, window_background, window_theme,
 };
 
 /// Re-reads [`Theme::system`] and applies it to `window`, if it opted in with
