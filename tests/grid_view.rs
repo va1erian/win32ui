@@ -36,9 +36,11 @@ fn selection_round_trips_and_clears_out_of_range() {
     let checks_for_make = Rc::clone(&checks);
 
     let Some(run) = run_app_with_watchdog("win32ui.grid_view.selection", move |ui| {
-        let grid = GridView::<Tile, Msg>::new(ui)
-            .expect("grid")
-            .content(|_tile: &Tile, _canvas, _rect, _state| {});
+        let grid = GridView::<Tile, Msg>::new(ui).expect("grid").content(
+            |tile: &Tile, _canvas, _rect, _state| {
+                let _ = tile.0;
+            },
+        );
         grid.set_model(vec![Tile(0), Tile(1), Tile(2)]);
 
         grid.set_selected(Some(1));

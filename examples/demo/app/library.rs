@@ -220,8 +220,9 @@ impl Library {
                 self.list.set_playing(Some(item));
                 let title = self
                     .order
+                    .as_slice()
                     .get(item)
-                    .and_then(|&row| self.tracks.get(row))
+                    .and_then(|&row| self.tracks.as_slice().get(row))
                     .map(|track| track.title.clone())
                     .unwrap_or_default();
                 status.set_text(0, &format!("Playing: {title}"));

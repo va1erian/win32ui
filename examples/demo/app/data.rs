@@ -36,7 +36,10 @@ impl ListModel for TrackModel {
     }
 
     fn get(&self, index: usize) -> Option<&Track> {
-        self.order.get(index).and_then(|&row| self.tracks.get(row))
+        self.order
+            .as_slice()
+            .get(index)
+            .and_then(|&row| self.tracks.as_slice().get(row))
     }
 }
 
