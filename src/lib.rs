@@ -93,6 +93,7 @@ pub use controls::control::{AsControl, Control, ControlExt, HasText};
 pub use controls::custom::{Custom, CustomWidget, Input, KeyResult, Renderer, WidgetCx};
 pub use controls::edit::Edit;
 pub use controls::flow_text::{FlowText, Run, RunStyle};
+pub use controls::grid_view::{GridModel, GridView, GridViewTheme, TileSizeSpec, TileState};
 pub use controls::groupbox::GroupBox;
 pub use controls::label::Label;
 pub use controls::listview::{
