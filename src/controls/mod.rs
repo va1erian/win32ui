@@ -118,7 +118,6 @@ pub(crate) mod style {
     pub(crate) const WS_CHILD: u32 = 0x4000_0000;
     pub(crate) const WS_VISIBLE: u32 = 0x1000_0000;
     pub(crate) const WS_BORDER: u32 = 0x0080_0000;
-    pub(crate) const WS_CLIPSIBLINGS: u32 = 0x0400_0000;
     pub(crate) const WS_TABSTOP: u32 = 0x0001_0000;
     pub(crate) const WS_VSCROLL: u32 = 0x0020_0000;
     pub(crate) const WS_EX_CLIENTEDGE: u32 = 0x0000_0200;
