@@ -29,6 +29,7 @@ pub(crate) mod scroll;
 pub(crate) mod tabs;
 pub(crate) mod taskdialog;
 pub(crate) mod theme;
+pub(crate) mod theme_system;
 pub(crate) mod tooltip;
 pub(crate) mod window;
 pub(crate) mod window_ext;

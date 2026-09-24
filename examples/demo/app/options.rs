@@ -91,16 +91,23 @@ impl Options {
                 },
             ),
             Msg::SetTheme(choice) => {
-                // "System" follows the light palette until #23 lands.
-                let next = if *choice == ThemeChoice::Dark {
-                    Theme::dark()
-                } else {
-                    Theme::light()
+                // "System" hands theming over to the OS: `follow_system_theme`
+                // applies `Theme::system()` now and again live, every time
+                // `WM_SETTINGCHANGE`/`WM_SYSCOLORCHANGE`/`WM_THEMECHANGED`
+                // reports a change (toggle Windows dark mode while the demo
+                // runs to see it). The other two choices are a fixed palette,
+                // so following is turned back off.
+                ui.follow_system_theme(*choice == ThemeChoice::System);
+                let next = match choice {
+                    ThemeChoice::Light => Theme::light(),
+                    ThemeChoice::Dark => Theme::dark(),
+                    ThemeChoice::System => Theme::system(),
                 };
                 ui.set_theme(next);
                 status.set_text(0, &format!("Theme: {choice:?}"));
             }
             Msg::ToggleTheme => {
+                ui.follow_system_theme(false);
                 let next = if ui.theme().is_dark {
                     Theme::light()
                 } else {

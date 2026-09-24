@@ -228,6 +228,12 @@ pub enum Message {
         /// The section name, or `None` for a settings-area-only change.
         section: Option<String>,
     },
+    /// `WM_SYSCOLORCHANGE`: a system colour changed (classic/high-contrast
+    /// theme). See [`crate::is_theme_change`].
+    SysColorChange,
+    /// `WM_THEMECHANGED`: the visual style changed. See
+    /// [`crate::is_theme_change`].
+    ThemeChanged,
     /// `WM_QUERYENDSESSION`: Windows is asking whether it may end the session.
     QueryEndSession,
     /// `WM_ENDSESSION`: the session is ending.

@@ -27,6 +27,9 @@ struct WindowEntry {
     /// area, so the class background must stay transparent black.
     backdrop_active: bool,
     children: Vec<(usize, ApplyTheme)>,
+    /// Set by `Window::follow_system_theme`/`Ui::follow_system_theme`: applies
+    /// a freshly read [`Theme::system`] when a theme-change message arrives.
+    follow_system: Option<ApplyTheme>,
 }
 
 thread_local! {
@@ -156,6 +159,32 @@ pub(crate) fn retheme_children(window: Hwnd, theme: &Theme) {
     for apply in callbacks {
         apply(theme);
     }
+}
+
+/// Sets (or clears, with `None`) the callback that applies a freshly read
+/// [`Theme::system`](super::Theme::system) when `window` gets a theme-change
+/// message.
+pub(crate) fn set_follow_system(window: Hwnd, apply: Option<ApplyTheme>) {
+    WINDOWS.with(|map| {
+        let mut map = map.borrow_mut();
+        match apply {
+            Some(apply) => map.entry(window.raw()).or_default().follow_system = Some(apply),
+            None => {
+                if let Some(entry) = map.get_mut(&window.raw()) {
+                    entry.follow_system = None;
+                }
+            }
+        }
+    });
+}
+
+/// The callback registered by [`set_follow_system`] for `window`, if any.
+pub(crate) fn follow_system_apply(window: Hwnd) -> Option<ApplyTheme> {
+    WINDOWS.with(|map| {
+        map.borrow()
+            .get(&window.raw())
+            .and_then(|entry| entry.follow_system.clone())
+    })
 }
 
 /// Drops a destroyed window's theme and children.

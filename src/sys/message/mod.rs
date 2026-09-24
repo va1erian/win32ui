@@ -17,7 +17,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 use windows::Win32::UI::WindowsAndMessaging::{
     MINMAXINFO, RegisterWindowMessageW, WM_CHAR, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_DESTROY,
     WM_DPICHANGED, WM_GETMINMAXINFO, WM_NOTIFY, WM_PAINT, WM_SETTINGCHANGE, WM_SIZE, WM_SYSCHAR,
-    WM_TIMER,
+    WM_SYSCOLORCHANGE, WM_THEMECHANGED, WM_TIMER,
 };
 use windows::core::{PCWSTR, w};
 
@@ -95,6 +95,12 @@ pub(crate) fn decode(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> Op
         return Some(Message::SettingChange {
             section: read_wide_string(lparam),
         });
+    }
+    if msg == WM_SYSCOLORCHANGE {
+        return Some(Message::SysColorChange);
+    }
+    if msg == WM_THEMECHANGED {
+        return Some(Message::ThemeChanged);
     }
     if msg == WM_CHAR || msg == WM_SYSCHAR {
         let mut pending = PENDING_HIGH_SURROGATE.with(|slot| slot.get());

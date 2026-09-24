@@ -52,7 +52,7 @@ fn backdrop_supported(high_contrast: bool, transparency: bool, hresult: i32) -> 
 
 /// Whether high-contrast mode is on, in which case the material and themed
 /// caption are skipped so the app keeps the system's accessible colours.
-fn high_contrast() -> bool {
+pub(crate) fn high_contrast() -> bool {
     let mut info = HIGHCONTRASTW {
         cbSize: size_of::<HIGHCONTRASTW>() as u32,
         ..Default::default()

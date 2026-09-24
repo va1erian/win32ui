@@ -260,6 +260,12 @@ fn deliver(
     // A message may be suppressed (the first half of a `WM_CHAR` surrogate
     // pair), in which case the handler is not called.
     let message = message::decode(hwnd, msg, wparam, lparam)?;
+    // A window that opted into `follow_system_theme` re-reads `Theme::system`
+    // and applies it here, then still delivers the message below so the app
+    // can react too.
+    if crate::theme::is_theme_change(&message) {
+        crate::theme::notify_theme_change(hwnd_from(hwnd));
+    }
     // A `WM_COMMAND` from a child control is first offered to that control's
     // widget-layer mapper (as `WM_NOTIFY` is above), so a combo's
     // `CBN_SELCHANGE` reaches the app as a typed message without the app

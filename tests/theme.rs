@@ -7,7 +7,10 @@
 
 mod common;
 
-use common::{TestRow, run_app_with_watchdog, test_rows};
+use std::cell::Cell;
+use std::rc::Rc;
+
+use common::{TestRow, run_app_with_watchdog, run_with_watchdog, test_rows};
 use win32ui::prelude::*;
 
 /// The per-control derived palettes follow the semantic tokens.
@@ -179,5 +182,106 @@ fn destroyed_child_is_unregistered() {
     assert!(
         !alive.get(),
         "the label's HWND survived the widget being dropped"
+    );
+}
+
+/// `Window::follow_system_theme(true)` re-reads `Theme::system()` and applies
+/// it when a theme-change message arrives, and stops once turned back off.
+#[test]
+fn follow_system_theme_applies_on_a_theme_change_message() {
+    // `WM_SYSCOLORCHANGE` (WinUser.h via the `windows` crate in `sys`, mirrored
+    // here as a literal since the constant itself is private to the crate).
+    const WM_SYSCOLORCHANGE: u32 = 0x0015;
+
+    struct FollowHandler {
+        applied: Rc<Cell<bool>>,
+    }
+
+    impl WindowHandler for FollowHandler {
+        fn message(&self, window: &Window, message: Message) -> Option<LResult> {
+            match message {
+                Message::Create => {
+                    // Start on a theme that differs from `Theme::system()`'s
+                    // `is_dark`, whichever that is on this machine, so a real
+                    // application would be able to see the switch.
+                    let opposite = if Theme::system().is_dark {
+                        Theme::light()
+                    } else {
+                        Theme::dark()
+                    };
+                    window.set_theme(opposite);
+                    window.follow_system_theme(true);
+                    window.post_message(WM_SYSCOLORCHANGE, 0, 0).ok();
+                    Some(0)
+                }
+                Message::SysColorChange => {
+                    self.applied.set(window.theme() == Theme::system());
+                    win32ui::quit(0);
+                    Some(0)
+                }
+                _ => None,
+            }
+        }
+    }
+
+    let applied = Rc::new(Cell::new(false));
+    let Some(run) = run_with_watchdog("win32ui.theme.follow_system", || FollowHandler {
+        applied: applied.clone(),
+    }) else {
+        return;
+    };
+
+    assert!(!run.timed_out, "the watchdog fired before the app quit");
+    assert!(
+        applied.get(),
+        "follow_system_theme did not apply Theme::system() on WM_SYSCOLORCHANGE"
+    );
+}
+
+/// Turning `follow_system_theme` back off stops further theme-change messages
+/// from touching the window's theme.
+#[test]
+fn follow_system_theme_off_leaves_the_theme_alone() {
+    const WM_SYSCOLORCHANGE: u32 = 0x0015;
+    // An arbitrary `WM_APP` id used only as a "check now" marker, posted after
+    // the (ignored) theme-change message so it is handled second.
+    const WM_CHECK: u32 = 0x8000;
+
+    struct StopHandler {
+        stayed: Rc<Cell<bool>>,
+    }
+
+    impl WindowHandler for StopHandler {
+        fn message(&self, window: &Window, message: Message) -> Option<LResult> {
+            match message {
+                Message::Create => {
+                    window.set_theme(Theme::dark());
+                    window.follow_system_theme(true);
+                    window.follow_system_theme(false);
+                    window.post_message(WM_SYSCOLORCHANGE, 0, 0).ok();
+                    window.post_message(WM_CHECK, 0, 0).ok();
+                    Some(0)
+                }
+                Message::Other { code, .. } if code == WM_CHECK => {
+                    self.stayed.set(window.theme() == Theme::dark());
+                    win32ui::quit(0);
+                    Some(0)
+                }
+                _ => None,
+            }
+        }
+    }
+
+    let stayed = Rc::new(Cell::new(false));
+    let Some(run) = run_with_watchdog("win32ui.theme.follow_system_off", || StopHandler {
+        stayed: stayed.clone(),
+    }) else {
+        return;
+    };
+
+    assert!(!run.timed_out, "the watchdog fired before the app quit");
+    assert!(
+        stayed.get(),
+        "a theme change was applied after follow_system_theme(false)"
     );
 }
