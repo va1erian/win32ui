@@ -18,6 +18,7 @@ mod dialogs;
 mod document;
 mod flow_text;
 mod form;
+mod gl_cube;
 mod grid;
 mod library;
 mod mail;
@@ -40,6 +41,7 @@ use win32ui::prelude::*;
 use self::document::DocumentWidget;
 use self::flow_text::Flow;
 use self::form::{Form, FormMsg};
+use self::gl_cube::Cube;
 use self::grid::Grid;
 use self::library::{Library, SortKey};
 use self::mail::MailTab;
@@ -206,6 +208,9 @@ struct App {
     flow: Flow,
     grid: Grid,
     form: Form,
+    /// The OpenGL cube tab (kept alive; it animates itself).
+    #[allow(dead_code)]
+    cube: Cube,
     prefs: Option<WindowHandle<PrefsMsg>>,
     /// The material transport bar, when `WIN32UI_DEMO_TOP_BAR` is set.
     top_bar: Option<topbar::TopBar>,

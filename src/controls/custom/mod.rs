@@ -10,11 +10,11 @@
 //! to the app's `Msg` through the same per-window queue as every other widget,
 //! so [`App::update`](crate::App::update) is never re-entered.
 
-mod d2d;
+mod renderer;
 mod scroll;
 mod widget;
 
-pub(crate) use d2d::RendererState;
+pub(crate) use renderer::RendererState;
 pub(crate) use scroll::{CustomScroll, WHEEL_NOTCH_DIP, is_scroll_key};
 pub use widget::{Input, KeyResult, Renderer, WidgetCx};
 
@@ -62,6 +62,18 @@ pub trait CustomWidget: 'static {
     /// hosted with [`Custom::with_vscroll`], the canvas is already translated
     /// by the scroll offset, so draw the document in its own coordinates.
     fn paint_d2d(&self, _canvas: &mut D2dCanvas<'_>, _bounds: RectF, _theme: &Theme) {}
+
+    /// Paints the widget with OpenGL. `gl` is the window's
+    /// [`glow::Context`], made current with the viewport
+    /// set to `bounds` (device pixels) and the framebuffer cleared to the theme
+    /// background; issue GL calls through it and the framework presents the
+    /// frame with `SwapBuffers` when this returns. Do not present the frame
+    /// yourself.
+    ///
+    /// The default draws nothing. When the context cannot be created the
+    /// widget falls back to painting the theme background with GDI, so a widget
+    /// must not rely on its GL state persisting across a fallback.
+    fn paint_gl(&self, _gl: &glow::Context, _bounds: Rect, _theme: &Theme) {}
 
     /// Whether the widget handles the arrow keys itself. When `true`, the
     /// dialog-style navigation of the window leaves the arrows to

@@ -28,6 +28,9 @@ wgc = [
 thiserror = "2"
 
 [target.'cfg(windows)'.dependencies]
+# The safe OpenGL binding a `Renderer::Gl` widget draws with. Re-exported as
+# `win32ui::glow` so an implementor names the same version this crate links.
+glow = "0.16"
 # Deliberately narrow: one feature group per Win32 namespace actually used, so
 # the generated bindings (and the resulting binary) stay as small as possible.
 # `Vector2`/`Matrix3x2`, the point and transform types Direct2D takes, live here
@@ -41,6 +44,7 @@ windows = { version = "0.62", default-features = false, features = [
     "Win32_Graphics_Dwm",
     "Win32_Graphics_Dxgi_Common",
     "Win32_Graphics_Gdi",
+    "Win32_Graphics_OpenGL",
     "Win32_Storage_Xps",
     "Win32_System_DataExchange",
     "Win32_System_LibraryLoader",

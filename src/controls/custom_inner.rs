@@ -81,11 +81,28 @@ impl<W: CustomWidget, M: 'static> CustomHandler<W, M> {
         let widget = self.shared.widget.borrow();
         let bounds = self.bounds.get();
 
-        if widget.renderer() != Renderer::Direct2D {
-            if let Some(paint) = Paint::begin(hwnd) {
-                widget.paint(paint.canvas(), bounds, &theme);
+        match widget.renderer() {
+            Renderer::Gdi => {
+                if let Some(paint) = Paint::begin(hwnd) {
+                    widget.paint(paint.canvas(), bounds, &theme);
+                }
+                return;
             }
-            return;
+            Renderer::Gl => {
+                let painted = self
+                    .renderer
+                    .borrow_mut()
+                    .paint_gl(hwnd, theme.background, |gl| {
+                        widget.paint_gl(gl, bounds, &theme);
+                    });
+                // OpenGL could not draw this frame: fall back to the theme
+                // background, exactly as the Direct2D path does.
+                if !painted && let Some(paint) = Paint::begin(hwnd) {
+                    paint.canvas().fill_rect(bounds, theme.background);
+                }
+                return;
+            }
+            Renderer::Direct2D => {}
         }
 
         let scroll = self.shared.scroll.borrow();
