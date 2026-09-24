@@ -7,14 +7,14 @@
 
 use core::ffi::c_void;
 
-use windows::Win32::Foundation::{BOOL, ERROR_SUCCESS};
+use windows::Win32::Foundation::ERROR_SUCCESS;
 use windows::Win32::Graphics::Dwm::DwmGetColorizationColor;
-use windows::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW};
-use windows::Win32::UI::WindowsAndMessaging::{
+use windows::Win32::Graphics::Gdi::{
     COLOR_BTNFACE, COLOR_GRAYTEXT, COLOR_HIGHLIGHT, COLOR_HIGHLIGHTTEXT, COLOR_HOTLIGHT,
     COLOR_WINDOW, COLOR_WINDOWFRAME, COLOR_WINDOWTEXT, GetSysColor, SYS_COLOR_INDEX,
 };
-use windows::core::w;
+use windows::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW};
+use windows::core::{BOOL, w};
 
 use crate::color::Color;
 
