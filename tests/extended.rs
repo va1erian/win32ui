@@ -82,3 +82,73 @@ fn caption_interactive_widget_builds() {
 
     assert!(!run.timed_out, "the watchdog fired before the app quit");
 }
+
+/// Resizing an extended window moves its client edge by exactly the same
+/// amount, straight away. `WM_NCCALCSIZE` once computed the client from the
+/// *previous* window rectangle, so the layout ran one resize behind: short of
+/// the edge after growing, past it after shrinking.
+#[test]
+fn extended_client_follows_every_resize() {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOZORDER, SetWindowPos,
+    };
+
+    struct App {
+        deltas: Rc<Cell<Option<(i32, i32)>>>,
+    }
+
+    fn resize(ui: &Ui<()>, width: i32, height: i32) {
+        let raw = HWND(ui.hwnd().raw() as *mut core::ffi::c_void);
+        // SAFETY: `raw` is this test's live window; only integer geometry and
+        // documented flags are passed.
+        unsafe {
+            let _ = SetWindowPos(
+                raw,
+                None,
+                0,
+                0,
+                width,
+                height,
+                SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE,
+            );
+        }
+    }
+
+    impl win32ui::App for App {
+        type Msg = ();
+        fn update(&mut self, _msg: (), ui: &mut Ui<()>) {
+            let outer = ui.window_rect();
+            let start = ui.client_rect().width();
+            resize(ui, outer.width() + 200, outer.height());
+            let grown = ui.client_rect().width();
+            resize(ui, outer.width() - 100, outer.height());
+            let shrunk = ui.client_rect().width();
+            self.deltas.set(Some((grown - start, shrunk - start)));
+            ui.quit();
+        }
+    }
+
+    let deltas = Rc::new(Cell::new(None));
+    let deltas_for_make = Rc::clone(&deltas);
+    let Some(run) = run_app_spec_with_watchdog(
+        WindowSpec::new("extended.resize")
+            .size(Dip(600.0), Dip(400.0))
+            .title_bar(TitleBar::Extended),
+        move |ui| {
+            ui.emit(());
+            App {
+                deltas: deltas_for_make,
+            }
+        },
+    ) else {
+        return;
+    };
+
+    assert!(!run.timed_out, "the watchdog fired before the app quit");
+    assert_eq!(
+        deltas.get(),
+        Some((200, -100)),
+        "the client width must follow each resize exactly"
+    );
+}

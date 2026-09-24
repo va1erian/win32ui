@@ -1,12 +1,13 @@
 //! The subclass on the tab control: themed background, hover and `Ctrl+Tab`.
 
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
+use windows::Win32::Graphics::Gdi::{RDW_ALLCHILDREN, RDW_INVALIDATE, RDW_UPDATENOW, RedrawWindow};
 use windows::Win32::UI::Controls::WM_MOUSELEAVE;
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_CONTROL, VK_SHIFT};
 use windows::Win32::UI::Shell::DefSubclassProc;
 use windows::Win32::UI::WindowsAndMessaging::{
-    DLGC_WANTARROWS, DLGC_WANTTAB, WM_ERASEBKGND, WM_GETDLGCODE, WM_KEYDOWN, WM_LBUTTONDOWN,
-    WM_MOUSEMOVE, WM_PAINT, WM_SIZE,
+    DLGC_WANTARROWS, DLGC_WANTTAB, WM_ERASEBKGND, WM_GETDLGCODE, WM_HSCROLL, WM_KEYDOWN,
+    WM_LBUTTONDOWN, WM_MOUSEMOVE, WM_PAINT, WM_SIZE,
 };
 
 use crate::geometry::Rect;
@@ -130,6 +131,32 @@ unsafe extern "system" fn tab_proc(
     if msg == WM_GETDLGCODE {
         return LRESULT((DLGC_WANTARROWS | DLGC_WANTTAB) as isize);
     }
+    // A resize or strip scroll reflows every tab (and shows or hides the
+    // scroll arrows), but the control only invalidates what it thinks moved,
+    // so the chrome pass would be blitted over stale tabs until the next
+    // interaction. Repaint the whole strip now: during a live resize the
+    // window manager presents frames before a deferred `WM_PAINT` would run.
+    if msg == WM_SIZE || msg == WM_HSCROLL {
+        // SAFETY: forward to the subclass chain's original window procedure,
+        // then repaint this control (and its scroll arrows) synchronously; the
+        // strip's paint does not touch the parent's layout, so this cannot
+        // re-enter the resize that sent the message.
+        unsafe {
+            let result = DefSubclassProc(hwnd, msg, wparam, lparam);
+            if msg == WM_SIZE {
+                // `refdata` is the live `TabRefdata`; the widget restyles a
+                // scroller the control may just have created.
+                let _ = forward(refdata, TabEvent::Resized);
+            }
+            let _ = RedrawWindow(
+                Some(hwnd),
+                None,
+                None,
+                RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_UPDATENOW,
+            );
+            return result;
+        }
+    }
     let bounds = crate::sys::window::client_rect(crate::sys::hwnd_from(hwnd));
     if msg == WM_PAINT {
         // The control draws the tabs (through `WM_DRAWITEM`) and its frame into
@@ -147,13 +174,6 @@ unsafe extern "system" fn tab_proc(
     // blank the strip before the finished frame is blitted.
     if msg == WM_ERASEBKGND && !super::buffered::printing() {
         return LRESULT(1);
-    }
-    if msg == WM_SIZE {
-        // SAFETY: forward to the subclass chain's original window procedure.
-        let result = unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) };
-        // SAFETY: `refdata` is the live `TabRefdata`.
-        let _ = unsafe { forward(refdata, TabEvent::Resized) };
-        return result;
     }
     let event = match msg {
         WM_ERASEBKGND => TabEvent::Erase {

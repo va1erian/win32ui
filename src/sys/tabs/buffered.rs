@@ -9,7 +9,7 @@
 use std::cell::Cell;
 
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
-use windows::Win32::Graphics::Gdi::{HDC, PAINTSTRUCT};
+use windows::Win32::Graphics::Gdi::{HDC, PAINTSTRUCT, RestoreDC, SaveDC};
 use windows::Win32::UI::Shell::DefSubclassProc;
 use windows::Win32::UI::WindowsAndMessaging::{PRF_CLIENT, WM_ERASEBKGND, WM_PRINTCLIENT};
 
@@ -48,6 +48,13 @@ pub(super) unsafe fn paint(hwnd: HWND, bounds: Rect, chrome: impl FnOnce(isize))
     // Without a buffer the control still paints, straight to the screen.
     let target: HDC = buffer.unwrap_or(screen);
     PRINTING.with(|flag| flag.set(true));
+    // The native pass can leave the DC changed: while it believes its scroll
+    // arrows are shown (a belief that goes stale across quick resizes) it
+    // excludes their rectangle from the clip region, and the chrome pass could
+    // then never paint there, leaving blank tabs that no repaint fixes. Save
+    // the DC state so the chrome pass starts from a clean one.
+    // SAFETY: `target` is a live DC for the duration of the call.
+    let saved = unsafe { SaveDC(target) };
     // The control does not erase for `WM_PRINTCLIENT` itself, and the buffer
     // holds whatever it last drew, so erase it through the subclass first.
     crate::sys::control::send(window, WM_ERASEBKGND, target.0 as usize, 0);
@@ -63,6 +70,12 @@ pub(super) unsafe fn paint(hwnd: HWND, bounds: Rect, chrome: impl FnOnce(isize))
         );
     }
     PRINTING.with(|flag| flag.set(false));
+    if saved != 0 {
+        // SAFETY: `saved` is the state `SaveDC` pushed on this same DC.
+        unsafe {
+            let _ = RestoreDC(target, saved);
+        }
+    }
     chrome(target.0 as isize);
     if buffer.is_some() {
         let dirty = Rect::new(

@@ -172,7 +172,7 @@ impl<M: 'static> Ui<M> {
         let theme = spec.theme_or(self.theme());
         let built = build::<B, _>(spec, theme, Some(owner), true, make)?;
         let hwnd = built.window.hwnd();
-        built.window.show();
+        built.window.show_painted();
         // Keep the class registration alive for as long as the OS window lives.
         built.core.set_window(built.window);
         let proxy = Proxy::new(&built.core);

@@ -22,6 +22,7 @@ pub(crate) mod dispatch;
 pub(crate) mod dpi;
 pub(crate) mod dwm;
 pub(crate) mod edit;
+pub(crate) mod first_show;
 pub(crate) mod gdi;
 pub(crate) mod gl;
 pub(crate) mod glass_child;

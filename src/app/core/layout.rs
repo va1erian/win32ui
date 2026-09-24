@@ -97,5 +97,9 @@ impl<M> Core<M> {
             placed.handle.set_bounds(placed.rect);
         }
         sys::layout::apply(&moves);
+        // Paging (tabs) and hide/show change which children exist in the client
+        // area, and a moved child's previous area belongs to the parent; mark
+        // the whole tree for repaint so nothing waits for an interaction.
+        sys::window::redraw_children(hwnd);
     }
 }

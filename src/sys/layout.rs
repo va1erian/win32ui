@@ -3,10 +3,14 @@
 //! `MoveWindow` sends `WM_WINDOWPOSCHANGED`/`WM_SIZE` (and repaints) per call,
 //! which flickers when a resize repositions several controls. Wrapping the
 //! moves in `BeginDeferWindowPos`/`EndDeferWindowPos` lets the window manager
-//! apply them together.
+//! apply them together. `SWP_NOCOPYBITS` stops the window manager from blitting
+//! a child's old pixels into its new rectangle: a resized control (or a tab page
+//! shown at its previous bounds) would otherwise keep stale content until it
+//! was next interacted with.
 
 use windows::Win32::UI::WindowsAndMessaging::{
-    BeginDeferWindowPos, DeferWindowPos, EndDeferWindowPos, SWP_NOACTIVATE, SWP_NOZORDER,
+    BeginDeferWindowPos, DeferWindowPos, EndDeferWindowPos, SWP_NOACTIVATE, SWP_NOCOPYBITS,
+    SWP_NOZORDER,
 };
 
 use crate::geometry::Rect;
@@ -31,8 +35,8 @@ pub(crate) fn apply(moves: &[(Hwnd, Rect)]) {
 
     for &(hwnd, bounds) in moves {
         // SAFETY: `batch` is the live handle returned by `BeginDeferWindowPos`
-        // (or the previous `DeferWindowPos`); only integer geometry and the two
-        // documented flags are passed, and the handle may be stale, which is a
+        // (or the previous `DeferWindowPos`); only integer geometry and documented
+        // flags are passed, and the handle may be stale, which is a
         // reported failure rather than undefined behaviour.
         match unsafe {
             DeferWindowPos(
@@ -43,7 +47,7 @@ pub(crate) fn apply(moves: &[(Hwnd, Rect)]) {
                 bounds.top,
                 bounds.width(),
                 bounds.height(),
-                SWP_NOZORDER | SWP_NOACTIVATE,
+                SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS,
             )
         } {
             Ok(next) => batch = next,
