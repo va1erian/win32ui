@@ -226,6 +226,29 @@ events to the app's `Msg` through closures given at construction, implements
 6. Re-export it from `lib.rs` (and `prelude`), and exercise it in
    `examples/demo/` + `tests/`.
 
+## Fonts
+
+Every control uses one UI font: the system message font
+(`SystemParametersInfoForDpi(SPI_GETNONCLIENTMETRICS).lfMessageFont`, Segoe UI
+9 pt on stock Windows), scaled to the window's DPI. `gdi::Font::system_ui`
+builds it; the widget layer shares one instance per DPI (`Font::shared_ui`) that
+lives for the thread, so no control can be left holding a deleted `HFONT`.
+
+The policy is enforced in one place rather than per control:
+
+- `create_child` gives every control the shared font at creation.
+- `sys::apply_native_theme` restores a control's font after `SetWindowTheme`,
+  which comctl32 otherwise resets to the stock font.
+- `WM_DPICHANGED` moves every control still on a shared font to the one for the
+  new DPI. Owner-drawn controls draw with the control's current font, so
+  measuring and drawing agree.
+- DirectWrite text resolves the `system-ui` family to the same face (the
+  default of `FlowText` and the strip menu).
+
+To override one control, call `ControlExt::set_font`; a font set that way is
+kept across theming and DPI changes. `tests/fonts.rs` audits one of every
+control (plus the combo list, list header and tooltip) with `WM_GETFONT`.
+
 ## Theming
 
 Controls theme themselves; the app never handles `NM_CUSTOMDRAW`,

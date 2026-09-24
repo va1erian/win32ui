@@ -157,7 +157,6 @@ impl<K: Clone + Eq + Hash + 'static, M: 'static> TreeView<K, M> {
         sys::apply_native_theme(hwnd, sys::NativeControlKind::Scrollable, theme.is_dark);
 
         let font = Font::system_ui(dpi)?;
-        sys::control::set_control_font(hwnd, font.raw());
 
         let inner = Rc::new(RefCell::new(TreeViewInner {
             model: Some(Box::new(model)),

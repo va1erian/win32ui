@@ -231,6 +231,7 @@ impl<A: App> WindowHandler for AppHandler<A> {
                 if !suggested.is_empty() {
                     sys::window::move_window(window.hwnd(), suggested);
                 }
+                sys::control::refresh_ui_fonts(window.hwnd(), dpi);
                 self.core.relayout_with_dpi(dpi);
                 // The caption strip height and the caption buttons move with the
                 // DPI, so both are re-read for the new scale.

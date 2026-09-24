@@ -269,7 +269,7 @@ pub(crate) fn build_tabs<M: 'static>(ui: &Ui<M>, node: &TabsNode) {
         sys::window::destroy(hwnd);
         return;
     };
-    sys::control::set_control_font(hwnd, font.raw());
+    sys::control::apply_ui_font(hwnd, dpi);
     // The tabs themselves are owner-drawn, but `DarkMode_Explorer` darkens the
     // display-area frame the control still paints itself.
     sys::apply_native_theme(hwnd, sys::NativeControlKind::Scrollable, ui.theme().is_dark);

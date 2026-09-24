@@ -145,12 +145,10 @@ impl<T: 'static, M: 'static> ListView<T, M> {
         let font = Font::system_ui(dpi)?;
         // The bold variant for `RowStyle::bold` rows, created once here (never
         // per paint) so the hot custom-draw path allocates no GDI object.
-        let bold_font = Font::new("Segoe UI", 9.75, FontWeight::Bold, dpi)?;
-        sys::control::set_control_font(hwnd, font.raw());
+        let bold_font = Font::system_ui_weight(dpi, FontWeight::Bold)?;
         sys::apply_native_theme(hwnd, sys::NativeControlKind::Scrollable, ui.theme().is_dark);
         let header = sys::listview::lv_header(hwnd);
         if !header.is_null() {
-            sys::control::set_control_font(header, font.raw());
             sys::apply_native_theme(
                 header,
                 sys::NativeControlKind::Scrollable,

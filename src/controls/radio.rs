@@ -53,7 +53,6 @@ impl RadioOption {
             | style::WS_TABSTOP
             | sys::button_draw::owner_drawn(sys::button::radio_style(first));
         let hwnd = create_child("Radio", "BUTTON", parent, style, 0, next_id(), bounds)?;
-        sys::control::set_control_font(hwnd, font.raw());
         let _ = sys::window::set_title(hwnd, label);
         let theme_cell = Rc::new(Cell::new(*theme));
         let theme_for_callback = Rc::clone(&theme_cell);
@@ -165,7 +164,7 @@ impl<T: 'static, M: 'static> RadioGroup<T, M> {
         let dpi = ui.dpi();
         let parent = ui.hwnd();
         let theme = ui.theme();
-        let font = Rc::new(Font::system_ui(dpi)?);
+        let font = Font::shared_ui(dpi)?;
         let widest = collected
             .iter()
             .map(|(label, _)| sys::gdi::measure_text(font.raw(), label).width)
@@ -202,6 +201,7 @@ impl<T: 'static, M: 'static> RadioGroup<T, M> {
             let hwnd = button.control.hwnd();
             let shared_for_mapper = Rc::clone(&shared);
             let option_for_mapper = RadioMapperOption {
+                hwnd,
                 label: Rc::clone(&button.label),
                 theme: Rc::clone(&button.theme),
                 font: Rc::clone(&button.font),
@@ -352,6 +352,7 @@ impl<T: 'static, M: 'static> RadioGroup<T, M> {
 /// The paint handles one `WM_DRAWITEM` mapper needs. `RadioOption` itself is
 /// not `Clone`, so the mapper holds these shared handles instead.
 struct RadioMapperOption {
+    hwnd: Hwnd,
     label: Rc<RefCell<String>>,
     theme: Rc<Cell<Theme>>,
     font: Rc<Font>,
@@ -372,7 +373,7 @@ impl RadioMapperOption {
             dc,
             area,
             &self.label.borrow(),
-            self.font.raw(),
+            sys::control::current_font(self.hwnd).unwrap_or(self.font.raw()),
             checked,
             state,
             &paint,

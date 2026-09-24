@@ -11,6 +11,7 @@ mod pen;
 
 pub use bitmap::Bitmap;
 pub use brush::Brush;
+pub(crate) use font::system_ui_family;
 pub use font::{Font, FontWeight};
 pub use paint::{Canvas, Paint, TextFormat};
 pub use pen::Pen;

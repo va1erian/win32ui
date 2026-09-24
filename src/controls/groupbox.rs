@@ -37,7 +37,7 @@ impl GroupBox {
     pub fn new<M: 'static>(ui: &mut Ui<M>, title: &str) -> Result<GroupBox> {
         let dpi = ui.dpi();
         let parent = ui.hwnd();
-        let font = Rc::new(Font::system_ui(dpi)?);
+        let font = Font::shared_ui(dpi)?;
         let text_width = sys::gdi::measure_text(font.raw(), title).width;
         let width = (text_width + dip(32.0).to_px(dpi).value()).max(dip(96.0).to_px(dpi).value());
         let height = font.pixel_height() + dip(14.0).to_px(dpi).value();
@@ -46,7 +46,6 @@ impl GroupBox {
             | style::WS_VISIBLE
             | sys::button_draw::owner_drawn(sys::button::groupbox_style());
         let hwnd = create_child("GroupBox", "BUTTON", parent, style, 0, next_id(), bounds)?;
-        sys::control::set_control_font(hwnd, font.raw());
         let _ = sys::window::set_title(hwnd, title);
 
         let title_cell = Rc::new(RefCell::new(title.to_string()));
@@ -74,7 +73,7 @@ impl GroupBox {
                 *dc,
                 *area,
                 &mapper_title.borrow(),
-                mapper_font.raw(),
+                sys::control::current_font(hwnd).unwrap_or(mapper_font.raw()),
                 &paint,
             );
             true

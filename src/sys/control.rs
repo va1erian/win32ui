@@ -1,14 +1,18 @@
 //! Common-control initialisation and the raw control-specific messages.
 
-use windows::Win32::Foundation::{LPARAM, WPARAM};
+use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::Graphics::Gdi::HFONT;
 use windows::Win32::UI::Controls::{
     ICC_BAR_CLASSES, ICC_LISTVIEW_CLASSES, ICC_STANDARD_CLASSES, ICC_TREEVIEW_CLASSES,
     INITCOMMONCONTROLSEX, INITCOMMONCONTROLSEX_ICC, InitCommonControlsEx,
 };
-use windows::Win32::UI::WindowsAndMessaging::{SendMessageW, WM_SETFONT};
+use windows::Win32::UI::WindowsAndMessaging::{
+    EnumChildWindows, SendMessageW, WM_GETFONT, WM_SETFONT,
+};
+use windows::core::BOOL;
 
 use crate::error::{Error, Result};
+use crate::gdi::Font;
 use crate::hwnd::Hwnd;
 
 use super::raw_hwnd;
@@ -78,4 +82,61 @@ pub(crate) fn write_wide(destination: *mut u16, capacity: i32, value: &str) {
 /// Gives a control a font (and asks it to repaint).
 pub(crate) fn set_control_font(hwnd: Hwnd, font: HFONT) {
     send(hwnd, WM_SETFONT, font.0 as usize, 1);
+}
+
+/// The font a control currently uses, if it has one (a control on the stock
+/// font answers `WM_GETFONT` with null).
+pub(crate) fn current_font(hwnd: Hwnd) -> Option<HFONT> {
+    let raw = send(hwnd, WM_GETFONT, 0, 0);
+    (raw != 0).then_some(HFONT(raw as *mut _))
+}
+
+/// Gives a control the shared UI font for `dpi`. Every control created through
+/// `create_child` gets this, so no control is left on the stock font.
+pub(crate) fn apply_ui_font(hwnd: Hwnd, dpi: u32) {
+    if let Ok(font) = Font::shared_ui(dpi) {
+        set_control_font(hwnd, font.raw());
+    }
+}
+
+/// Runs `change` (a `SetWindowTheme` call, say) and restores the control's font
+/// afterwards: comctl32 resets it to the stock font when the visual style
+/// changes.
+pub(crate) fn keep_font(hwnd: Hwnd, change: impl FnOnce()) {
+    let font = current_font(hwnd);
+    change();
+    if let Some(font) = font {
+        set_control_font(hwnd, font);
+    }
+}
+
+/// Moves every descendant of `root` that uses the shared UI font to the one for
+/// `dpi`. A font a caller chose with `set_font` is left alone.
+pub(crate) fn refresh_ui_fonts(root: Hwnd, dpi: u32) {
+    let Ok(font) = Font::shared_ui(dpi) else {
+        return;
+    };
+    let mut targets: Vec<HWND> = Vec::new();
+    // SAFETY: `collect` only pushes into `targets`, which outlives the
+    // synchronous enumeration.
+    unsafe {
+        let _ = EnumChildWindows(
+            Some(raw_hwnd(root)),
+            Some(collect),
+            LPARAM(&mut targets as *mut Vec<HWND> as isize),
+        );
+    }
+    for target in targets {
+        let hwnd = super::hwnd_from(target);
+        if current_font(hwnd).is_some_and(Font::is_shared_ui) {
+            set_control_font(hwnd, font.raw());
+        }
+    }
+}
+
+unsafe extern "system" fn collect(hwnd: HWND, out: LPARAM) -> BOOL {
+    // SAFETY: `out` is the `Vec<HWND>` `refresh_ui_fonts` passed; the
+    // enumeration is synchronous on the same thread.
+    unsafe { &mut *(out.0 as *mut Vec<HWND>) }.push(hwnd);
+    BOOL(1)
 }

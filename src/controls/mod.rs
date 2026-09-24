@@ -86,9 +86,11 @@ pub(crate) fn create_child(
     bounds: Rect,
 ) -> Result<Hwnd> {
     sys::control::init_common_controls()?;
-    sys::window::create_control(class, style, ex_style, parent, id, bounds)
+    let hwnd = sys::window::create_control(class, style, ex_style, parent, id, bounds)
         .map(sys::hwnd_from)
-        .map_err(|_| Error::CreateControl(name))
+        .map_err(|_| Error::CreateControl(name))?;
+    sys::control::apply_ui_font(hwnd, sys::dpi::window_dpi(hwnd));
+    Ok(hwnd)
 }
 
 thread_local! {
