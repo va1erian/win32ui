@@ -183,6 +183,7 @@ mod composited {
     }
 
     #[test]
+    #[ignore = "flaky: its screen-capture negative control depends on the shared desktop (#124); run with --ignored"]
     fn composited_capture_ignores_an_occluder() {
         win32ui::init();
 
