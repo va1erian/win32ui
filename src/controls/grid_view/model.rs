@@ -34,7 +34,7 @@ use crate::units::Dip;
 ///     }
 ///
 ///     fn get(&self, index: usize) -> Option<&Album> {
-///         self.albums.get(index)
+///         self.albums.as_slice().get(index)
 ///     }
 /// }
 /// ```

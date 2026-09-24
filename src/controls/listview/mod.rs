@@ -29,7 +29,7 @@
 //!     }
 //!
 //!     fn get(&self, index: usize) -> Option<&Mail> {
-//!         self.mails.get(index)
+//!         self.mails.as_slice().get(index)
 //!     }
 //! }
 //!
