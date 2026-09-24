@@ -79,7 +79,7 @@ pub use message::{
     Command, CommandNotification, HitTest, Key, LResult, Message, MinMaxInfo, Modifiers,
     MouseButton, Notify, TimerId,
 };
-pub use theme::{Theme, Themed};
+pub use theme::{Theme, Themed, is_theme_change};
 pub use units::{Dip, Px, dip};
 pub use window::{
     Backdrop, CursorShape, Icon, Placement, ShowState, TitleBar, Window, WindowClass,

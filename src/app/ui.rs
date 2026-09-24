@@ -160,6 +160,19 @@ impl<M: 'static> Ui<M> {
         sys::window::invalidate(self.core.hwnd());
     }
 
+    /// Opts into (or out of) following the OS theme: while `true`, the window
+    /// calls [`Ui::set_theme`] with a freshly read [`Theme::system`] whenever
+    /// [`is_theme_change`](crate::is_theme_change) reports that the system
+    /// theme changed. Off by default.
+    pub fn follow_system_theme(&self, follow: bool) {
+        let hwnd = self.core.hwnd();
+        let apply: Option<Rc<dyn Fn(&Theme)>> = follow.then(|| {
+            let ui = self.clone();
+            Rc::new(move |theme: &Theme| ui.set_theme(*theme)) as _
+        });
+        crate::theme::set_window_follow_system(hwnd, apply);
+    }
+
     /// Enqueues `msg` for delivery to [`App::update`](super::App::update). This
     /// is how custom widgets hand events back to the application.
     pub fn emit(&self, msg: M) {

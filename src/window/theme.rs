@@ -2,6 +2,8 @@
 
 //! Live theme switching for platform-layer windows.
 
+use std::rc::Rc;
+
 use crate::sys;
 use crate::theme::Theme;
 use crate::window::Window;
@@ -33,5 +35,16 @@ impl Window {
     /// area. See [`WindowSpec::backdrop`](crate::WindowSpec::backdrop).
     pub fn backdrop_active(&self) -> bool {
         crate::theme::backdrop_active(self.hwnd())
+    }
+
+    /// Opts into (or out of) following the OS theme: while `true`, the window
+    /// calls [`Window::set_theme`] with a freshly read
+    /// [`Theme::system`] whenever [`is_theme_change`](crate::is_theme_change)
+    /// reports that the system theme changed. Off by default.
+    pub fn follow_system_theme(&self, follow: bool) {
+        let hwnd = self.hwnd();
+        let apply: Option<Rc<dyn Fn(&Theme)>> = follow
+            .then(|| Rc::new(move |theme: &Theme| Window::from_raw(hwnd).set_theme(*theme)) as _);
+        crate::theme::set_window_follow_system(hwnd, apply);
     }
 }
