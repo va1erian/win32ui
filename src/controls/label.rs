@@ -26,7 +26,9 @@ impl Label {
     pub fn new<M: 'static>(ui: &mut Ui<M>, bounds: Rect, text: &str) -> Result<Label> {
         let style = style::WS_CHILD | style::WS_VISIBLE | SS_LEFT;
         let parent = ui.hwnd();
+        let dpi = ui.dpi();
         let hwnd = create_child("Label", "STATIC", parent, style, 0, next_id(), bounds)?;
+        let _ = sys::control::apply_ui_font(hwnd, dpi);
         sys::apply_native_theme(hwnd, sys::NativeControlKind::Button, ui.theme().is_dark);
         let label = Label {
             control: Control::own(hwnd, bounds),
@@ -36,6 +38,7 @@ impl Label {
             parent,
             hwnd,
             Rc::new(move |applied| {
+                let _ = sys::control::apply_ui_font(hwnd, dpi);
                 sys::apply_native_theme(hwnd, sys::NativeControlKind::Button, applied.is_dark);
                 sys::window::invalidate(hwnd);
             }),

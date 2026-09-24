@@ -83,6 +83,7 @@ impl<M: 'static> CheckBox<M> {
             parent,
             hwnd,
             Rc::new(move |applied| {
+                let _ = sys::control::apply_ui_font(hwnd, dpi);
                 sys::apply_native_theme(hwnd, sys::NativeControlKind::Button, applied.is_dark);
                 sys::window::invalidate(hwnd);
             }),
