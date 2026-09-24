@@ -14,14 +14,13 @@ use win32ui::prelude::*;
 
 struct TestTree;
 
-impl TreeSource for TestTree {
-    fn children(&self, parent: Option<i64>) -> Vec<TreeEntry> {
+impl TreeModel for TestTree {
+    type Key = u32;
+
+    fn children(&self, parent: Option<&u32>) -> Vec<Node<u32>> {
         match parent {
-            None => vec![
-                TreeEntry::branch("Music", 1),
-                TreeEntry::leaf("Playlists", 2),
-            ],
-            Some(1) => vec![TreeEntry::leaf("Rock", 11), TreeEntry::leaf("Jazz", 12)],
+            None => vec![Node::branch(1, "Music"), Node::leaf(2, "Playlists")],
+            Some(&1) => vec![Node::leaf(11, "Rock"), Node::leaf(12, "Jazz")],
             _ => Vec::new(),
         }
     }
@@ -32,7 +31,7 @@ enum SmokeMsg {
 }
 
 struct SmokeApp {
-    tree: Option<TreeView<SmokeMsg>>,
+    tree: Option<TreeView<u32, SmokeMsg>>,
     list: Option<ListView<TestRow, SmokeMsg>>,
     status: Option<StatusBar<SmokeMsg>>,
     toolbar: Option<Toolbar<SmokeMsg>>,
@@ -86,7 +85,7 @@ fn window_with_controls_round_trips() {
 
     let Some(run) = run_app_with_watchdog("win32ui.smoke", move |ui| {
         let toolbar = Toolbar::new(ui, vec![ToolbarItem::new("One")]).ok();
-        let tree = TreeView::new(ui, Rect::new(0, 0, 200, 400), Box::new(TestTree)).ok();
+        let tree = TreeView::new(ui, TestTree).ok();
         let list = ListView::new(ui)
             .map(|list| {
                 list.column("Title", dip(160.0), |row: &TestRow| row.label.as_str())

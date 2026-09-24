@@ -5,12 +5,15 @@
 //! the messages they raise. `App` only holds the resulting [`Library`] and
 //! forwards matching messages to [`Library::update`].
 
+use std::cell::RefCell;
 use std::rc::Rc;
 
 use win32ui::prelude::*;
 use win32ui::{column, row, split_row};
 
-use super::data::{LibraryTree, Track, TrackModel, generate_tracks};
+use super::data::{
+    Folder, FolderModel, Track, TrackModel, find_folder, folder_tree, generate_tracks,
+};
 use super::{Msg, menus, search};
 
 /// The sort keys the demo's combo box holds as typed values.
@@ -35,7 +38,8 @@ impl SortKey {
 
 /// The Library tab's widgets and view state.
 pub(super) struct Library {
-    pub(super) tree: TreeView<Msg>,
+    pub(super) tree: TreeView<u32, Msg>,
+    folders: Rc<RefCell<Vec<Folder>>>,
     pub(super) list: ListView<Track, Msg>,
     pub(super) search: Edit<Msg>,
     search_label: Label,
@@ -51,9 +55,39 @@ pub(super) struct Library {
 impl Library {
     /// Builds the tab's widgets, model and starting selection.
     pub(super) fn build(ui: &mut Ui<Msg>) -> Library {
-        let tree = TreeView::new(ui, Rect::default(), Box::new(LibraryTree))
-            .expect("tree")
-            .on_select(|_| Some(Msg::TreeSelect));
+        // A keyed folder tree: unread counts show as trailing badges, the
+        // inbox gets its own icon, and selecting/expanding maps to `Msg`.
+        let folders = Rc::new(RefCell::new(folder_tree()));
+        let icon_px = dip(16.0).to_px(ui.dpi()).value();
+        let mut images = ImageList::new(icon_px).expect("icons");
+        images.add_rgba(icon_px, icon_px, &solid_icon(icon_px, (240, 190, 80)));
+        images.add_rgba(icon_px, icon_px, &solid_icon(icon_px, (70, 140, 220)));
+        let style_folders = Rc::clone(&folders);
+        let tree = TreeView::new(
+            ui,
+            FolderModel {
+                roots: Rc::clone(&folders),
+            },
+        )
+        .expect("tree")
+        .images(images)
+        .style(move |id| {
+            let (unread, inbox) = find_folder(style_folders.borrow().as_slice(), *id)
+                .map(|folder| (folder.unread, folder.inbox))
+                .unwrap_or((0, false));
+            let style = NodeStyle::new()
+                .bold(unread > 0)
+                .icon(if inbox { 1 } else { 0 });
+            if unread > 0 {
+                style.badge(unread.to_string())
+            } else {
+                style
+            }
+        })
+        .on_select(|id| Some(Msg::TreeSelect(*id)))
+        .on_toggle(|id, expanded| Some(Msg::TreeFold(*id, expanded)));
+        tree.select(&1);
+        tree.expand(&1, true);
 
         let tracks = Rc::new(generate_tracks(20_000));
         let order: Vec<usize> = (0..tracks.len()).collect();
@@ -109,6 +143,7 @@ impl Library {
 
         Library {
             tree,
+            folders,
             list,
             search,
             search_label,
@@ -204,14 +239,32 @@ impl Library {
     /// Handles the Library tab's messages. Returns whether `msg` was one.
     pub(super) fn update(&mut self, msg: &Msg, ui: &mut Ui<Msg>, status: &StatusBar<Msg>) -> bool {
         match msg {
-            Msg::TreeSelect => {
-                let label = self
-                    .tree
-                    .selected()
-                    .map(|id| format!("node {id}"))
-                    .unwrap_or_else(|| "nothing".to_string());
-                status.set_text(0, &format!("Tree selection: {label}"));
+            Msg::Refresh => {
+                // Bump the inbox count and refresh in place: expansion and
+                // selection survive because nodes are matched by key.
+                if let Some(inbox) = self.folders.borrow_mut().first_mut() {
+                    inbox.unread += 1;
+                }
+                self.tree.refresh();
+                return false;
             }
+            Msg::TreeSelect(id) => {
+                let label = self
+                    .folders
+                    .borrow()
+                    .iter()
+                    .find(|folder| folder.id == *id)
+                    .map(|folder| folder.name.clone())
+                    .unwrap_or_else(|| format!("node {id}"));
+                status.set_text(0, &format!("Selected folder: {label}"));
+            }
+            Msg::TreeFold(id, expanded) => status.set_text(
+                0,
+                &format!(
+                    "Folder {id} {}",
+                    if *expanded { "expanded" } else { "collapsed" }
+                ),
+            ),
             Msg::Play(item) => {
                 let item = *item;
                 let title = self
@@ -253,4 +306,20 @@ impl Library {
         }
         true
     }
+}
+
+/// A `size`-square RGBA icon: a solid fill with a transparent one-pixel edge.
+fn solid_icon(size: i32, (r, g, b): (u8, u8, u8)) -> Vec<u8> {
+    let mut data = Vec::with_capacity((size * size * 4) as usize);
+    for y in 0..size {
+        for x in 0..size {
+            let edge = x == 0 || y == 0 || x == size - 1 || y == size - 1;
+            if edge {
+                data.extend_from_slice(&[0, 0, 0, 0]);
+            } else {
+                data.extend_from_slice(&[r, g, b, 255]);
+            }
+        }
+    }
+    data
 }
