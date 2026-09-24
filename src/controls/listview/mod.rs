@@ -102,6 +102,7 @@ pub struct ListView<T, M> {
     inner: Rc<RefCell<ListViewInner<T>>>,
     header_subclass: Option<sys::listview_header::HeaderSubclass>,
     size_subclass: Option<sys::listview_header::SizeSubclass>,
+    click_subclass: Option<sys::listview_click::ClickSubclass>,
     events: Rc<RefCell<ListViewEvents<M>>>,
     sink: Ui<M>,
 }
@@ -193,6 +194,39 @@ impl<T: 'static, M: 'static> ListView<T, M> {
 
         let events = Rc::new(RefCell::new(ListViewEvents::new()));
         install_mapper(Rc::clone(&inner), Rc::clone(&events), hwnd, ui.clone());
+        // Consume a left click that lands on a cell the app handles (e.g. a
+        // star toggle) before the control selects or activates the row.
+        let click_subclass = sys::listview_click::ClickSubclass::install(
+            hwnd,
+            Box::new({
+                let events = Rc::clone(&events);
+                let sink = ui.clone();
+                move |_msg, x, y| {
+                    let events = events.borrow();
+                    let Some(mapper) = events.on_cell_click.as_ref() else {
+                        return false;
+                    };
+                    let Some((item, sub_item)) = sys::listview::lv_subitem_hit_test(hwnd, x, y)
+                    else {
+                        return false;
+                    };
+                    if item < 0 || sub_item < 0 {
+                        return false;
+                    }
+                    match mapper(
+                        item as usize,
+                        sub_item as usize,
+                        crate::geometry::Point::new(x, y),
+                    ) {
+                        Some(message) => {
+                            sink.emit(message);
+                            true
+                        }
+                        None => false,
+                    }
+                }
+            }),
+        );
 
         {
             let weak = Rc::downgrade(&inner);
@@ -238,6 +272,7 @@ impl<T: 'static, M: 'static> ListView<T, M> {
             inner,
             header_subclass,
             size_subclass,
+            click_subclass,
             events,
             sink: ui.clone(),
         })
@@ -280,6 +315,7 @@ impl<T, M> Themed for ListView<T, M> {
 impl<T, M> Drop for ListView<T, M> {
     fn drop(&mut self) {
         // Remove the subclasses before the window (and its header) go away.
+        self.click_subclass = None;
         self.header_subclass = None;
         self.size_subclass = None;
         registry::unregister(self.control.hwnd());

@@ -13,6 +13,10 @@ pub struct ListViewTheme {
     pub alternate: crate::Color,
     /// Normal cell text.
     pub text: crate::Color,
+    /// De-emphasised cell text, e.g. an unstarred outline glyph.
+    pub text_secondary: crate::Color,
+    /// The app's accent, e.g. a starred glyph.
+    pub accent: crate::Color,
     /// Selected-row background while the list has focus.
     pub selection: crate::Color,
     /// Selected-row background while the list does not have focus.
@@ -39,6 +43,8 @@ impl ListViewTheme {
             background: theme.background,
             alternate: theme.background.lerp(theme.text, 0.04),
             text: theme.text,
+            text_secondary: theme.text_secondary,
+            accent: theme.accent,
             selection: theme.selection,
             selection_unfocused: theme.selection_unfocused,
             zebra: false,
@@ -91,6 +97,8 @@ mod tests {
         for theme in [Theme::light(), Theme::dark()] {
             let derived = ListViewTheme::from_theme(&theme);
             assert_eq!(derived.background, theme.background);
+            assert_eq!(derived.text_secondary, theme.text_secondary);
+            assert_eq!(derived.accent, theme.accent);
             assert_eq!(derived.selection, theme.selection);
             assert_eq!(derived.selection_unfocused, theme.selection_unfocused);
             assert!(!derived.zebra, "zebra striping is opt-in");

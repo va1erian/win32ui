@@ -8,6 +8,7 @@ use std::rc::Rc;
 use crate::app::Ui;
 use crate::controls::listview::draw::ListViewInner;
 use crate::controls::registry;
+use crate::geometry::Point;
 use crate::hwnd::Hwnd;
 use crate::message::{Key, Message, Modifiers, Notify};
 use crate::sys;
@@ -71,12 +72,17 @@ pub(crate) type SelectMapper<M> = Box<dyn Fn(&[usize]) -> Option<M>>;
 /// Maps a focused key press, with its modifiers, to an optional app message.
 pub(crate) type KeyMapper<M> = Box<dyn Fn(Key, Modifiers) -> Option<M>>;
 
+/// Maps a left click on a cell — `(item, sub_item, point)` — to an optional
+/// app message. A `Some` message consumes the click.
+pub(crate) type CellClickMapper<M> = Box<dyn Fn(usize, usize, Point) -> Option<M>>;
+
 /// The app-level events a [`ListView`](super::ListView) maps to `Msg`.
 pub(crate) struct ListViewEvents<M> {
     pub(crate) on_select: Option<SelectMapper<M>>,
     pub(crate) on_activate: Option<Box<dyn Fn(usize) -> Option<M>>>,
     pub(crate) on_context: Option<Box<dyn Fn(usize) -> Option<M>>>,
     pub(crate) on_sort: Option<Box<dyn Fn(usize) -> Option<M>>>,
+    pub(crate) on_cell_click: Option<CellClickMapper<M>>,
     pub(crate) on_key: Option<KeyMapper<M>>,
 }
 
@@ -87,6 +93,7 @@ impl<M> ListViewEvents<M> {
             on_activate: None,
             on_context: None,
             on_sort: None,
+            on_cell_click: None,
             on_key: None,
         }
     }

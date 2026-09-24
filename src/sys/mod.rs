@@ -29,6 +29,7 @@ pub(crate) mod glass_paint;
 pub(crate) mod image_list;
 pub(crate) mod layout;
 pub(crate) mod listview;
+pub(crate) mod listview_click;
 pub(crate) mod listview_header;
 pub(crate) mod listview_rowheight;
 pub(crate) mod looper;
