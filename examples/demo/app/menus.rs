@@ -5,6 +5,9 @@ use win32ui::prelude::*;
 use super::Msg;
 use super::options::ThemeChoice;
 
+/// Key of the "Load remote images" item, ticked at runtime by the options checkbox.
+pub(super) const REMOTE_IMAGES: &str = "remote_images";
+
 /// The window's menu bar: File, View and Theme, exercising submenus, radio
 /// items, checked items, disabled items and shortcuts.
 pub(super) fn menu_bar(theme: Theme) -> Menu<Msg> {
@@ -26,6 +29,7 @@ pub(super) fn menu_bar(theme: Theme) -> Menu<Msg> {
         .checked_item("Load &remote images", None, false, || {
             Msg::RemoteImages(true)
         })
+        .keyed(REMOTE_IMAGES)
         .disabled_item("Always disabled", None, || Msg::Refresh);
     let theme_switch = Menu::new().item("&Toggle", Shortcut::ctrl(Key::T), || Msg::ToggleTheme);
     Menu::new()

@@ -325,9 +325,7 @@ impl<M: 'static> Ui<M> {
         {
             self.core.install_menu_bar(menu.clone());
             self.core.install_title_menu(title_menu);
-            for (shortcut, action) in menu.shortcuts() {
-                self.core.add_accelerator(shortcut, move || Some(action()));
-            }
+            self.core.set_menu_accelerators(&menu);
             sys::window::invalidate(hwnd);
             self.core.relayout();
             return;
@@ -343,6 +341,13 @@ impl<M: 'static> Ui<M> {
             self.core.add_accelerator(shortcut, move || Some(action()));
         }
         self.core.relayout();
+    }
+
+    /// Sets the tick of the installed menu-bar item named with
+    /// [`Menu::keyed`], in both the native bar and the strip menu, without
+    /// rebuilding the menu. Returns whether such an item exists.
+    pub fn set_menu_checked(&self, key: &str, checked: bool) -> bool {
+        self.core.set_menu_checked(key, checked)
     }
 
     /// Shows `menu` as a context popup at the screen position `at`, then

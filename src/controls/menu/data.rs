@@ -54,7 +54,8 @@ pub(super) struct Item<M> {
     pub(super) data: usize,
     pub(super) label: String,
     pub(super) shortcut: Option<Shortcut>,
-    pub(super) checked: bool,
+    pub(super) checked: Cell<bool>,
+    pub(super) key: Option<&'static str>,
     pub(super) radio: bool,
     pub(super) enabled: bool,
     pub(super) action: Action<M>,
@@ -76,7 +77,7 @@ pub(super) enum Entry<M> {
 /// last clone destroys it.
 pub(super) struct MenuData<M> {
     pub(super) entries: Vec<Entry<M>>,
-    handle: Cell<isize>,
+    pub(super) handle: Cell<isize>,
     owner_draw: Cell<bool>,
     /// Whether this level was built as a menu *bar* (so its direct entries are
     /// bar items, not popup items).
@@ -197,8 +198,8 @@ impl<M: 'static> MenuData<M> {
             }
             sys::menu::append_native(handle, item.id, &text, item.enabled);
         }
-        if item.checked || item.radio {
-            sys::menu::check_item(handle, item.id, item.checked, item.radio);
+        if item.checked.get() || item.radio {
+            sys::menu::check_item(handle, item.id, item.checked.get(), item.radio);
         }
     }
 
@@ -252,7 +253,7 @@ impl<M: 'static> MenuData<M> {
                     return Some(RenderItem {
                         label: &item.label,
                         shortcut: item.shortcut,
-                        checked: item.checked,
+                        checked: item.checked.get(),
                         radio: item.radio,
                         enabled: item.enabled,
                         submenu: false,
