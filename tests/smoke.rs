@@ -61,7 +61,6 @@ impl App for SmokeApp {
         self.node_count.set(Some(tree.node_count()));
         list.select(2);
         self.selected.set(Some(list.selected()));
-        list.set_playing(Some(3));
         list.set_sort_indicator(1, SortDirection::Ascending);
         status.set_text(0, "Ready");
         label.set_text("hello");

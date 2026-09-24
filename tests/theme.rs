@@ -20,8 +20,7 @@ fn derived_palettes_follow_tokens() {
         let list = ListViewTheme::from_theme(&theme);
         assert_eq!(list.background, theme.background);
         assert_eq!(list.selection, theme.selection);
-        assert_eq!(list.playing, theme.accent);
-        assert_eq!(list.on_playing, theme.text_on_accent);
+        assert!(!list.zebra, "zebra striping is opt-in");
         assert_eq!(list.border, theme.border);
         assert_eq!(list.header_background, theme.surface);
 

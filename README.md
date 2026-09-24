@@ -191,10 +191,15 @@ why the app never sees owner-data/custom-draw plumbing — only `ListViewEvent` 
 `TreeViewEvent`s.
 
 The ListView is a real owner-drawn virtual list: `LVS_OWNERDATA` + cell text via
-`LVN_GETDISPINFO`, and the whole row painted in `NM_CUSTOMDRAW` (zebra, blue
-selection/playing highlight, column separators). Its header is a separate child
-control, so the ListView is subclassed (`sys::control::HeaderSubclass`) to
-intercept the header's `NM_CUSTOMDRAW` and paint it dark too.
+`LVN_GETDISPINFO`, and the whole row painted in `NM_CUSTOMDRAW` (blue selection
+highlight, an opt-in zebra background, app-supplied `row_style`/`row_painter`
+overrides, column separators). Row height is set with the "1×height image list"
+trick (`sys::listview::lv_set_row_height`), the documented way to raise
+report-mode row height on an `LVS_OWNERDATA` list — `LVS_OWNERDRAWFIXED` +
+`WM_MEASUREITEM` is a different, incompatible style pair that virtual lists
+never receive `WM_MEASUREITEM` for. Its header is a separate child control, so
+the ListView is subclassed (`sys::control::HeaderSubclass`) to intercept the
+header's `NM_CUSTOMDRAW` and paint it dark too.
 
 ## Adding a control
 

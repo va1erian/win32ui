@@ -97,7 +97,8 @@ pub use controls::grid_view::{GridModel, GridView, GridViewTheme, TileSizeSpec, 
 pub use controls::groupbox::GroupBox;
 pub use controls::label::Label;
 pub use controls::listview::{
-    Column, ColumnWidth, Fill, ListModel, ListView, ListViewEvent, ListViewTheme, SortDirection,
+    Column, ColumnWidth, Fill, ListModel, ListView, ListViewEvent, ListViewTheme, RowState,
+    RowStyle, SortDirection,
 };
 pub use controls::menu::Menu;
 pub use controls::progressbar::{ProgressBar, ProgressState};

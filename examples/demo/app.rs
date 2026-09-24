@@ -18,6 +18,7 @@ mod document;
 mod flow_text;
 mod grid;
 mod library;
+mod mail;
 mod menus;
 mod options;
 mod primitives;
@@ -39,6 +40,7 @@ use self::document::DocumentWidget;
 use self::flow_text::Flow;
 use self::grid::Grid;
 use self::library::{Library, SortKey};
+use self::mail::MailTab;
 use self::options::{Options, ThemeChoice};
 use self::secondary::PrefsMsg;
 use self::slider::Sliders;
@@ -119,12 +121,15 @@ pub(crate) fn main() {
             // window stays compact. `tabs!` pages layout subtrees; each page is
             // shown and hidden automatically and reports its index as a `Msg`.
             let library_page = library.page();
+            let mail = MailTab::build(ui);
+            let mail_page = mail.page();
             let sliders = Sliders::build(ui);
             let sliders_page = sliders.page();
             let flow = Flow::build(ui);
             let grid = Grid::build(ui);
             let views = tabs![
                 ("Library", library_page),
+                ("Mail", mail_page),
                 ("Primitives", primitives),
                 ("Document", document),
                 ("Sliders", sliders_page),
@@ -172,6 +177,7 @@ pub(crate) fn main() {
             let app = App {
                 toolbar,
                 library,
+                mail,
                 status,
                 progress,
                 swatch,
@@ -276,6 +282,7 @@ enum Msg {
     SplitMoved(Dip),
     TreeSelect,
     Play(usize),
+    MailOpen(usize),
     Selected(Vec<usize>),
     Sort(usize),
     Copy,
@@ -306,6 +313,7 @@ enum Msg {
 struct App {
     toolbar: Toolbar<Msg>,
     library: Library,
+    mail: MailTab,
     status: StatusBar<Msg>,
     progress: ProgressBar,
     swatch: Custom<Swatch, Msg>,
@@ -334,6 +342,9 @@ impl win32ui::App for App {
     fn update(&mut self, msg: Msg, ui: &mut Ui<Msg>) {
         // Each feature owns its messages; the first one to claim `msg` wins.
         if self.library.update(&msg, ui, &self.status) {
+            return;
+        }
+        if self.mail.update(&msg) {
             return;
         }
         if self.options.update(&msg, ui, &self.status) {

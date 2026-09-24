@@ -45,7 +45,6 @@ pub(super) struct Library {
     pub(super) tracks: Rc<Vec<Track>>,
     pub(super) order: Vec<usize>,
     sort: Option<(usize, bool)>,
-    now_playing: Option<usize>,
     split_position: Dip,
 }
 
@@ -119,7 +118,6 @@ impl Library {
             tracks,
             order,
             sort: None,
-            now_playing: None,
             split_position: dip(220.0),
         }
     }
@@ -216,8 +214,6 @@ impl Library {
             }
             Msg::Play(item) => {
                 let item = *item;
-                self.now_playing = Some(item);
-                self.list.set_playing(Some(item));
                 let title = self
                     .order
                     .as_slice()

@@ -53,7 +53,8 @@ pub mod prelude {
     pub use super::groupbox::GroupBox;
     pub use super::label::Label;
     pub use super::listview::{
-        Column, ColumnWidth, Fill, ListModel, ListView, ListViewEvent, ListViewTheme, SortDirection,
+        Column, ColumnWidth, Fill, ListModel, ListView, ListViewEvent, ListViewTheme, RowState,
+        RowStyle, SortDirection,
     };
     pub use super::menu::Menu;
     pub use super::progressbar::{ProgressBar, ProgressState};

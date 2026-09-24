@@ -362,3 +362,86 @@ fn range_selection_coalesces_into_one_event() {
         "the control's selection did not match a report"
     );
 }
+
+enum RowMsg {
+    Start,
+}
+
+struct RowApp {
+    list: Option<ListView<NameRow, RowMsg>>,
+    ok: Rc<Cell<bool>>,
+}
+
+impl App for RowApp {
+    type Msg = RowMsg;
+
+    fn update(&mut self, msg: RowMsg, ui: &mut Ui<RowMsg>) {
+        let RowMsg::Start = msg;
+        if let Some(list) = &self.list {
+            // The builders wire up without panicking, and reading a cell back
+            // still drives the owner-data path with a `row_painter`/`row_style`
+            // installed and a non-default row height.
+            let ok = list.cell_text(0, 0) == "a" && list.cell_text(2, 0) == "c";
+            self.ok.set(ok);
+        }
+        ui.quit();
+    }
+}
+
+/// `row_style`, `row_painter`, `row_height` and `zebra` are chainable builders
+/// that do not disturb the ordinary owner-data cell/selection path.
+#[test]
+fn row_appearance_builders_do_not_disturb_the_view() {
+    let ok = Rc::new(Cell::new(false));
+    let created = Rc::new(Cell::new(false));
+
+    let ok_for_make = Rc::clone(&ok);
+    let created_for_make = Rc::clone(&created);
+    let Some(run) = run_app_with_watchdog("win32ui.listrowstyle", move |ui| {
+        let list = ListView::new(ui)
+            .map(|list| {
+                list.column("Name", dip(120.0), |row: &NameRow| row.name.as_str())
+                    .row_height(dip(24.0))
+                    .zebra(true)
+                    .row_style(|row: &NameRow| {
+                        RowStyle::new()
+                            .bold(row.name == "b")
+                            .accent_bar(Color::rgb(255, 0, 0))
+                    })
+                    .row_painter(|row: &NameRow, canvas, rect, state| {
+                        // Only take over "special" rows; everything else falls
+                        // back to the default painting (exercising `row_style`
+                        // for those rows too).
+                        if row.name != "special" {
+                            return false;
+                        }
+                        canvas.fill_rect(rect, Color::rgb(0, 0, 0));
+                        let _ = state.selected;
+                        true
+                    })
+            })
+            .ok();
+        if let Some(list) = &list {
+            list.set_model(names(&["a", "b", "c"]));
+            created_for_make.set(true);
+            ui.emit(RowMsg::Start);
+        } else {
+            ui.quit();
+        }
+        RowApp {
+            list,
+            ok: ok_for_make,
+        }
+    }) else {
+        return;
+    };
+
+    assert!(!run.timed_out, "the watchdog fired before the app quit");
+    if !created.get() {
+        return;
+    }
+    assert!(
+        ok.get(),
+        "row appearance builders broke the cell/model path"
+    );
+}
