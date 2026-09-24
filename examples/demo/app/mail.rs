@@ -84,21 +84,29 @@ impl MailTab {
                     );
                 }
                 let text_left = rect.left + 10;
-                let sender_line =
-                    Rect::new(text_left, rect.top + 4, rect.right - 10, rect.top + 20);
-                let subject_line =
-                    Rect::new(text_left, rect.top + 22, rect.right - 10, rect.bottom - 4);
+                // Two equal lines, derived from the row so they follow DPI.
+                let middle = rect.top + (rect.bottom - rect.top) / 2;
+                let sender_line = Rect::new(text_left, rect.top, rect.right - 10, middle);
+                let subject_line = Rect::new(text_left, middle, rect.right - 10, rect.bottom);
                 canvas.draw_text(
                     sender_line,
                     &format!("{}    {}", row.sender, row.date),
                     sender_color,
-                    TextFormat::left().single_line().end_ellipsis().no_prefix(),
+                    TextFormat::left()
+                        .vcenter()
+                        .single_line()
+                        .end_ellipsis()
+                        .no_prefix(),
                 );
                 canvas.draw_text(
                     subject_line,
                     &row.subject,
                     theme.text_secondary,
-                    TextFormat::left().single_line().end_ellipsis().no_prefix(),
+                    TextFormat::left()
+                        .vcenter()
+                        .single_line()
+                        .end_ellipsis()
+                        .no_prefix(),
                 );
                 true
             })
