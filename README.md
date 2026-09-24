@@ -114,7 +114,7 @@ already retained), and closures that capture shared mutable app state.
   `CheckBox`, `RadioGroup`, `GroupBox`) | exist (#12–#14) |
 | Menus mapped to `Msg`: menu bar, context popups, owner-drawn dark items | exist (#16) |
 | Draggable `split_row!`/`split_col!` layout nodes; themed `ScrollView` (native vertical scrollbar, wheel, `scroll_to`) | exist (#11) |
-| Custom widgets: Direct2D paint path (`CustomWidget::renderer`/`paint_d2d`) and a built-in vertical scroll host (`Custom::with_vscroll`, `scroll_to`, `Scrolled` event) | exist (#64) |
+| Custom widgets: Direct2D paint path (`CustomWidget::renderer`/`paint_d2d`), a built-in vertical scroll host (`Custom::with_vscroll`, `scroll_to`, `Scrolled` event) and rect-scoped repaints (`invalidate_rect`, the dirty rect honoured by both paths) | exist (#64, #83) |
 | `Slider`: Direct2D-painted, `f64` values, sub-pixel thumb, mouse capture, coalesced `on_change` + `on_commit` + `on_hover`, eased hover/press/focus, keyboard and wheel, buffered range, vertical, RTL | exists (#46) |
 | `FlowText`: wrapped inline runs (normal / weak / link) with per-run clicks, hand cursor and hover underline; rich-text layout with per-range DirectWrite formatting | exists (#48) |
 | `tabs!` paged layout node: native `SysTabControl32`, owner-drawn tabs, pages are layout subtrees | exists (#15) |

@@ -5,12 +5,14 @@
 use std::cell::{Cell, RefCell};
 
 use crate::error::{Error, Result};
+use crate::geometry::Rect;
 use crate::hwnd::Hwnd;
 use crate::message::Message;
 use crate::sys;
 use crate::sys::d2d::Target;
 
 use super::BASE_DPI;
+use super::RectF;
 use super::bitmap::ImageCache;
 use super::canvas::D2dCanvas;
 
@@ -30,6 +32,9 @@ pub struct D2dSurface {
     dpi: Cell<u32>,
     pub(super) drawing: Cell<bool>,
     pub(super) images: RefCell<ImageCache>,
+    /// The device-pixel rectangle this frame is clipped to (and validated at
+    /// the end), or `None` for a whole-window frame.
+    frame: Cell<Option<Rect>>,
 }
 
 impl D2dSurface {
@@ -48,6 +53,7 @@ impl D2dSurface {
             dpi: Cell::new(dpi),
             drawing: Cell::new(false),
             images: RefCell::new(ImageCache::new()),
+            frame: Cell::new(None),
         })
     }
 
@@ -93,16 +99,69 @@ impl D2dSurface {
     /// since the last one. The whole window is validated when the frame ends,
     /// so call this only from a paint handler (or after invalidating).
     pub fn begin_draw(&self) -> Result<D2dCanvas<'_>> {
+        self.begin_frame(None)
+    }
+
+    /// Starts a frame clipped to `rect` (device pixels, the window's update
+    /// region), so drawing only touches those pixels and, when the frame ends,
+    /// only that rectangle is validated. Use it to repaint a dirty region
+    /// without redrawing the rest of the surface.
+    ///
+    /// If the render target had to be created for this frame, the clip is
+    /// widened to the whole client area: a fresh target starts blank, so every
+    /// pixel must be painted.
+    pub fn begin_draw_rect(&self, rect: Rect) -> Result<D2dCanvas<'_>> {
+        self.begin_frame(Some(rect))
+    }
+
+    fn begin_frame(&self, clip: Option<Rect>) -> Result<D2dCanvas<'_>> {
         if self.drawing.replace(true) {
             return Err(Error::Direct2d("begin_draw while a frame is in progress"));
         }
+        let created = self.target.borrow().is_none();
         match self.prepare_target() {
-            Ok(()) => Ok(D2dCanvas::begin(self)),
+            Ok(()) => {
+                let mut canvas = D2dCanvas::begin(self);
+                // The render target keeps its transform between frames, so a
+                // frame starts at the origin; a scrolling widget re-applies its
+                // offset afterwards. `clear` is then a plain (clip-aware) fill
+                // rather than a transform-independent `Clear`.
+                canvas.set_translation(0.0, 0.0);
+                if let Some(rect) = clip {
+                    let rect = if created {
+                        sys::window::client_rect(self.hwnd)
+                    } else {
+                        rect
+                    };
+                    self.frame.set(Some(rect));
+                    canvas.push_clip(self.to_dips(rect));
+                } else {
+                    self.frame.set(None);
+                }
+                Ok(canvas)
+            }
             Err(error) => {
                 self.drawing.set(false);
                 Err(error)
             }
         }
+    }
+
+    /// The device-pixel rectangle the current frame is clipped to, if any.
+    pub(super) fn frame(&self) -> Option<Rect> {
+        self.frame.get()
+    }
+
+    /// Converts a device-pixel rectangle in this surface's window to
+    /// device-independent pixels (the canvas's drawing space).
+    fn to_dips(&self, rect: Rect) -> RectF {
+        let scale = self.scale();
+        RectF::new(
+            rect.left as f32 / scale,
+            rect.top as f32 / scale,
+            rect.right as f32 / scale,
+            rect.bottom as f32 / scale,
+        )
     }
 
     fn prepare_target(&self) -> Result<()> {

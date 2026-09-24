@@ -88,8 +88,11 @@ impl<W: CustomWidget, M: 'static> CustomHandler<W, M> {
         let viewport_offset = pixels_to_dips(offset, dpi);
         drop(scroll);
 
+        // The dirty rectangle the Direct2D frame clips to; the GDI path reads
+        // the same region from `PAINTSTRUCT.rcPaint` in `Paint::begin`.
+        let dirty = crate::sys::window::update_rect(hwnd);
         let mut renderer = self.renderer.borrow_mut();
-        let painted = renderer.paint(hwnd, |canvas| {
+        let painted = renderer.paint(hwnd, dirty, |canvas| {
             canvas.clear(theme.background);
             let viewport = canvas.bounds();
             // Always reset the translation: the render target keeps its

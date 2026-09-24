@@ -12,6 +12,7 @@
 //! its target after a device loss.
 
 use crate::d2d::D2dSurface;
+use crate::geometry::Rect;
 use crate::hwnd::Hwnd;
 use crate::sys;
 
@@ -26,7 +27,8 @@ pub(crate) enum RendererState {
 }
 
 impl RendererState {
-    /// Paints one Direct2D frame, creating the surface on first use. `draw`
+    /// Paints one Direct2D frame clipped to `dirty` (the window's update
+    /// rectangle, in device pixels), creating the surface on first use. `draw`
     /// receives the freshly begun canvas and must fill the viewport; a lost
     /// device is handled by [`D2dSurface`] and does not fall back.
     ///
@@ -36,6 +38,7 @@ impl RendererState {
     pub(crate) fn paint(
         &mut self,
         hwnd: Hwnd,
+        dirty: Rect,
         draw: impl FnOnce(&mut crate::d2d::D2dCanvas),
     ) -> bool {
         if matches!(*self, RendererState::Untried) {
@@ -46,7 +49,7 @@ impl RendererState {
         let RendererState::Direct2d(surface) = self else {
             return false;
         };
-        let Ok(mut canvas) = surface.begin_draw() else {
+        let Ok(mut canvas) = surface.begin_draw_rect(dirty) else {
             return false;
         };
         draw(&mut canvas);

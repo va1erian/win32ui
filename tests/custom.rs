@@ -21,7 +21,8 @@ use win32ui::d2d::{D2dCanvas, RectF};
 use win32ui::gdi::Canvas;
 use win32ui::prelude::*;
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
-use windows::Win32::UI::WindowsAndMessaging::{SendMessageW, WM_KEYDOWN};
+use windows::Win32::Graphics::Gdi::{GetDC, GetPixel, ReleaseDC};
+use windows::Win32::UI::WindowsAndMessaging::{SendMessageW, WM_KEYDOWN, WM_PAINT};
 
 /// A widget that raises its event the moment it gains focus.
 struct FocusWidget;
@@ -392,6 +393,224 @@ impl CustomWidget for IgnoreWidget {
     type Event = ();
 
     fn paint(&self, _canvas: &Canvas, _bounds: Rect, _theme: &Theme) {}
+}
+
+/// Delivers `WM_PAINT` to the widget's child window synchronously, so a test
+/// can measure exactly one paint after invalidating.
+fn send_paint(hwnd: Hwnd) {
+    let window = HWND(hwnd.raw() as *mut core::ffi::c_void);
+    // SAFETY: a synchronous `WM_PAINT` to the widget's own live window.
+    unsafe {
+        SendMessageW(window, WM_PAINT, Some(WPARAM(0)), Some(LPARAM(0)));
+    }
+}
+
+/// A GDI widget that records the repaint rectangle (`rcPaint`) of every paint.
+struct PaintRecorder {
+    rects: Rc<RefCell<Vec<Rect>>>,
+}
+
+impl CustomWidget for PaintRecorder {
+    type Event = ();
+
+    fn paint(&self, canvas: &Canvas, _bounds: Rect, _theme: &Theme) {
+        self.rects.borrow_mut().push(canvas.paint_rect());
+    }
+}
+
+enum PaintMsg {
+    Start,
+}
+
+struct PaintApp {
+    widget: Custom<PaintRecorder, PaintMsg>,
+    rects: Rc<RefCell<Vec<Rect>>>,
+    full: Rc<Cell<Rect>>,
+}
+
+impl App for PaintApp {
+    type Msg = PaintMsg;
+
+    fn update(&mut self, _msg: PaintMsg, ui: &mut Ui<PaintMsg>) {
+        let hwnd = self.widget.hwnd();
+        // Clear the region left by creation with one full paint first.
+        self.widget.invalidate();
+        send_paint(hwnd);
+        self.rects.borrow_mut().clear();
+
+        let a = Rect::new(10, 10, 60, 40);
+        let b = Rect::new(80, 30, 140, 90);
+        self.widget.invalidate_rect(a);
+        self.widget.invalidate_rect(b);
+        send_paint(hwnd);
+
+        self.widget.invalidate();
+        send_paint(hwnd);
+        let bounds = self.widget.bounds();
+        self.full
+            .set(Rect::new(0, 0, bounds.width(), bounds.height()));
+        ui.quit();
+    }
+}
+
+/// Two `invalidate_rect` calls coalesce into one paint whose `rcPaint` is their
+/// bounding rectangle, and a full `invalidate` still repaints everything.
+#[test]
+fn invalidate_rect_coalesces_and_full_invalidate_repaints_everything() {
+    let rects = Rc::new(RefCell::new(Vec::new()));
+    let full = Rc::new(Cell::new(Rect::default()));
+    let rects_for_make = Rc::clone(&rects);
+    let full_for_make = Rc::clone(&full);
+
+    let Some(run) = run_app_with_watchdog("win32ui.custom.rect", move |ui| {
+        let widget = Custom::new(
+            ui,
+            PaintRecorder {
+                rects: Rc::clone(&rects_for_make),
+            },
+        )
+        .expect("paint recorder");
+        ui.set_layout(column![widget.fill(1)]);
+        ui.emit(PaintMsg::Start);
+        PaintApp {
+            widget,
+            rects: rects_for_make,
+            full: full_for_make,
+        }
+    }) else {
+        return;
+    };
+
+    assert!(!run.timed_out, "the watchdog fired before the app quit");
+    let rects = rects.borrow();
+    assert_eq!(
+        rects.len(),
+        2,
+        "expected the coalesced paint then the full one, got {rects:?}"
+    );
+    assert_eq!(
+        rects[0],
+        Rect::new(10, 10, 140, 90),
+        "two invalidate_rect calls must coalesce into their bounding rectangle"
+    );
+    assert_eq!(
+        rects[1],
+        full.get(),
+        "a full invalidate must repaint the whole client"
+    );
+}
+
+/// A Direct2D widget that fills its viewport with a mutable colour.
+struct PhaseWidget {
+    color: Rc<Cell<Color>>,
+}
+
+impl CustomWidget for PhaseWidget {
+    type Event = ();
+
+    fn paint(&self, _canvas: &Canvas, _bounds: Rect, _theme: &Theme) {}
+
+    fn renderer(&self) -> Renderer {
+        Renderer::Direct2D
+    }
+
+    fn paint_d2d(&self, canvas: &mut D2dCanvas<'_>, bounds: RectF, _theme: &Theme) {
+        canvas.fill_rect(bounds, self.color.get());
+    }
+}
+
+const PHASE_A: Color = Color::rgb(0x20, 0x80, 0x40);
+const PHASE_B: Color = Color::rgb(0xC0, 0x30, 0x30);
+
+enum PhaseMsg {
+    Start,
+}
+
+#[derive(Default)]
+struct Pixels {
+    inside: Cell<Option<u32>>,
+    outside: Cell<Option<u32>>,
+}
+
+struct PhaseApp {
+    widget: Custom<PhaseWidget, PhaseMsg>,
+    color: Rc<Cell<Color>>,
+    pixels: Rc<Pixels>,
+}
+
+impl App for PhaseApp {
+    type Msg = PhaseMsg;
+
+    fn update(&mut self, _msg: PhaseMsg, ui: &mut Ui<PhaseMsg>) {
+        let hwnd = self.widget.hwnd();
+        self.color.set(PHASE_A);
+        self.widget.invalidate();
+        send_paint(hwnd);
+
+        // Change the colour but invalidate only a small rectangle: only those
+        // pixels must change, the rest must keep the first frame's colour.
+        self.color.set(PHASE_B);
+        let dirty = Rect::new(40, 40, 140, 100);
+        self.widget.invalidate_rect(dirty);
+        send_paint(hwnd);
+
+        // Read two pixels straight from the widget's DC: one inside the dirty
+        // rectangle, one well outside it. `GetDC` does not repaint, unlike a
+        // `PrintWindow` capture, so this sees the frame exactly as painted.
+        let bounds = self.widget.bounds();
+        let window = HWND(hwnd.raw() as *mut core::ffi::c_void);
+        // SAFETY: `window` is the live child window; its DC is released below.
+        unsafe {
+            let dc = GetDC(Some(window));
+            let inside = GetPixel(dc, 90, 70).0;
+            let outside = GetPixel(dc, bounds.width() - 20, bounds.height() - 20).0;
+            let _ = ReleaseDC(Some(window), dc);
+            self.pixels.inside.set(Some(inside));
+            self.pixels.outside.set(Some(outside));
+        }
+        ui.quit();
+    }
+}
+
+/// In the Direct2D path a rect-scoped invalidation clips the frame: only the
+/// dirty rectangle is repainted, and the rest of the surface keeps its pixels.
+#[test]
+fn direct2d_frame_clips_to_the_dirty_rect() {
+    let color = Rc::new(Cell::new(PHASE_A));
+    let pixels = Rc::new(Pixels::default());
+    let color_for_make = Rc::clone(&color);
+    let pixels_for_make = Rc::clone(&pixels);
+
+    let Some(run) = run_app_with_watchdog("win32ui.custom.d2d.rect", move |ui| {
+        let widget = Custom::new(
+            ui,
+            PhaseWidget {
+                color: Rc::clone(&color_for_make),
+            },
+        )
+        .expect("phase widget");
+        ui.set_layout(column![widget.fill(1)]);
+        ui.emit(PhaseMsg::Start);
+        PhaseApp {
+            widget,
+            color: color_for_make,
+            pixels: pixels_for_make,
+        }
+    }) else {
+        return;
+    };
+
+    assert!(!run.timed_out, "the watchdog fired before the app quit");
+    assert_eq!(
+        pixels.inside.get(),
+        Some(PHASE_B.to_colorref()),
+        "the dirty rectangle must be repainted with the new colour"
+    );
+    assert_eq!(
+        pixels.outside.get(),
+        Some(PHASE_A.to_colorref()),
+        "pixels outside the dirty rectangle must keep their previous colour"
+    );
 }
 
 /// Sends `key` down to the widget's child window.
