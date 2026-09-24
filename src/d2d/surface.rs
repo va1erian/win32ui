@@ -30,6 +30,7 @@ pub struct D2dSurface {
     pub(super) target: RefCell<Option<Target>>,
     pixels: Cell<(u32, u32)>,
     dpi: Cell<u32>,
+    transparent: bool,
     pub(super) drawing: Cell<bool>,
     pub(super) images: RefCell<ImageCache>,
     /// The device-pixel rectangle this frame is clipped to (and validated at
@@ -42,15 +43,30 @@ impl D2dSurface {
     /// Direct2D cannot create a render target (a broken driver, for example),
     /// so a caller can fall back to GDI.
     pub fn new(hwnd: Hwnd) -> Result<D2dSurface> {
+        D2dSurface::build(hwnd, false)
+    }
+
+    /// Creates a surface whose pixels carry premultiplied alpha, sized to
+    /// `hwnd`'s client area. Clearing it with
+    /// [`D2dCanvas::clear_rgba`](crate::d2d::D2dCanvas::clear_rgba) and
+    /// [`Rgba::TRANSPARENT`](crate::d2d::Rgba::TRANSPARENT) makes those pixels
+    /// transparent, so an extended-frame window's DWM material shows through
+    /// them. The rest of the surface stays opaque where it is filled.
+    pub fn transparent(hwnd: Hwnd) -> Result<D2dSurface> {
+        D2dSurface::build(hwnd, true)
+    }
+
+    fn build(hwnd: Hwnd, transparent: bool) -> Result<D2dSurface> {
         let client = sys::window::client_rect(hwnd);
         let pixels = (client.width().max(1) as u32, client.height().max(1) as u32);
         let dpi = sys::dpi::window_dpi(hwnd);
-        let target = Target::new(hwnd, pixels.0, pixels.1, dpi as f32)?;
+        let target = Target::new(hwnd, pixels.0, pixels.1, dpi as f32, transparent)?;
         Ok(D2dSurface {
             hwnd,
             target: RefCell::new(Some(target)),
             pixels: Cell::new(pixels),
             dpi: Cell::new(dpi),
+            transparent,
             drawing: Cell::new(false),
             images: RefCell::new(ImageCache::new()),
             frame: Cell::new(None),
@@ -66,6 +82,9 @@ impl D2dSurface {
     /// (call on `WM_SIZE`).
     pub fn resize(&self, width: i32, height: i32) {
         let pixels = (width.max(1) as u32, height.max(1) as u32);
+        if self.pixels.get() == pixels {
+            return;
+        }
         self.pixels.set(pixels);
         let mut target = self.target.borrow_mut();
         if let Some(live) = target.as_mut()
@@ -172,7 +191,13 @@ impl D2dSurface {
         let mut target = self.target.borrow_mut();
         if target.is_none() {
             let (width, height) = self.pixels.get();
-            *target = Some(Target::new(self.hwnd, width, height, dpi as f32)?);
+            *target = Some(Target::new(
+                self.hwnd,
+                width,
+                height,
+                dpi as f32,
+                self.transparent,
+            )?);
         }
         Ok(())
     }

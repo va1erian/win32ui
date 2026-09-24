@@ -7,7 +7,7 @@ use crate::error::Result;
 use crate::sys;
 use crate::sys::d2d::{EndDraw, Target};
 
-use super::{D2dSurface, PointF, RectF, Stroke};
+use super::{D2dSurface, PointF, RectF, Rgba, Stroke};
 
 /// One frame of Direct2D drawing, from [`D2dSurface::begin_draw`].
 ///
@@ -53,6 +53,15 @@ impl<'a> D2dCanvas<'a> {
     pub fn clear(&mut self, color: Color) {
         let bounds = self.bounds();
         self.with(|target| target.fill_rect(bounds, color));
+    }
+
+    /// Fills the whole surface with an RGBA colour, alpha included. On a
+    /// surface created with
+    /// [`D2dSurface::transparent`](crate::d2d::D2dSurface::transparent),
+    /// [`Rgba::TRANSPARENT`] clears the window's pixels to transparent so the
+    /// extended frame's DWM material shows through.
+    pub fn clear_rgba(&mut self, color: Rgba) {
+        self.with(|target| target.clear_rgba(color));
     }
 
     /// Fills `rect`.

@@ -8,6 +8,22 @@ use crate::window::{Backdrop, TitleBar};
 
 use super::ui::Ui;
 
+/// Where the strip menu is drawn inside the extended title strip.
+///
+/// Set with [`WindowSpec::menu_strip_placement`]; only meaningful together with
+/// [`WindowSpec::menu_in_strip`] (and an active material).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum MenuStripPlacement {
+    /// The menu gets its own row under the caption row, which keeps the window
+    /// title and icon untouched but makes the strip taller (the default).
+    #[default]
+    Stacked,
+    /// The menu shares the caption row with the window title and the caption
+    /// buttons, Windows Terminal style: title first, then the items, with the
+    /// free strip draggable. Keeps the strip at the caption height.
+    Inline,
+}
+
 /// A widget-layer application.
 ///
 /// Widget events are mapped to the app's own [`App::Msg`] type by closures
@@ -33,6 +49,8 @@ pub struct WindowSpec {
     theme_explicit: bool,
     backdrop: Backdrop,
     title_bar: TitleBar,
+    menu_in_strip: bool,
+    menu_strip_placement: MenuStripPlacement,
 }
 
 impl WindowSpec {
@@ -46,6 +64,8 @@ impl WindowSpec {
             theme_explicit: false,
             backdrop: Backdrop::None,
             title_bar: TitleBar::Standard,
+            menu_in_strip: false,
+            menu_strip_placement: MenuStripPlacement::default(),
         }
     }
 
@@ -78,6 +98,35 @@ impl WindowSpec {
     pub fn title_bar(mut self, title_bar: TitleBar) -> WindowSpec {
         self.title_bar = title_bar;
         self
+    }
+
+    /// Draws the menu bar in the extended title strip instead of attaching a
+    /// native `HMENU` bar, so the items sit on the backdrop material (Windows
+    /// Terminal style). Only takes effect with
+    /// [`TitleBar::Extended`](crate::TitleBar::Extended) and an active
+    /// material; otherwise the native menu bar is used unchanged.
+    ///
+    /// Call [`Ui::set_menu_bar`](crate::Ui::set_menu_bar) to install the menu
+    /// either way.
+    pub fn menu_in_strip(mut self, on: bool) -> WindowSpec {
+        self.menu_in_strip = on;
+        self
+    }
+
+    /// Where the strip menu is drawn (stacked row or inline on the caption).
+    pub fn menu_strip_placement(mut self, placement: MenuStripPlacement) -> WindowSpec {
+        self.menu_strip_placement = placement;
+        self
+    }
+
+    /// Whether the menu should be drawn in the title strip.
+    pub(crate) fn menu_in_strip_kind(&self) -> bool {
+        self.menu_in_strip
+    }
+
+    /// The requested strip menu placement.
+    pub(crate) fn menu_strip_placement_kind(&self) -> MenuStripPlacement {
+        self.menu_strip_placement
     }
 
     /// The requested backdrop material.

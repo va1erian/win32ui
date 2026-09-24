@@ -6,7 +6,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::error::Result;
-use crate::message::{LResult, Message};
+use crate::geometry::Point;
+use crate::message::{Key, LResult, Message, MouseButton};
 use crate::sys;
 use crate::window::{Window, WindowHandler};
 
@@ -48,6 +49,65 @@ impl<A: App> AppHandler<A> {
         AppHandler { core, app }
     }
 
+    /// Mouse and keyboard input for the strip menu. Returns `None` when no
+    /// strip menu is active or the message is not one the strip handles.
+    fn title_menu_input(&self, window: &Window, message: &Message) -> Option<LResult> {
+        if !self.core.has_title_menu() {
+            return None;
+        }
+        let hwnd = window.hwnd();
+        let item_hit = |x: i32, y: i32| self.core.title_menu_hit(Point::new(x, y));
+        match message {
+            Message::MouseMove { x, y } => {
+                let _ = window.track_mouse_leave();
+                self.core.title_menu_set_hover(item_hit(*x, *y));
+                sys::window::invalidate(hwnd);
+                Some(0)
+            }
+            Message::MouseLeave => {
+                self.core.title_menu_set_hover(None);
+                self.core.title_menu_set_pressed(None);
+                sys::window::invalidate(hwnd);
+                Some(0)
+            }
+            Message::MouseDown {
+                x,
+                y,
+                button: MouseButton::Left,
+            } => {
+                self.core.title_menu_set_pressed(item_hit(*x, *y));
+                sys::window::invalidate(hwnd);
+                Some(0)
+            }
+            Message::MouseUp {
+                x,
+                y,
+                button: MouseButton::Left,
+            } => {
+                let hit = item_hit(*x, *y);
+                self.core.title_menu_set_pressed(None);
+                if let Some(index) = hit {
+                    self.core.open_title_menu(index);
+                }
+                Some(0)
+            }
+            Message::KeyDown {
+                key,
+                modifiers,
+                system,
+                ..
+            } => self
+                .core
+                .title_menu_key(*key, *modifiers, *system)
+                .then_some(0),
+            Message::KeyUp { key: Key::MENU, .. } => {
+                self.core.title_menu_on_alt_up();
+                Some(0)
+            }
+            _ => None,
+        }
+    }
+
     /// Delivers queued messages, one `update` at a time, until the queue is
     /// empty or the app is busy.
     ///
@@ -77,6 +137,14 @@ impl<A: App> AppHandler<A> {
 
 impl<A: App> WindowHandler for AppHandler<A> {
     fn message(&self, window: &Window, message: Message) -> Option<LResult> {
+        // The strip menu (acrylic title bar) paints the window's transparent
+        // Direct2D surface and reads its own mouse/keyboard input.
+        if matches!(&message, Message::Paint) && self.core.try_paint_strip() {
+            return Some(0);
+        }
+        if let Some(result) = self.title_menu_input(window, &message) {
+            return Some(result);
+        }
         // Owner-drawn menu items are measured and painted here, on the thread
         // that owns the menu.
         if let Message::MeasureItem { menu: true, .. } = &message
@@ -130,10 +198,11 @@ impl<A: App> WindowHandler for AppHandler<A> {
             }
             // The window owns the layout: a resize re-runs the tree so the
             // application never has to handle `WM_SIZE`.
-            Message::Size { .. } if self.core.has_layout() => {
+            Message::Size { width, height } if self.core.has_layout() => {
                 // The caption buttons move with the window (and when it is
                 // maximized), so re-read the inset before laying out; the
                 // extended strip is re-applied so the frame survives a resize.
+                self.core.resize_strip(width, height);
                 sys::nc::apply_extended_frame(window.hwnd());
                 sys::nc::refresh_caption_inset(window.hwnd());
                 self.core.relayout();
@@ -146,6 +215,7 @@ impl<A: App> WindowHandler for AppHandler<A> {
                 self.core.relayout_with_dpi(dpi);
                 // The caption strip height and the caption buttons move with the
                 // DPI, so both are re-read for the new scale.
+                self.core.refresh_menu_strip();
                 sys::nc::apply_extended_frame(window.hwnd());
                 sys::nc::refresh_caption_inset(window.hwnd());
                 Some(0)

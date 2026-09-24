@@ -122,6 +122,7 @@ already retained), and closures that capture shared mutable app state.
 | Direct2D shapes, clips and transforms (`d2d`, anti-aliased); `ProgressBar` and the owner-drawn shapes (radio, group box, toolbar, tabs, menus, sort arrow) draw with it (GDI fallback) | exists (#22, #77) |
 | Mica/Mica Alt/Acrylic backdrop and themed caption (`Backdrop`, `TitleBar`), GDI fallback | exists (#53 phase 1) |
 | Extended title bar (`WM_NCCALCSIZE`, `DwmDefWindowProc` hit-test, `caption_inset`, `set_caption_interactive`, top-strip frame extension) | exists (#53 phase 2, fixed by #76) |
+| Strip menu: `WindowSpec::menu_in_strip` draws the menu in the acrylic strip (stacked or inline), alpha-correct Direct2D/DirectWrite, native popups | exists (#88) |
 | DirectWrite text, gradients, bitmaps, rounded clips, colour emoji | #22 follow-up |
 | `GridView<T>`: virtualized tile grid (a `CustomWidget` hosted in a `ScrollView`), typed `GridModel`, single selection, wrap-around keyboard navigation, live tile-size range | exists (#47) |
 
@@ -283,10 +284,21 @@ Controls theme themselves; the app never handles `NM_CUSTOMDRAW`,
   with `Ui::title_bar_height()` so content never sits under either.
   The free strip drags, widgets marked with
   `ControlExt::set_caption_interactive` accept clicks, and
-  `Ui::caption_inset()` reserves the button area. Content painted over the
-  material still needs Direct2D alpha (GDI text over the glass writes zero
-  alpha), so a widget in the strip — the `title_bar` layout item — remains the
-  follow-up.
+  `Ui::caption_inset()` reserves the button area.
+- **Strip menu.** With `WindowSpec::menu_in_strip(true)` the menu bar is not a
+  native `HMENU`: `Ui::set_menu_bar` draws the items in the strip with
+  Direct2D/DirectWrite on a premultiplied-alpha surface, so they stay opaque
+  over the material (GDI text over glass writes zero alpha and DWM drops it).
+  The popups stay native `TrackPopupMenuEx`, owner-drawn on a dark theme, so a
+  chosen item still reaches `App::update` through the normal queue. `MENUITEM`s
+  can share the caption row after the title, Windows Terminal style, via
+  `WindowSpec::menu_strip_placement(MenuStripPlacement::Inline)`; the default
+  `Stacked` gives the menu its own row below the caption. Hover, pressed and
+  keyboard focus are translucent theme-token pills, mnemonics underline while
+  Alt is held, and the strip menu handles its own hit-testing, mouse and
+  keyboard input. When the material cannot be shown (unsupported Windows,
+  transparency off, high contrast, DirectWrite unavailable) the native menu bar
+  is used unchanged, and the default spec is untouched.
 
 ## Menus
 

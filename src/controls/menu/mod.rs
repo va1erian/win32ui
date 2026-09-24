@@ -22,7 +22,7 @@ use std::rc::Rc;
 use crate::accel::Shortcut;
 use crate::color::Color;
 
-pub(crate) use data::RenderItem;
+pub(crate) use data::{BarEntry, BarKind, RenderItem};
 use data::{Entry, Item, MenuData, Submenu, next_command, next_data};
 pub(crate) use draw::{MenuPaint, measure, paint_item};
 
@@ -169,6 +169,16 @@ impl<M: 'static> Menu<M> {
     /// The action for the item with command id `id`, if any.
     pub(crate) fn find_action(&self, id: u16) -> Option<Action<M>> {
         self.data.find_action(id)
+    }
+
+    /// The number of top-level items on the bar (used by the strip menu).
+    pub(crate) fn bar_len(&self) -> usize {
+        self.data.bar_len()
+    }
+
+    /// The `index`-th top-level bar item, for the strip menu widget.
+    pub(crate) fn bar_entry(&self, index: usize) -> Option<BarEntry<'_, M>> {
+        self.data.bar_entry(index)
     }
 
     /// The owner-draw description for the item with render id `data`.

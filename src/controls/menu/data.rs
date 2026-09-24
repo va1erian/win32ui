@@ -91,6 +91,26 @@ impl<M> Drop for MenuData<M> {
     }
 }
 
+/// One top-level item of a menu bar, as the strip menu widget sees it. Direct
+/// children of the bar that are separators are skipped, so the index in this
+/// sequence is the item's position on the strip.
+pub(crate) struct BarEntry<'a, M> {
+    /// Display label, with `&` accelerator markers.
+    pub(crate) label: &'a str,
+    /// Whether the item can be chosen.
+    pub(crate) enabled: bool,
+    /// What choosing the item does.
+    pub(crate) kind: BarKind<'a, M>,
+}
+
+/// What a [`BarEntry`] does when chosen.
+pub(crate) enum BarKind<'a, M> {
+    /// Raises the command's action directly (a plain bar item).
+    Command(u16),
+    /// Opens this submenu as a popup.
+    Submenu(&'a Menu<M>),
+}
+
 /// One item as the owner-draw painter sees it (no allocation).
 pub(crate) struct RenderItem<'a> {
     /// Display label, with `&` accelerator markers.
@@ -276,6 +296,36 @@ impl<M: 'static> MenuData<M> {
             }
         }
         None
+    }
+
+    /// The number of top-level items on the bar (separators excluded), for the
+    /// strip menu widget.
+    pub(super) fn bar_len(&self) -> usize {
+        self.entries
+            .iter()
+            .filter(|entry| !matches!(entry, Entry::Separator { .. }))
+            .count()
+    }
+
+    /// The `index`-th top-level bar item (separators excluded), if any.
+    pub(super) fn bar_entry(&self, index: usize) -> Option<BarEntry<'_, M>> {
+        self.entries
+            .iter()
+            .filter(|entry| !matches!(entry, Entry::Separator { .. }))
+            .nth(index)
+            .map(|entry| match entry {
+                Entry::Item(item) => BarEntry {
+                    label: &item.label,
+                    enabled: item.enabled,
+                    kind: BarKind::Command(item.id),
+                },
+                Entry::Submenu(submenu) => BarEntry {
+                    label: &submenu.label,
+                    enabled: true,
+                    kind: BarKind::Submenu(&submenu.menu),
+                },
+                Entry::Separator { .. } => unreachable!("separators were filtered out"),
+            })
     }
 
     /// Every enabled item's shortcut paired with its action, for auto
