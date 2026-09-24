@@ -14,6 +14,13 @@ use crate::hwnd::Hwnd;
 
 use super::hwnd_from;
 
+// `WM_DPICHANGED_AFTERPARENT`, from `winuser.h`: sent to a per-monitor-v2
+// child window (never `WM_DPICHANGED`, which only a top-level window gets)
+// after its parent has already handled the DPI change. Reading the new DPI
+// back with `GetDpiForWindow` (see `sys::dpi::window_dpi`) is the documented
+// way to answer it, since neither `wParam`/`lParam` carry it for this variant.
+const WM_DPICHANGED_AFTERPARENT: u32 = 0x02E3;
+
 /// One `NM_CUSTOMDRAW` notification from a list view's header control.
 pub(crate) struct HeaderDraw {
     /// The `CDDS_*` stage.
@@ -150,10 +157,15 @@ unsafe extern "system" fn header_proc(
     unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) }
 }
 
-/// Implemented by the owner of a list view to restretch `Fill` columns.
+/// Implemented by the owner of a list view to restretch `Fill` columns and
+/// react to a scale change.
 pub(crate) trait SizeHandler {
     /// The list view's client size changed; recompute `Fill` column widths.
     fn on_size(&self);
+
+    /// The list view's effective DPI changed (`WM_DPICHANGED_AFTERPARENT`);
+    /// `dpi` is the new value. Default: no-op.
+    fn on_dpi_changed(&self, _dpi: u32) {}
 }
 
 struct SizeRefdata {
@@ -213,6 +225,17 @@ unsafe extern "system" fn size_proc(
             // undefined behaviour; isolate it instead.
             let _ =
                 std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| data.handler.on_size()));
+        }
+    } else if msg == WM_DPICHANGED_AFTERPARENT {
+        // SAFETY: `refdata` is the live `SizeRefdata` installed by `install`;
+        // `hwnd` is this same subclassed list view, so reading its own DPI
+        // back is safe and gives the value this message does not carry.
+        unsafe {
+            let dpi = super::dpi::window_dpi(hwnd_from(hwnd));
+            let data = &*(refdata as *const SizeRefdata);
+            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                data.handler.on_dpi_changed(dpi)
+            }));
         }
     }
     // SAFETY: forward to the subclass chain's original window procedure.

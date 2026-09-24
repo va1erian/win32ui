@@ -10,9 +10,10 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use windows::Win32::UI::Controls::{LVN_GETDISPINFO, NM_CUSTOMDRAW};
+use windows::Win32::UI::Controls::{HIMAGELIST, LVN_GETDISPINFO, NM_CUSTOMDRAW};
 
 use crate::controls::listview::model::{Column, ColumnWidth, ListModel};
+use crate::controls::listview::style::{RowState, RowStyle};
 use crate::controls::listview::theme::ListViewTheme;
 use crate::controls::registry::{ControlEvents, ControlKind};
 use crate::gdi::{Brush, Canvas, Font, TextFormat};
@@ -25,12 +26,28 @@ use crate::units::Dip;
 const CDDS_PREPAINT: u32 = 0x0000_0001;
 const CDDS_ITEMPREPAINT: u32 = 0x0001_0001;
 
+/// Width, in device pixels, of the [`RowStyle::accent_bar`].
+const ACCENT_BAR_WIDTH: i32 = 3;
+
+pub(crate) type RowStyleFn<T> = Box<dyn Fn(&T) -> RowStyle>;
+pub(crate) type RowPainterFn<T> = Box<dyn Fn(&T, &Canvas, Rect, RowState) -> bool>;
+
 pub(crate) struct ListViewInner<T> {
     pub(crate) model: Option<Box<dyn ListModel<Item = T>>>,
     pub(crate) theme: ListViewTheme,
     pub(crate) columns: Vec<Column<T>>,
     pub(crate) font: Font,
-    pub(crate) playing: Option<usize>,
+    /// The bold variant of `font`, used for [`RowStyle::bold`] rows. Created
+    /// once at construction, never per paint.
+    pub(crate) bold_font: Font,
+    pub(crate) row_style: Option<RowStyleFn<T>>,
+    pub(crate) row_painter: Option<RowPainterFn<T>>,
+    /// The app's requested row height, kept so it can be reconverted to
+    /// pixels on a DPI change.
+    pub(crate) row_height: Option<Dip>,
+    /// The image list backing [`row_height`](Self::row_height) (see
+    /// `sys::listview::lv_set_row_height`); destroyed in `Drop`.
+    pub(crate) row_image_list: Option<HIMAGELIST>,
     /// `(column, ascending)` for the header sort arrow.
     pub(crate) sort: Option<(usize, bool)>,
     pub(crate) dpi: u32,
@@ -128,21 +145,52 @@ impl<T> ListViewInner<T> {
         }
 
         let selected = sys::listview::lv_is_selected(hwnd, item);
-        let playing = self.playing == Some(item as usize);
         let focused = sys::listview::lv_has_focus(hwnd);
+        let state = RowState {
+            selected,
+            focused,
+            hot: ctx.hot,
+            alternate: item % 2 == 1,
+        };
+        let canvas = Canvas::new(ctx.hdc);
+
+        if let Some(painter) = &self.row_painter
+            && let Some(data_row) = self
+                .model
+                .as_ref()
+                .and_then(|model| model.get(item as usize))
+            && painter(data_row, &canvas, row, state)
+        {
+            return sys::listview::CustomDrawResult::SkipDefault;
+        }
+
+        let style = self
+            .model
+            .as_ref()
+            .and_then(|model| model.get(item as usize))
+            .and_then(|data_row| self.row_style.as_ref().map(|f| f(data_row)));
+
         // Explorer keeps the normal text colour on selection and only swaps
-        // the background (focused blue, unfocused grey); only the playing
-        // row swaps the text too. See `ListViewTheme::row_colors`.
-        let (background, text_color) =
-            self.theme
-                .row_colors(selected, focused, playing, item % 2 == 1);
+        // the background (focused blue, unfocused grey). See
+        // `ListViewTheme::row_colors`; `style` then overrides on top.
+        let (mut background, mut text_color) =
+            self.theme.row_colors(selected, focused, state.alternate);
+        if let Some(style) = &style {
+            if let Some(color) = style.background {
+                background = color;
+            }
+            if let Some(color) = style.text {
+                text_color = color;
+            }
+        }
+        let bold = style.as_ref().is_some_and(|style| style.bold);
+        let font = if bold { &self.bold_font } else { &self.font };
 
         // Paint the row ourselves: this is a real owner-drawn list, which also
         // lets us pick the focused/unfocused selection background ourselves
         // instead of taking the system's focus-dependent default.
-        let canvas = Canvas::new(ctx.hdc);
         canvas.fill_rect(row, background);
-        canvas.with_font(&self.font, |canvas| {
+        canvas.with_font(font, |canvas| {
             for (column, spec) in self.columns.iter().enumerate() {
                 let cell = sys::listview::lv_cell_rect(hwnd, item, column as i32);
                 if cell.is_empty() {
@@ -163,6 +211,13 @@ impl<T> ListViewInner<T> {
                 );
             }
         });
+
+        if let Some(color) = style.as_ref().and_then(|style| style.accent_bar) {
+            canvas.fill_rect(
+                Rect::new(row.left, row.top, row.left + ACCENT_BAR_WIDTH, row.bottom),
+                color,
+            );
+        }
 
         // Thin vertical separators between columns.
         if let Ok(brush) = Brush::solid(self.theme.border) {
@@ -193,6 +248,20 @@ impl<T> sys::listview_header::SizeHandler for StretchHandler<T> {
         // `try_borrow` keeps a surprise nesting from panicking across the
         // subclass boundary; the next resize then repairs the widths.
         if let Ok(inner) = self.inner.try_borrow() {
+            inner.restretch(self.view);
+        }
+    }
+
+    fn on_dpi_changed(&self, dpi: u32) {
+        // Same `try_borrow` caution as `on_size`; a missed DPI change is
+        // repaired by the next resize or theme change, never a panic.
+        if let Ok(mut inner) = self.inner.try_borrow_mut() {
+            inner.dpi = dpi;
+            if let Some(height) = inner.row_height {
+                let px = height.to_px(dpi).value();
+                let previous = inner.row_image_list.take();
+                inner.row_image_list = sys::listview::lv_set_row_height(self.view, px, previous);
+            }
             inner.restretch(self.view);
         }
     }

@@ -63,23 +63,24 @@ use crate::controls::listview::header::HeaderDrawer;
 use crate::controls::registry::{self, ControlEvents};
 use crate::controls::{create_child, next_id, style};
 use crate::error::Result;
-use crate::gdi::Font;
+use crate::gdi::{Font, FontWeight};
 use crate::geometry::Rect;
 use crate::hwnd::Hwnd;
-use crate::message::{Key, Modifiers};
 use crate::sys;
 use crate::theme::{Theme, Themed};
-use crate::units::Dip;
 
 mod api;
+mod builders;
 mod draw;
 pub(crate) mod events;
 mod header;
 mod model;
+mod style;
 mod theme;
 
 pub use self::events::ListViewEvent;
 pub use self::model::{Column, ColumnWidth, Fill, ListModel, SortDirection};
+pub use self::style::{RowState, RowStyle};
 pub use self::theme::ListViewTheme;
 
 const LVS_REPORT: u32 = 0x0000_0001;
@@ -141,6 +142,9 @@ impl<T: 'static, M: 'static> ListView<T, M> {
         // Match the egui frontend's font/row height, opt the control and its
         // header into the theme's visual style, and owner-draw the header.
         let font = Font::system_ui(dpi)?;
+        // The bold variant for `RowStyle::bold` rows, created once here (never
+        // per paint) so the hot custom-draw path allocates no GDI object.
+        let bold_font = Font::new("Segoe UI", 9.75, FontWeight::Bold, dpi)?;
         sys::control::set_control_font(hwnd, font.raw());
         sys::apply_native_theme(hwnd, sys::NativeControlKind::Scrollable, ui.theme().is_dark);
         let header = sys::listview::lv_header(hwnd);
@@ -158,7 +162,11 @@ impl<T: 'static, M: 'static> ListView<T, M> {
             theme,
             columns: Vec::new(),
             font,
-            playing: None,
+            bold_font,
+            row_style: None,
+            row_painter: None,
+            row_height: None,
+            row_image_list: None,
             sort: None,
             dpi,
             last_selection: Vec::new(),
@@ -195,7 +203,11 @@ impl<T: 'static, M: 'static> ListView<T, M> {
                 hwnd,
                 Rc::new(move |applied| {
                     if let Some(inner) = weak.upgrade() {
-                        inner.borrow_mut().theme = ListViewTheme::from_theme(applied);
+                        let mut state = inner.borrow_mut();
+                        let zebra = state.theme.zebra;
+                        state.theme = ListViewTheme::from_theme(applied);
+                        state.theme.zebra = zebra;
+                        drop(state);
                         sys::listview::lv_set_colors(
                             hwnd,
                             inner.borrow().theme.background,
@@ -230,90 +242,6 @@ impl<T: 'static, M: 'static> ListView<T, M> {
             sink: ui.clone(),
         })
     }
-
-    /// Adds a left-aligned column showing `text(row)`.
-    pub fn column(
-        self,
-        title: impl Into<String>,
-        width: impl Into<ColumnWidth>,
-        text: impl for<'a> Fn(&'a T) -> &'a str + 'static,
-    ) -> ListView<T, M> {
-        self.push_column(Column::new(title, width, text));
-        self
-    }
-
-    /// Adds a right-aligned column (numbers, durations) showing `text(row)`.
-    pub fn column_right(
-        self,
-        title: impl Into<String>,
-        width: impl Into<ColumnWidth>,
-        text: impl for<'a> Fn(&'a T) -> &'a str + 'static,
-    ) -> ListView<T, M> {
-        self.push_column(Column::right(title, width, text));
-        self
-    }
-
-    fn push_column(&self, column: Column<T>) {
-        let view = self.control.hwnd();
-        let index = self.inner.borrow().columns.len();
-        // Fixed columns convert their design width now; `Fill` columns take a
-        // placeholder until the restretch below (or the first `WM_SIZE`)
-        // shares out the leftover client width.
-        let fixed = match column.width {
-            ColumnWidth::Fixed(width) => width.to_px(self.inner.borrow().dpi).value(),
-            ColumnWidth::Fill => Dip::new(64.0).to_px(self.inner.borrow().dpi).value(),
-        };
-        sys::listview::lv_insert_column(
-            view,
-            index as i32,
-            &column.title,
-            fixed,
-            column.align_right,
-        );
-        self.inner.borrow_mut().columns.push(column);
-        self.inner.borrow().restretch(view);
-    }
-
-    /// Enables or disables multi-select (`LVS_SINGLESEL` off or on). The list
-    /// starts single-select.
-    pub fn multi_select(self, multi: bool) -> ListView<T, M> {
-        sys::listview::lv_set_single_select(self.control.hwnd(), !multi);
-        self
-    }
-
-    /// Maps a selection change to a message. The slice holds every selected
-    /// row, ascending — empty when the selection was cleared.
-    pub fn on_select(self, f: impl Fn(&[usize]) -> Option<M> + 'static) -> ListView<T, M> {
-        self.events.borrow_mut().on_select = Some(Box::new(f));
-        self
-    }
-
-    /// Maps a double-click or Enter (activation) to a message.
-    pub fn on_activate(self, f: impl Fn(usize) -> Option<M> + 'static) -> ListView<T, M> {
-        self.events.borrow_mut().on_activate = Some(Box::new(f));
-        self
-    }
-
-    /// Maps a right-click to a message.
-    pub fn on_context(self, f: impl Fn(usize) -> Option<M> + 'static) -> ListView<T, M> {
-        self.events.borrow_mut().on_context = Some(Box::new(f));
-        self
-    }
-
-    /// Maps a header click to a message. The app sorts (or asks for a sort)
-    /// and shows the arrow with
-    /// [`set_sort_indicator`](ListView::set_sort_indicator).
-    pub fn on_sort(self, f: impl Fn(usize) -> Option<M> + 'static) -> ListView<T, M> {
-        self.events.borrow_mut().on_sort = Some(Box::new(f));
-        self
-    }
-
-    /// Maps a key pressed while the list has focus to a message, together with
-    /// the modifier state at that moment.
-    pub fn on_key(self, f: impl Fn(Key, Modifiers) -> Option<M> + 'static) -> ListView<T, M> {
-        self.events.borrow_mut().on_key = Some(Box::new(f));
-        self
-    }
 }
 
 impl<T, M> AsControl for ListView<T, M> {
@@ -324,7 +252,11 @@ impl<T, M> AsControl for ListView<T, M> {
 
 impl<T, M> Themed for ListView<T, M> {
     fn apply_theme(&self, theme: &Theme) {
-        self.inner.borrow_mut().theme = ListViewTheme::from_theme(theme);
+        let mut inner = self.inner.borrow_mut();
+        let zebra = inner.theme.zebra;
+        inner.theme = ListViewTheme::from_theme(theme);
+        inner.theme.zebra = zebra;
+        drop(inner);
         let applied = self.inner.borrow().theme;
         sys::listview::lv_set_colors(self.control.hwnd(), applied.background, applied.text);
         sys::apply_native_theme(
@@ -352,5 +284,8 @@ impl<T, M> Drop for ListView<T, M> {
         registry::unregister(self.control.hwnd());
         registry::unregister_app_events(self.control.hwnd());
         crate::theme::unregister_themed(self.control.hwnd());
+        if let Some(list) = self.inner.borrow_mut().row_image_list.take() {
+            sys::listview::lv_destroy_image_list(list);
+        }
     }
 }

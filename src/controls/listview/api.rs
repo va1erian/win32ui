@@ -145,12 +145,6 @@ impl<T: 'static, M: 'static> ListView<T, M> {
         }
     }
 
-    /// Marks `row` as the now-playing row (highlighted during custom draw).
-    pub fn set_playing(&self, row: Option<usize>) {
-        self.inner.borrow_mut().playing = row;
-        sys::window::invalidate(self.control.hwnd());
-    }
-
     /// Shows a sort arrow on `column`.
     pub fn set_sort_indicator(&self, column: usize, direction: SortDirection) {
         self.inner.borrow_mut().sort = Some((column, direction == SortDirection::Ascending));

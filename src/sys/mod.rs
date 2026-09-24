@@ -20,6 +20,7 @@ pub(crate) mod gdi;
 pub(crate) mod layout;
 pub(crate) mod listview;
 pub(crate) mod listview_header;
+pub(crate) mod listview_rowheight;
 pub(crate) mod looper;
 pub(crate) mod menu;
 pub(crate) mod message;

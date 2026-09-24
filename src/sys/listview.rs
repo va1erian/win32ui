@@ -20,6 +20,10 @@ use crate::hwnd::Hwnd;
 use super::control::{send, write_wide};
 use super::{hwnd_from, raw_hwnd};
 
+// Row height is a separate, small file (see `AGENTS.md`'s file-size rule);
+// re-exported here so callers keep using `sys::listview::*`.
+pub(crate) use super::listview_rowheight::{lv_destroy_image_list, lv_set_row_height};
+
 /// Answers an `LVN_GETDISPINFO` request with text borrowed from the row.
 ///
 /// `text(item, sub_item)` returns the cell's text, or `None` for an empty
@@ -42,6 +46,9 @@ pub(crate) fn lv_disp_info_str<'a>(
     0
 }
 
+// `CDIS_HOT`, from `commctrl.h`: the item is under the pointer.
+const CDIS_HOT: u32 = 0x0040;
+
 /// The owner-draw context of an `NM_CUSTOMDRAW` notification.
 pub(crate) struct CustomDraw {
     /// `CDDS_*` stage.
@@ -50,6 +57,8 @@ pub(crate) struct CustomDraw {
     pub item: i32,
     /// The DC to draw into.
     pub hdc: windows::Win32::Graphics::Gdi::HDC,
+    /// Whether the pointer is hovering this item (`CDIS_HOT`).
+    pub hot: bool,
 }
 
 /// What the control should do after the custom-draw callback.
@@ -78,6 +87,7 @@ pub(crate) fn lv_custom_draw(
         stage: info.nmcd.dwDrawStage.0,
         item: info.nmcd.dwItemSpec as i32,
         hdc: info.nmcd.hdc,
+        hot: info.nmcd.uItemState & CDIS_HOT != 0,
     };
     match draw(&context) {
         CustomDrawResult::Default => 0,
