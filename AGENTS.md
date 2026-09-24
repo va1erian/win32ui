@@ -55,6 +55,17 @@ cargo test
 
 - Running the demo: always set `WIN32UI_DEMO_AUTOCLOSE_MS=4000` so it exits on
   its own, and never leave a demo process running when you finish.
+- **Screenshots.** Never raise, activate or foreground a window and never move
+  the pointer to take a screenshot; other agents are testing on the same
+  desktop. Use `cargo run --features wgc --example capture -- --hwnd/--title/
+  --pid … --out shot.png` (or, in tests, `Window::capture_composited` /
+  `win32ui::capture::capture_hwnd`): `Windows.Graphics.Capture` captures any
+  top-level window, including one under another, with the DWM frame, caption
+  buttons and backdrop material. Prefer it over `capture_screen`, which only
+  works for an unoccluded window and has been the reason windows were raised.
+  `Window::capture` (`PrintWindow`) stays for a cheap capture without DWM
+  chrome. Window lookup by title/pid is only for the capture tool's own opt-in
+  flags on windows you started.
 - A dependency's source lives under `~/.cargo/registry/src/*/<crate>-<version>/`.
   Never scan the filesystem (`find /`, `Get-ChildItem -Recurse C:\`) for it.
 - Touch only the files your issue names; if you need to change a file another

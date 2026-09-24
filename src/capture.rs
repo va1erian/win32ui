@@ -2,9 +2,24 @@
 
 //! Rendering a window's pixels into an RGBA buffer, for screenshots and visual
 //! tests.
+//!
+//! Three backends, for different needs:
+//!
+//! * [`Window::capture`] (`PrintWindow`): cheap, works without DWM, but misses
+//!   the caption buttons, the frame and the backdrop material, and in practice
+//!   needs an active window for Direct2D child panes to be current.
+//! * [`Window::capture_screen`] (screen `BitBlt`): includes the DWM output but
+//!   requires the window to be on screen and unobscured.
+//! * [`capture_hwnd`] (`Windows.Graphics.Capture`, the `wgc` feature): the
+//!   exact composited surface — frame, caption buttons, backdrop — even when
+//!   the window is occluded or owned by another process, without raising it or
+//!   moving the pointer. Prefer it for screenshots and visual tests when the
+//!   feature is enabled.
 
 use crate::error::Result;
 use crate::geometry::Size;
+#[cfg(feature = "wgc")]
+use crate::hwnd::Hwnd;
 use crate::sys;
 use crate::window::Window;
 
@@ -54,6 +69,24 @@ impl Window {
         })
     }
 
+    /// Renders this window's DWM-composited surface into an [`RgbaImage`].
+    ///
+    /// Uses `Windows.Graphics.Capture`, so the result includes everything DWM
+    /// draws — the caption buttons, the frame, rounded corners and the
+    /// backdrop material — and is correct even when the window is occluded or
+    /// behind another window. Unlike [`capture_screen`](Window::capture_screen),
+    /// the window never has to be raised, focused or unoccluded, and the
+    /// pointer is never moved. Requires the `wgc` feature.
+    ///
+    /// The captured region is the whole window rectangle at its current DPI,
+    /// including the frame. Returns
+    /// [`CaptureError::Minimized`](crate::CaptureError::Minimized) for a
+    /// minimised window (which it does not restore).
+    #[cfg(feature = "wgc")]
+    pub fn capture_composited(&self) -> Result<RgbaImage> {
+        capture_hwnd(self.hwnd())
+    }
+
     /// Renders the window's screen rectangle into an [`RgbaImage`], via a
     /// `BitBlt` from the screen DC.
     ///
@@ -71,6 +104,29 @@ impl Window {
             pixels: captured.pixels,
         })
     }
+}
+
+/// Captures the DWM-composited surface of any top-level window handle.
+///
+/// Works on a window this process does not own (for example an app a test
+/// harness or an agent launched), without raising it, focusing it or moving
+/// the pointer, and even when it is occluded. The captured region is the
+/// window rectangle at its current DPI, frame included. Requires the `wgc`
+/// feature.
+///
+/// Returns [`CaptureError::Minimized`](crate::CaptureError::Minimized) for a
+/// minimised window, [`CaptureError::Timeout`](crate::CaptureError::Timeout)
+/// if no frame arrives within about a second, and
+/// [`CaptureError::Unavailable`](crate::CaptureError::Unavailable) when
+/// Windows.Graphics.Capture is not available on the system.
+#[cfg(feature = "wgc")]
+pub fn capture_hwnd(hwnd: Hwnd) -> Result<RgbaImage> {
+    let captured = sys::capture_wgc::capture(hwnd)?;
+    Ok(RgbaImage {
+        width: captured.width as u32,
+        height: captured.height as u32,
+        pixels: captured.pixels,
+    })
 }
 
 /// The captured-image type a frontend usually needs.

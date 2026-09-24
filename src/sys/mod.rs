@@ -8,6 +8,8 @@ pub(crate) mod animation;
 pub(crate) mod button;
 pub(crate) mod button_draw;
 pub(crate) mod capture;
+#[cfg(feature = "wgc")]
+pub(crate) mod capture_wgc;
 pub(crate) mod client_edge;
 pub(crate) mod clipboard;
 pub(crate) mod combobox;

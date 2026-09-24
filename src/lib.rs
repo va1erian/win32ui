@@ -46,7 +46,7 @@
 
 mod accel;
 mod app;
-mod capture;
+pub mod capture;
 mod color;
 mod error;
 mod geometry;
@@ -71,7 +71,7 @@ pub use app::{
 };
 pub use capture::RgbaImage;
 pub use color::Color;
-pub use error::{Error, Result, Win32Error};
+pub use error::{CaptureError, Error, Result, Win32Error};
 pub use geometry::{Point, Rect, Size};
 pub use hwnd::Hwnd;
 pub use layout::{Dock, DockLayout, Insets, Stack, StackDirection, StackSlot};
