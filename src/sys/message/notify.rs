@@ -73,10 +73,15 @@ pub(crate) fn decode_notify(lparam: LPARAM) -> Notify {
         };
     }
     if code == NM_DBLCLK || code == NM_CLICK || code == NM_RCLICK {
-        // Only these codes are shared between control kinds, so the registry
-        // lookup is deferred to here: a nested notification (custom draw during
-        // an owner-draw callback) must not re-borrow a control that is busy.
-        if registry::kind(hwnd_from(from)) == Some(ControlKind::TreeView) {
+        // These codes are shared between control kinds (and by unregistered
+        // windows like a list view's own header), so the registry lookup is
+        // deferred to here: a nested notification (custom draw during an
+        // owner-draw callback) must not re-borrow a control that is busy.
+        // Only `NMITEMACTIVATE` senders may be read as such — anything else
+        // sends a plain `NMHDR`, and reading `NMITEMACTIVATE` out of that is
+        // an out-of-bounds read.
+        let kind = registry::kind(hwnd_from(from));
+        if kind == Some(ControlKind::TreeView) {
             let event = if code == NM_DBLCLK {
                 TreeViewEvent::DoubleClick
             } else if code == NM_RCLICK {
@@ -86,17 +91,19 @@ pub(crate) fn decode_notify(lparam: LPARAM) -> Notify {
             };
             return Notify::TreeView { id, event };
         }
-        let info = read::<NMITEMACTIVATE>(lparam);
-        let event = if code == NM_DBLCLK {
-            ListViewEvent::DoubleClick { item: info.iItem }
-        } else if code == NM_RCLICK {
-            ListViewEvent::RightClick { item: info.iItem }
-        } else {
-            ListViewEvent::Click { item: info.iItem }
-        };
-        return Notify::ListView { id, event };
+        if kind == Some(ControlKind::ListView) {
+            let info = read::<NMITEMACTIVATE>(lparam);
+            let event = if code == NM_DBLCLK {
+                ListViewEvent::DoubleClick { item: info.iItem }
+            } else if code == NM_RCLICK {
+                ListViewEvent::RightClick { item: info.iItem }
+            } else {
+                ListViewEvent::Click { item: info.iItem }
+            };
+            return Notify::ListView { id, event };
+        }
     }
-    if code == NM_RETURN {
+    if code == NM_RETURN && registry::kind(hwnd_from(from)) == Some(ControlKind::ListView) {
         let info = read::<NMITEMACTIVATE>(lparam);
         return Notify::ListView {
             id,
@@ -137,3 +144,6 @@ fn node_id(lparam: LPARAM) -> Option<i64> {
         Some(lparam.0 as i64)
     }
 }
+
+#[cfg(test)]
+mod tests;
