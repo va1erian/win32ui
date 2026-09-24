@@ -107,11 +107,14 @@ impl<M: 'static> Core<M> {
     }
 
     /// Repaints a child control hosted in a top bar native slot, after the
-    /// bar's frame was presented over it. Allocates nothing.
+    /// bar's frame was presented over it, making it paint opaquely over the
+    /// material first. Allocates nothing once the child is set up.
     pub(crate) fn repaint_top_bar_native_children(&self) {
         let hwnd = self.hwnd.get();
         if let Some(state) = self.material_top_bar.borrow().as_ref() {
-            state.for_each_native_point(|point| sys::window::invalidate_child_at(hwnd, point));
+            state.for_each_native_point(|point| {
+                sys::glass_child::repaint_opaque_child_at(hwnd, point)
+            });
         }
     }
 
@@ -204,9 +207,9 @@ impl<M: 'static> Core<M> {
     }
 
     /// Paints the material top bar: the band background (opaque when the
-    /// material is inactive), a bottom hairline, and the items. The strip above
-    /// has already been cleared to black by `WM_ERASEBKGND`, so DWM composites
-    /// the material through the transparent pixels here.
+    /// material is inactive), a bottom hairline, and the items. The surface was
+    /// cleared transparent, so DWM composites the material through the band's
+    /// untouched pixels.
     pub(crate) fn paint_material_top_bar(&self, canvas: &mut D2dCanvas, dpi: u32, theme: &Theme) {
         let Some(state) = self.material_top_bar.borrow().as_ref().cloned() else {
             return;
@@ -220,15 +223,15 @@ impl<M: 'static> Core<M> {
         let strip = sys::nc::title_bar_height(hwnd);
         let scale = dpi as f32 / 96.0;
         let (top_dip, bottom_dip) = (strip as f32 / scale, (strip + band) as f32 / scale);
-        // A native control in a slot is painted through GDI with a zero alpha
-        // channel, which DWM drops over the glass band, so the band is filled
-        // opaque from the theme instead of showing the material. This keeps
-        // native slots (the search box) visible; see the follow-up issue for
-        // material plus native children.
-        canvas.fill_rect_rgba(
-            RectF::new(0.0, top_dip, client.right as f32 / scale, bottom_dip),
-            Rgba::from(theme.surface),
-        );
+        // The band is part of the extended frame, so its transparent pixels show
+        // the material; a native child in a slot paints opaquely over it (see
+        // `sys::glass_child`). Without an active material the band is opaque.
+        if !crate::theme::backdrop_active(hwnd) {
+            canvas.fill_rect_rgba(
+                RectF::new(0.0, top_dip, client.right as f32 / scale, bottom_dip),
+                Rgba::from(theme.surface),
+            );
+        }
         canvas.fill_rect_rgba(
             RectF::new(
                 0.0,
