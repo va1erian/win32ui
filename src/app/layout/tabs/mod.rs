@@ -358,6 +358,7 @@ pub(crate) fn build_tabs<M: 'static>(ui: &Ui<M>, node: &TabsNode) {
             if let Some(shared) = weak.upgrade() {
                 let hwnd = shared.hwnd.get();
                 sys::apply_native_theme(hwnd, sys::NativeControlKind::Scrollable, applied.is_dark);
+                sys::tabs::apply_scroller_theme(hwnd, applied.is_dark);
                 sys::window::invalidate(hwnd);
             }
         }),
