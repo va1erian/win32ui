@@ -37,6 +37,10 @@ pub(crate) struct ScrollShared {
     offset: Cell<i32>,
     notch: Cell<i32>,
     wheel_accum: Cell<i32>,
+    /// The bounds last applied to the content, so a redundant `on_size` (the
+    /// content height recomputed to the same value) does not re-issue a
+    /// `MoveWindow` and repaint the whole content.
+    last_bounds: Cell<Rect>,
 }
 
 impl ScrollShared {
@@ -49,6 +53,7 @@ impl ScrollShared {
             offset: Cell::new(0),
             notch: Cell::new(notch.max(1)),
             wheel_accum: Cell::new(0),
+            last_bounds: Cell::new(Rect::default()),
         }
     }
 
@@ -58,6 +63,12 @@ impl ScrollShared {
 
     fn clamped(&self) -> i32 {
         self.offset.get().clamp(0, self.max_offset())
+    }
+
+    /// Sets the content height in device pixels and resyncs the bar/content.
+    pub(crate) fn set_content_height_px(&self, height: i32) {
+        self.content_height.set(height.max(0));
+        self.on_size();
     }
 
     /// Recomputes the page size from the viewport and repositions the content.
@@ -94,6 +105,13 @@ impl ScrollShared {
         }
         let width = sys::window::client_rect(viewport).width();
         let bounds = Rect::new(0, -self.offset.get(), width, self.content_height.get());
+        // A recomputed content height that lands on the same size (the
+        // `GridView` resize callback recomputes it from the new width) must not
+        // re-issue `MoveWindow`: that would send another `WM_SIZE` and loop.
+        if self.last_bounds.get() == bounds {
+            return;
+        }
+        self.last_bounds.set(bounds);
         sys::window::move_window(content, bounds);
     }
 
@@ -193,6 +211,7 @@ impl ScrollView {
         let hwnd = content.hwnd();
         sys::window::set_parent(hwnd, viewport);
         self.shared.content.set(hwnd);
+        self.shared.last_bounds.set(Rect::default());
         let height = content.bounds().height();
         if height > 0 {
             self.shared.content_height.set(height);
@@ -208,8 +227,13 @@ impl ScrollView {
     /// Sets the scrollable content height explicitly (e.g. for content that is
     /// not a single control).
     pub fn set_content_height(&self, height: Px) {
-        self.shared.content_height.set(height.value().max(0));
-        self.shared.on_size();
+        self.shared.set_content_height_px(height.value());
+    }
+
+    /// A shared handle to the scroll state, for a composite widget that resizes
+    /// its content extent from a window-size callback.
+    pub(crate) fn shared(&self) -> Rc<ScrollShared> {
+        Rc::clone(&self.shared)
     }
 
     /// Scrolls to `offset` from the top, clamped to the content.

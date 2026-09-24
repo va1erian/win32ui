@@ -123,6 +123,7 @@ impl<W: CustomWidget, M: 'static> Custom<W, M> {
             widget: Rc::new(RefCell::new(widget)),
             mapper: RefCell::new(None),
             scroll: RefCell::new(None),
+            resize: RefCell::new(None),
             timer: Cell::new(None),
             ui: ui.clone(),
         });
@@ -219,6 +220,19 @@ impl<W: CustomWidget, M: 'static> Custom<W, M> {
             scroll.set_mapper(f);
         }
         self
+    }
+
+    /// Registers a callback run whenever the widget's client area changes size,
+    /// before the next paint. The callback receives the new client bounds
+    /// (origin at zero), in device pixels.
+    ///
+    /// Unlike [`Custom::on_event`], it maps no app message: it exists for a
+    /// composite widget that must recompute state from its new size — a
+    /// virtualized grid resizing its scroll extent, say. It runs without the
+    /// widget borrowed, so it may move other windows without re-entrancy.
+    pub fn on_resize(&self, f: impl Fn(Rect) + 'static) {
+        let callback: Rc<dyn Fn(Rect)> = Rc::new(f);
+        self.shared.resize.replace(Some(callback));
     }
 
     /// Sets the scrollable content height in design units. Only meaningful with

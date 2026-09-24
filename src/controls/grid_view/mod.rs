@@ -56,6 +56,7 @@ use crate::app::Ui;
 use crate::controls::control::{AsControl, Control, ControlExt};
 use crate::controls::custom::Custom;
 use crate::controls::scrollview::ScrollView;
+use crate::d2d::{D2dCanvas, RectF};
 use crate::error::Result;
 use crate::geometry::Rect;
 use crate::theme::{Theme, Themed};
@@ -64,7 +65,7 @@ use crate::units::{Dip, Px, dip};
 pub use self::model::{GridModel, TileSizeSpec, TileState};
 pub use self::theme::GridViewTheme;
 
-use self::widget::{ContentFn, GridEvent, GridWidget};
+use self::widget::{ContentFn, D2dContentFn, GridEvent, GridWidget};
 
 /// The default tile size, used until [`GridView::tile_size`] is called.
 const DEFAULT_TILE_DIP: f32 = 148.0;
@@ -119,9 +120,24 @@ impl<T: 'static, M: 'static> GridView<T, M> {
         let widget = GridWidget::new(tile_px, None, spacing_px);
         let custom = Custom::new(ui, widget)?.on_event(move |event| mapper.map(event));
         custom.set_tab_stop(true);
+        let widget_handle = custom.widget();
 
         let scroll = ScrollView::new(ui)?;
         scroll.set_content(&custom);
+
+        // The layout resizes the scroll view on every window resize, which
+        // resizes the content window and fires this. Recompute the extent from
+        // the new width so the scrollbar range never goes stale between
+        // `set_model`/`set_tile_size` calls.
+        let scroll_shared = scroll.shared();
+        custom.on_resize(move |bounds| {
+            let widget = widget_handle.borrow();
+            let columns = widget.columns(bounds.width()).max(1);
+            let height =
+                layout::content_height_px(widget.len(), columns, widget.tile_px(), spacing_px);
+            drop(widget);
+            scroll_shared.set_content_height_px(height);
+        });
 
         Ok(GridView {
             scroll,
@@ -155,6 +171,23 @@ impl<T: 'static, M: 'static> GridView<T, M> {
     ) -> GridView<T, M> {
         let content: Rc<ContentFn<T>> = Rc::new(f);
         self.with_widget(|widget| widget.set_content(Rc::clone(&content)));
+        self
+    }
+
+    /// Sets a Direct2D `content` painter, used instead of [`GridView::content`]:
+    /// every visible tile is drawn with anti-aliased shapes and images. The
+    /// closure receives the tile's rectangle in device-independent pixels; the
+    /// widget still paints the selection/hover fill behind it and only calls it
+    /// for tiles that intersect the invalidated region.
+    ///
+    /// Setting this switches the whole grid to Direct2D, so the GDI `content`
+    /// painter is then unused. If neither is set, tiles are blank.
+    pub fn content_d2d(
+        self,
+        f: impl Fn(&T, &mut D2dCanvas<'_>, RectF, TileState) + 'static,
+    ) -> GridView<T, M> {
+        let content: Rc<D2dContentFn<T>> = Rc::new(f);
+        self.with_widget(|widget| widget.set_content_d2d(Rc::clone(&content)));
         self
     }
 
@@ -192,6 +225,13 @@ impl<T: 'static, M: 'static> GridView<T, M> {
         self.custom.invalidate();
     }
 
+    /// Schedules a repaint of the grid: for when the model's items changed in
+    /// place (a tile's image finished loading, say) rather than through
+    /// [`GridView::set_model`].
+    pub fn invalidate(&self) {
+        self.custom.invalidate();
+    }
+
     /// The tile size, in design units.
     pub fn current_tile_size(&self) -> Dip {
         Px(self.with_widget(GridWidget::tile_px)).to_dip(self.custom.dpi())
@@ -199,10 +239,20 @@ impl<T: 'static, M: 'static> GridView<T, M> {
 
     /// Sets the tile size, clamped to the range given to
     /// [`GridView::tile_size`] if any. Meant for a live tile-size slider.
+    ///
+    /// A size that rounds to the same device-pixel tile as the current one is a
+    /// no-op, so a slider dragged in sub-pixel steps does not rebuild the whole
+    /// grid (and its scroll extent) for every move.
     pub fn set_tile_size(&self, size: Dip) {
         let px = size.to_px(self.custom.dpi()).value();
-        self.with_widget(|widget| widget.set_tile_px(px));
-        self.resync();
+        let changed = self.with_widget(|widget| {
+            let before = widget.tile_px();
+            widget.set_tile_px(px);
+            widget.tile_px() != before
+        });
+        if changed {
+            self.resync();
+        }
     }
 
     /// Recomputes the scrollable extent from the model, the tile size and the
