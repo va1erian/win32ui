@@ -95,6 +95,12 @@ impl<M: 'static> Edit<M> {
             Rect::default(),
         )?;
 
+        // For multi-line edits, toggle the native client edge based on theme.
+        // In dark mode, keep only the thin WS_BORDER to match single-line edits.
+        if multiline {
+            sys::client_edge::set(hwnd, !ui.theme().is_dark);
+        }
+
         // Size the natural height from the UI font, so a layout that does not
         // size the widget still gets a sensible height at any DPI.
         let font = Font::system_ui(dpi)?;
@@ -119,6 +125,9 @@ impl<M: 'static> Edit<M> {
             hwnd,
             Rc::new(move |applied| {
                 sys::apply_native_theme(hwnd, edit_native_kind(multiline), applied.is_dark);
+                if multiline {
+                    sys::client_edge::set(hwnd, !applied.is_dark);
+                }
                 sys::window::invalidate(hwnd);
             }),
         );
@@ -292,6 +301,9 @@ impl<M> Themed for Edit<M> {
             edit_native_kind(self.multiline),
             theme.is_dark,
         );
+        if self.multiline {
+            sys::client_edge::set(self.control.hwnd(), !theme.is_dark);
+        }
         sys::window::invalidate(self.control.hwnd());
     }
 }

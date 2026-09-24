@@ -24,6 +24,8 @@ pub(super) struct Options {
     themes: RadioGroup<ThemeChoice, Msg>,
     theme_group: GroupBox,
     disabled: Button<Msg>,
+    notes_label: Label,
+    notes: Edit<Msg>,
 }
 
 impl Options {
@@ -56,6 +58,9 @@ impl Options {
         .on_select(|choice| Some(Msg::SetTheme(*choice)));
         let disabled = Button::new(ui, "Disabled").expect("disabled");
         disabled.set_enabled(false);
+        let notes_label = Label::new(ui, Rect::default(), "Notes").expect("notes label");
+        let notes = Edit::multi_line(ui).expect("notes").word_wrap(true);
+        notes.set_text("This is a multi-line edit.\nIt should have a thin border in dark mode.");
 
         Options {
             send,
@@ -63,6 +68,8 @@ impl Options {
             themes,
             theme_group,
             disabled,
+            notes_label,
+            notes,
         }
     }
 
@@ -74,6 +81,8 @@ impl Options {
             self.theme_group.height(dip(20.0)),
             self.themes.layout(),
             self.disabled,
+            self.notes_label,
+            self.notes.height(dip(80.0)),
         ]
         .spacing(dip(6.0))
     }

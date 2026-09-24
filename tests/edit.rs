@@ -12,6 +12,11 @@ use std::rc::Rc;
 use common::run_app_with_watchdog;
 use win32ui::prelude::*;
 
+// For testing WS_EX_CLIENTEDGE flag.
+use core::ffi::c_void;
+use windows::Win32::Foundation::HWND;
+use windows::Win32::UI::WindowsAndMessaging::{GWL_EXSTYLE, GetWindowLongPtrW, WS_EX_CLIENTEDGE};
+
 enum Msg {
     Start,
 }
@@ -135,4 +140,54 @@ fn password_edit_holds_text() {
         return;
     };
     assert!(passed, "the password edit did not keep its text");
+}
+
+/// Helper to check if a control has the WS_EX_CLIENTEDGE flag set.
+fn has_client_edge(hwnd: win32ui::Hwnd) -> bool {
+    // SAFETY: GetWindowLongPtrW only reads the window's extended style bits.
+    let style = unsafe { GetWindowLongPtrW(HWND(hwnd.raw() as *mut c_void), GWL_EXSTYLE) } as u32;
+    style & WS_EX_CLIENTEDGE.0 != 0
+}
+
+/// Multi-line edit has WS_EX_CLIENTEDGE set in light mode and cleared in dark
+/// mode. Single-line edit never has it. Switching theme at runtime toggles it.
+#[test]
+fn multi_line_client_edge_follows_theme() {
+    let Some(passed) = check("win32ui.edit.client_edge", |ui| {
+        let Ok(single) = Edit::single_line(ui) else {
+            return false;
+        };
+        let Ok(multi) = Edit::multi_line(ui) else {
+            return false;
+        };
+        let mut ok = true;
+
+        // Single-line edit never has client edge.
+        ok &= !has_client_edge(single.control().hwnd());
+
+        // Multi-line edit starts with light theme, so should have client edge.
+        ok &= has_client_edge(multi.control().hwnd());
+
+        // Applying dark theme removes client edge from multi-line edit.
+        let dark = Theme::dark();
+        multi.apply_theme(&dark);
+        ok &= !has_client_edge(multi.control().hwnd());
+
+        // Applying light theme restores client edge on multi-line edit.
+        let light = Theme::light();
+        multi.apply_theme(&light);
+        ok &= has_client_edge(multi.control().hwnd());
+
+        // Single-line edit stays without client edge after theme change.
+        single.apply_theme(&dark);
+        ok &= !has_client_edge(single.control().hwnd());
+
+        ok
+    }) else {
+        return;
+    };
+    assert!(
+        passed,
+        "multi-line client edge did not follow theme correctly"
+    );
 }
