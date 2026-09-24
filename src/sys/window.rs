@@ -20,7 +20,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use windows::core::{HSTRING, PCWSTR};
 
 use crate::error::{Error, Result};
-use crate::geometry::Rect;
+use crate::geometry::{Point, Rect};
 use crate::hwnd::Hwnd;
 use crate::window::WindowHandler;
 
@@ -218,6 +218,19 @@ pub(crate) fn client_rect(hwnd: Hwnd) -> Rect {
     } else {
         Rect::default()
     }
+}
+
+/// Converts a client-relative `point` of `hwnd` to screen coordinates.
+pub(crate) fn client_to_screen(hwnd: Hwnd, point: Point) -> Point {
+    let mut raw = windows::Win32::Foundation::POINT {
+        x: point.x,
+        y: point.y,
+    };
+    // SAFETY: `hwnd` is live and `raw` is a valid in/out point.
+    unsafe {
+        let _ = windows::Win32::Graphics::Gdi::ClientToScreen(raw_hwnd(hwnd), &mut raw);
+    }
+    Point::new(raw.x, raw.y)
 }
 
 /// The outer rectangle of `hwnd` (screen coordinates).

@@ -23,7 +23,7 @@ use windows::core::Interface;
 use windows_numerics::{Matrix3x2, Vector2};
 
 use crate::color::Color;
-use crate::d2d::{BASE_DPI, PointF, RectF, Stroke, clamp_radius};
+use crate::d2d::{BASE_DPI, PointF, RectF, Rgba, Stroke, clamp_radius};
 use crate::error::{Error, Result};
 use crate::geometry::Rect;
 use crate::hwnd::Hwnd;
@@ -95,8 +95,28 @@ pub(crate) fn ellipse(center: PointF, rx: f32, ry: f32) -> D2D1_ELLIPSE {
 
 impl Target {
     /// Creates a target for `hwnd` sized `width`×`height` device pixels at `dpi`.
-    pub(crate) fn new(hwnd: Hwnd, width: u32, height: u32, dpi: f32) -> Result<Target> {
+    ///
+    /// `transparent` requests a premultiplied-alpha surface, so pixels the
+    /// window leaves transparent (cleared with [`Target::clear_rgba`]) let DWM's
+    /// extended-frame material show through. The default (opaque) target keeps
+    /// its pixels and behaves exactly as before.
+    pub(crate) fn new(
+        hwnd: Hwnd,
+        width: u32,
+        height: u32,
+        dpi: f32,
+        transparent: bool,
+    ) -> Result<Target> {
         let properties = D2D1_RENDER_TARGET_PROPERTIES {
+            pixelFormat: if transparent {
+                windows::Win32::Graphics::Direct2D::Common::D2D1_PIXEL_FORMAT {
+                    format: windows::Win32::Graphics::Dxgi::Common::DXGI_FORMAT_B8G8R8A8_UNORM,
+                    alphaMode:
+                        windows::Win32::Graphics::Direct2D::Common::D2D1_ALPHA_MODE_PREMULTIPLIED,
+                }
+            } else {
+                Default::default()
+            },
             dpiX: dpi,
             dpiY: dpi,
             ..Default::default()
@@ -215,6 +235,14 @@ impl Target {
     pub(crate) fn clear(&mut self, color: Color) {
         // SAFETY: the colour struct is valid for the call; drawing is active.
         unsafe { self.render.Clear(Some(&color_f(color))) }
+    }
+
+    /// Clears the whole target to an RGBA colour, alpha included. On a
+    /// `transparent` target [`Rgba::TRANSPARENT`] punches the window's pixels
+    /// through to DWM's frame material.
+    pub(crate) fn clear_rgba(&mut self, color: Rgba) {
+        // SAFETY: the colour struct is valid for the call; drawing is active.
+        unsafe { self.render.Clear(Some(&super::brush::color_f(color))) }
     }
 
     pub(crate) fn brush(&mut self, color: Color) -> Option<ID2D1SolidColorBrush> {

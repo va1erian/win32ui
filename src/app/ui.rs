@@ -151,7 +151,9 @@ impl<M: 'static> Ui<M> {
         }
         crate::theme::retheme_children(self.core.hwnd(), &theme);
         // Owner-drawn menus must switch between native and themed items live.
-        if let Some(menu) = self.core.menu_bar()
+        // The strip menu has no native bar to rebuild; it repaints instead.
+        if !self.core.has_title_menu()
+            && let Some(menu) = self.core.menu_bar()
             && menu.is_owner_drawn() != theme.is_dark
         {
             let handle = menu.build(true, theme.is_dark, theme.raised);
@@ -226,11 +228,35 @@ impl<M: 'static> Ui<M> {
     /// caller may drop its own handle.
     pub fn set_menu_bar(&self, menu: Menu<M>) {
         let theme = self.core.theme();
+        let hwnd = self.core.hwnd();
+        // On an extended title bar with an active material, draw the menu in
+        // the strip instead of attaching a native bar, so the items sit on the
+        // acrylic (GDI text over glass would vanish). When the material cannot
+        // be shown (unsupported Windows, transparency off, high contrast, or
+        // DirectWrite unavailable) the native bar is kept, unchanged.
+        let strip = self.core.menu_in_strip()
+            && self.core.title_bar() == crate::window::TitleBar::Extended
+            && crate::theme::backdrop_active(hwnd)
+            && !sys::dwm::high_contrast();
+        if strip
+            && let Some(title_menu) =
+                super::title_menu::TitleBarMenu::new(menu.clone(), self.core.menu_strip_placement())
+        {
+            self.core.install_menu_bar(menu.clone());
+            self.core.install_title_menu(title_menu);
+            for (shortcut, action) in menu.shortcuts() {
+                self.core.add_accelerator(shortcut, move || Some(action()));
+            }
+            sys::window::invalidate(hwnd);
+            self.core.relayout();
+            return;
+        }
+
         let handle = menu.build(true, theme.is_dark, theme.raised);
         // Install the menu before `SetMenu`, so the owner-draw measure/draw
         // messages raised while the bar is first laid out can find it.
         self.core.install_menu_bar(menu.clone());
-        sys::menu::set_bar(self.core.hwnd(), handle);
+        sys::menu::set_bar(hwnd, handle);
         for (shortcut, action) in menu.shortcuts() {
             self.core.add_accelerator(shortcut, move || Some(action()));
         }

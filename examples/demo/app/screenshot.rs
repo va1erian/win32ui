@@ -46,7 +46,8 @@ pub(crate) fn capture_screen_if_requested<M: 'static>(ui: &Ui<M>) {
                 return;
             }
             eprintln!("demo: wrote screen screenshot to {}", path.display());
-            write_extended_crops(&image, path, ui.theme());
+            let top = ui.title_bar_height().to_px(ui.dpi()).value().max(90) + 24;
+            write_extended_crops(&image, path, ui.theme(), top);
         }
         Err(error) => eprintln!("demo: screen screenshot failed: {error}"),
     }
@@ -59,17 +60,24 @@ const CROP_ZOOM: u32 = 3;
 /// Writes two 330×90 crops of the extended strip's top corners (the caption
 /// buttons and the menu bar) next to the screen capture, named by theme and
 /// zoomed 3× so the strip can be inspected at full size.
-fn write_extended_crops(image: &RgbaImage, path: &Path, theme: Theme) {
+fn write_extended_crops(image: &RgbaImage, path: &Path, theme: Theme, height: i32) {
     let suffix = if theme.is_dark { "dark" } else { "light" };
+    // Name the crops after the main screenshot (`foo-dark.png` ->
+    // `foo-dark-topleft.png`) so a strip-menu capture and a Mica capture do not
+    // overwrite each other's crops.
+    let prefix = path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .map_or_else(|| format!("extended-{suffix}"), str::to_string);
     let dir = path.parent().unwrap_or_else(|| Path::new("."));
     let top_right = crop(
         image,
-        Rect::new(image.width as i32 - 330, 0, image.width as i32, 90),
+        Rect::new(image.width as i32 - 330, 0, image.width as i32, height),
     );
-    let top_left = crop(image, Rect::new(0, 0, 330, 90));
+    let top_left = crop(image, Rect::new(0, 0, 330, height));
     for (cropped, name) in [
-        (top_right, format!("extended-{suffix}-topright.png")),
-        (top_left, format!("extended-{suffix}-topleft.png")),
+        (top_right, format!("{prefix}-topright.png")),
+        (top_left, format!("{prefix}-topleft.png")),
     ] {
         let Some(cropped) = cropped else {
             continue;

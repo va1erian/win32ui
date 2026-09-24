@@ -72,12 +72,23 @@ pub(crate) fn main() {
         Ok("extended") => TitleBar::Extended,
         _ => TitleBar::Standard,
     };
+    // `WIN32UI_DEMO_MENU_STRIP=1` draws the menu on the acrylic strip instead
+    // of a native bar (only takes effect with the extended title bar and an
+    // active material). `WIN32UI_DEMO_MENU_PLACEMENT=inline|stacked` picks
+    // whether the items share the caption row or get a row below it.
+    let menu_in_strip = std::env::var_os("WIN32UI_DEMO_MENU_STRIP").is_some();
+    let menu_placement = match std::env::var("WIN32UI_DEMO_MENU_PLACEMENT").as_deref() {
+        Ok("inline") => MenuStripPlacement::Inline,
+        _ => MenuStripPlacement::Stacked,
+    };
     let result = win32ui::run_app(
         WindowSpec::new("win32ui demo")
             .size(dip(width), dip(height))
             .theme(theme)
             .backdrop(backdrop)
-            .title_bar(title_bar),
+            .title_bar(title_bar)
+            .menu_in_strip(menu_in_strip)
+            .menu_strip_placement(menu_placement),
         |ui| {
             let theme = ui.theme();
             text_specimen::open_if_requested(theme, ui.dpi());

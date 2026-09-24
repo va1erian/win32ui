@@ -23,6 +23,7 @@ const SETTLE: Duration = Duration::from_millis(900);
 
 /// One captured window and the geometry the checks need, all in capture
 /// coordinates (pixels from the window's top-left).
+#[allow(dead_code, reason = "not every capture test reads every field")]
 pub struct Shot {
     pub image: RgbaImage,
     pub theme: Theme,

@@ -10,7 +10,7 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
-use crate::geometry::Rect;
+use crate::geometry::{Point, Rect};
 use crate::hwnd::Hwnd;
 
 #[derive(Default)]
@@ -21,6 +21,11 @@ struct Entry {
     /// The height of the extended strip (the caption incl. its top frame), in
     /// device pixels. Zero until the frame is first extended.
     strip_height: i32,
+    /// The strip's self-drawn menu row height, in device pixels, when the strip
+    /// menu is active; zero otherwise.
+    menu_row: i32,
+    /// The strip menu's item rectangles in client coordinates.
+    menu_items: Vec<Rect>,
 }
 
 thread_local! {
@@ -76,6 +81,39 @@ pub(crate) fn strip_height(window: Hwnd) -> i32 {
         map.borrow()
             .get(&window.raw())
             .map_or(0, |entry| entry.strip_height)
+    })
+}
+
+/// Records the strip menu's row height and item rectangles (client
+/// coordinates) for `window`. `height` is the extra row the menu adds below the
+/// caption (zero when the menu is inline); the items are its clickable
+/// rectangles.
+pub(crate) fn set_menu_strip(window: Hwnd, height: i32, items: Vec<Rect>) {
+    WINDOWS.with(|map| {
+        let mut map = map.borrow_mut();
+        let entry = map.entry(window.raw()).or_default();
+        entry.menu_row = height;
+        entry.menu_items = items;
+    });
+}
+
+/// The strip menu's row height (device pixels) for `window`, or 0 when the
+/// strip menu is not active.
+pub(crate) fn menu_row(window: Hwnd) -> i32 {
+    WINDOWS.with(|map| {
+        map.borrow()
+            .get(&window.raw())
+            .map_or(0, |entry| entry.menu_row)
+    })
+}
+
+/// Whether `point` (client coordinates) lies on a strip menu item. The stored
+/// rectangles are already in client coordinates.
+pub(crate) fn over_menu_item(window: Hwnd, point: Point) -> bool {
+    WINDOWS.with(|map| {
+        map.borrow()
+            .get(&window.raw())
+            .is_some_and(|entry| entry.menu_items.iter().any(|rect| rect.contains(point)))
     })
 }
 

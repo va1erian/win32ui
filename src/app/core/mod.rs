@@ -1,4 +1,4 @@
-#![forbid(unsafe_code)]
+﻿#![forbid(unsafe_code)]
 
 //! The per-window widget-layer core: the message queue, drain scheduling, and
 //! the shared state both [`Ui`](super::Ui) and the window handler need.
@@ -14,7 +14,10 @@ use std::collections::VecDeque;
 
 use crate::accel::Shortcut;
 use crate::app::layout::Layout;
+use crate::app::spec::MenuStripPlacement;
+use crate::app::title_menu::TitleBarMenu;
 use crate::controls::menu::{Menu, MenuPaint, measure, paint_item};
+use crate::d2d::D2dSurface;
 use crate::hwnd::Hwnd;
 use crate::message::{Message, TimerId};
 use crate::sys;
@@ -22,6 +25,7 @@ use crate::theme::Theme;
 use crate::window::{TitleBar, Window};
 
 mod layout;
+mod title_menu;
 
 /// Maps a close request to an optional app message.
 type CloseMapper<M> = Box<dyn Fn() -> Option<M>>;
@@ -58,6 +62,14 @@ pub(crate) struct Core<M> {
     _window: RefCell<Option<Window>>,
     menu_bar: RefCell<Option<Menu<M>>>,
     menu_popup: RefCell<Option<Menu<M>>>,
+    /// Whether the spec asked for the menu to live on the acrylic strip.
+    menu_in_strip: Cell<bool>,
+    /// Where the strip menu is drawn.
+    menu_strip_placement: Cell<MenuStripPlacement>,
+    /// The strip menu, installed once the strip mode is active.
+    title_menu: RefCell<Option<TitleBarMenu<M>>>,
+    /// The top-level window's transparent Direct2D surface for the strip.
+    strip_surface: RefCell<Option<D2dSurface>>,
 }
 
 impl<M> Core<M> {
@@ -89,6 +101,10 @@ impl<M> Core<M> {
             _window: RefCell::new(None),
             menu_bar: RefCell::new(None),
             menu_popup: RefCell::new(None),
+            menu_in_strip: Cell::new(false),
+            menu_strip_placement: Cell::new(MenuStripPlacement::default()),
+            title_menu: RefCell::new(None),
+            strip_surface: RefCell::new(None),
         }
     }
 
@@ -131,7 +147,7 @@ impl<M> Core<M> {
     }
 
     /// Appends `msg` and, if the queue was empty, posts the private drain
-    /// message that will deliver it. Posting only on the empty→non-empty edge
+    /// message that will deliver it. Posting only on the emptyâ†’non-empty edge
     /// means a burst of messages costs a single drain.
     pub(crate) fn enqueue(&self, msg: M) {
         let was_empty = self.queue.borrow().is_empty();

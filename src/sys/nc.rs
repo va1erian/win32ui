@@ -19,7 +19,8 @@ use windows::Win32::UI::HiDpi::{AdjustWindowRectExForDpi, GetSystemMetricsForDpi
 use windows::Win32::UI::WindowsAndMessaging::{
     CWP_SKIPDISABLED, CWP_SKIPINVISIBLE, ChildWindowFromPointEx, DefWindowProcW, GWL_EXSTYLE,
     GWL_STYLE, GetMenuBarInfo, GetWindowLongPtrW, IsZoomed, MENUBARINFO, NCCALCSIZE_PARAMS,
-    OBJID_MENU, SM_CXPADDEDBORDER, SM_CYCAPTION, SM_CYSIZEFRAME, WINDOW_EX_STYLE, WINDOW_STYLE,
+    OBJID_MENU, SM_CXPADDEDBORDER, SM_CYCAPTION, SM_CYSIZEFRAME, SWP_FRAMECHANGED, SWP_NOACTIVATE,
+    SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SetWindowPos, WINDOW_EX_STYLE, WINDOW_STYLE,
     WM_ERASEBKGND, WM_NCCALCSIZE, WM_NCHITTEST, WS_CAPTION,
 };
 
@@ -111,12 +112,25 @@ fn menu_bar_client(hwnd: HWND) -> Option<Rect> {
 /// The height of the extended strip DWM draws the caption buttons in, in
 /// pixels, measured from the client's top. A maximized window's client already
 /// starts below the frame it overhangs the monitor by, which the strip excludes.
-fn strip_height(hwnd: HWND) -> i32 {
+/// The caption row's height in pixels: where DWM draws the caption buttons,
+/// excluding any strip menu row below it.
+fn caption_strip(hwnd: HWND) -> i32 {
     if is_maximized(hwnd) {
         caption_height(hwnd) - frame_thickness(hwnd).top
     } else {
         caption_height(hwnd)
     }
+}
+
+fn strip_height(hwnd: HWND) -> i32 {
+    caption_strip(hwnd) + crate::window::nc::menu_row(hwnd_from(hwnd))
+}
+
+/// The caption row's height (device pixels) of an extended-frame window: the
+/// part DWM draws the caption buttons in, without any strip menu row. Used to
+/// lay the strip menu out.
+pub(crate) fn caption_strip_height(hwnd: Hwnd) -> i32 {
+    caption_strip(raw_hwnd(hwnd))
 }
 
 /// The top area an extended-frame window must reserve for its caption buttons
@@ -217,7 +231,10 @@ pub(crate) fn hit_test(hwnd: HWND, wparam: WPARAM, lparam: LPARAM) -> Option<LRE
     }
     let point = to_client(hwnd, point);
     let client = super::window::client_rect(hwnd_from(hwnd));
-    let interactive = over_interactive(hwnd, point);
+    // A strip menu item accepts the click as client area (so the app opens its
+    // popup); the free strip around it still drags the window.
+    let interactive =
+        over_interactive(hwnd, point) || crate::window::nc::over_menu_item(hwnd_from(hwnd), point);
     let mut frame = frame_thickness(hwnd);
     if is_maximized(hwnd) {
         frame.top = 0;
@@ -270,9 +287,32 @@ pub(crate) fn refresh_caption_inset(hwnd: Hwnd) -> Option<Rect> {
 /// extended frame.
 pub(crate) fn enable_extended(hwnd: Hwnd) -> bool {
     crate::window::nc::set_extended(hwnd, true);
+    // The window was created with a standard caption, so its client area was
+    // first computed above the caption row. Ask Windows to recompute the
+    // non-client area now that the flag is set, so the client — and with it the
+    // strip's Direct2D surface — starts at the window's top edge.
+    force_frame_change(hwnd);
     let extended = apply_extended_frame(hwnd);
     let _ = refresh_caption_inset(hwnd);
     extended
+}
+
+/// Recomputes `hwnd`'s non-client area (and sends `WM_NCCALCSIZE`), so the
+/// extended-frame client rectangle takes effect without moving or resizing.
+fn force_frame_change(hwnd: Hwnd) {
+    // SAFETY: `hwnd` is live; the position/size and z-order are untouched and
+    // only the frame is recalculated.
+    unsafe {
+        let _ = SetWindowPos(
+            raw_hwnd(hwnd),
+            None,
+            0,
+            0,
+            0,
+            0,
+            SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
+        );
+    }
 }
 
 /// Records the caption-strip height of an extended-frame `window` and extends
