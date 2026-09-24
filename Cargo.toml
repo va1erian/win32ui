@@ -7,6 +7,23 @@ description = "Idiomatic, mostly-safe Rust wrapper over Win32 windows and common
 repository = "https://github.com/va1erian/win32ui"
 readme = "README.md"
 
+[features]
+# Occlusion-proof window capture through Windows.Graphics.Capture. Off by
+# default: it pulls in the WinRT capture and D3D11 bindings, which several
+# apps never need. Enables `Window::capture_composited`,
+# `Ui::capture_composited`, `win32ui::capture::capture_hwnd` and
+# `examples/capture.rs`.
+wgc = [
+    "windows/Graphics_Capture",
+    "windows/Graphics_DirectX_Direct3D11",
+    "windows/Win32_Graphics_Direct3D",
+    "windows/Win32_Graphics_Direct3D11",
+    "windows/Win32_Graphics_Dxgi",
+    "windows/Win32_System_WinRT",
+    "windows/Win32_System_WinRT_Direct3D11",
+    "windows/Win32_System_WinRT_Graphics_Capture",
+]
+
 [dependencies]
 thiserror = "2"
 

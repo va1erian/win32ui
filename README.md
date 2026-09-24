@@ -126,6 +126,7 @@ already retained), and closures that capture shared mutable app state.
 | `MaterialStatusBar`: status bar painted on a bottom acrylic band; extended-frame maximize/de-maximize/minimize fixes | exists (#99) |
 | DirectWrite text, gradients, bitmaps, rounded clips, colour emoji | #22 follow-up |
 | `GridView<T>`: virtualized tile grid (a `CustomWidget` hosted in a `ScrollView`), typed `GridModel`, single selection, wrap-around keyboard navigation, live tile-size range | exists (#47) |
+| Occlusion-proof capture (`Windows.Graphics.Capture`, `wgc` feature): `Window::capture_composited`, `capture::capture_hwnd`, `examples/capture`; never raises a window or moves the pointer | exists (#111) |
 
 ## Source layout
 
@@ -453,6 +454,33 @@ while it is blocked in `SendMessage`; it also skips an empty text, because
   written as `Dip` and converted once with `Dip::to_px(dpi)`. The example
   binaries embed a Common Controls v6 + DPI manifest (`win32ui.rc` /
   `win32ui.manifest`, via `build.rs`).
+
+## Screenshots and capture
+
+Three backends, documented on the methods themselves:
+
+- `Window::capture` (and `Ui::capture`): `PrintWindow`. Cheap and works
+  without DWM, but it misses the caption buttons, frame and backdrop, and a
+  Direct2D child pane can be stale unless the window is active.
+- `Window::capture_screen` (and `Ui::capture_screen`): a screen `BitBlt`. It
+  includes the DWM output but needs the window on screen and **unobscured**, so
+  it is the wrong tool when other windows share the desktop.
+- `Window::capture_composited`, `Ui::capture_composited` and the free
+  `capture::capture_hwnd(hwnd)` (behind the off-by-default `wgc` feature): the
+  exact `Windows.Graphics.Capture` composited surface — frame, caption
+  buttons, rounded corners and backdrop material — of **any** top-level
+  window, even an occluded one or another process's, without ever raising it
+  or moving the pointer. It returns a typed error for a minimised window and
+  does not restore it.
+
+```bash
+cargo run --features wgc --example capture -- --title "My App" --out shot.png
+```
+
+`examples/capture.rs` is the tool for agents and test harnesses; its
+`--hwnd`/`--title`/`--pid` flags are its own opt-in window lookup. The demo's
+`WIN32UI_DEMO_SCREENSHOT` path uses the composited capture when `wgc` is on and
+falls back to `PrintWindow` otherwise.
 
 ## Running
 

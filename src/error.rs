@@ -85,9 +85,38 @@ pub enum Error {
     #[error("invalid Direct2D use: {0}")]
     Direct2d(&'static str),
 
+    /// The occlusion-proof `Windows.Graphics.Capture` path failed for a
+    /// reason callers may want to distinguish. Other Win32 failures keep
+    /// their [`Win32`](Error::Win32) variant.
+    #[error(transparent)]
+    Capture(#[from] CaptureError),
+
     /// A feature was used on a window that does not support it.
     #[error("unsupported window configuration: {0}")]
     WindowConfig(&'static str),
+}
+
+/// Why an occlusion-proof (Windows.Graphics.Capture) capture failed.
+///
+/// A caller that only needs to know *whether* a capture worked can ignore
+/// this; the cases are split out because they suggest different responses:
+/// a minimised window must be restored by the app before capturing, a timeout
+/// may be retried, and an unavailable backend means falling back to
+/// [`Window::capture`](crate::Window::capture).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
+pub enum CaptureError {
+    /// The window is minimised, so it has no composited surface to capture.
+    #[error("the window is minimised")]
+    Minimized,
+    /// No frame arrived within the capture timeout.
+    #[error("no capture frame arrived before the timeout")]
+    Timeout,
+    /// Windows.Graphics.Capture is not available on this system.
+    #[error("Windows.Graphics.Capture is not available")]
+    Unavailable,
+    /// The D3D11 device was removed while the frame was copied back.
+    #[error("the capture device was lost")]
+    DeviceLost,
 }
 
 /// Convenience alias used throughout the crate.
@@ -95,5 +124,5 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 /// The error types a frontend usually needs.
 pub mod prelude {
-    pub use super::{Error, Result, Win32Error};
+    pub use super::{CaptureError, Error, Result, Win32Error};
 }

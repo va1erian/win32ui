@@ -376,6 +376,15 @@ impl<M: 'static> Ui<M> {
             pixels: captured.pixels,
         })
     }
+
+    /// Renders the window's DWM-composited surface into an image, including
+    /// the caption buttons, frame, rounded corners and backdrop material,
+    /// without raising the window or moving the pointer. Requires the `wgc`
+    /// feature. See [`Window::capture_composited`](crate::Window::capture_composited).
+    #[cfg(feature = "wgc")]
+    pub fn capture_composited(&self) -> Result<RgbaImage> {
+        crate::capture::capture_hwnd(self.core.hwnd())
+    }
 }
 
 impl<M> Clone for Ui<M> {

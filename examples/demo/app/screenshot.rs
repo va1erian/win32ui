@@ -22,7 +22,13 @@ pub(crate) fn capture_if_requested<M: 'static>(ui: &Ui<M>) {
     let Ok(path) = std::env::var("WIN32UI_DEMO_SCREENSHOT") else {
         return;
     };
-    match ui.capture() {
+    // With `wgc` the screenshot is the exact DWM-composited surface, captured
+    // without raising the window; otherwise fall back to `PrintWindow`.
+    #[cfg(feature = "wgc")]
+    let result = ui.capture_composited();
+    #[cfg(not(feature = "wgc"))]
+    let result = ui.capture();
+    match result {
         Ok(image) => match write_screenshot(&image, Path::new(&path)) {
             Ok(()) => eprintln!("demo: wrote screenshot to {path}"),
             Err(error) => eprintln!("demo: screenshot failed: {error}"),
