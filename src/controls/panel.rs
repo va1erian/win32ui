@@ -75,6 +75,8 @@ impl PanelShared {
             placed.handle.set_bounds(placed.rect);
         }
         sys::layout::apply(&moves);
+        // A child shown or hidden since the last pass leaves panel area behind.
+        sys::window::redraw_children(hwnd);
     }
 }
 

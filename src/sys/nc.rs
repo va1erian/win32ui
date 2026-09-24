@@ -194,26 +194,24 @@ pub(crate) fn calc_size(hwnd: HWND, wparam: WPARAM, lparam: LPARAM) -> Option<LR
     if wparam.0 == 0 || !crate::window::nc::is_extended(hwnd_from(hwnd)) {
         return None;
     }
-    // Let the default compute the frame metrics first, so the resize borders
-    // and the maximized placement stay native.
+    // SAFETY: with `wparam` TRUE, `lparam` is a `NCCALCSIZE_PARAMS*` owned by
+    // the system for the duration of the message.
+    let params = lparam.0 as *mut NCCALCSIZE_PARAMS;
+    // `rgrc[0]` holds the *proposed* window rectangle on entry (`rgrc[1]` is
+    // the old one). `DefWindowProc` overwrites it with its own client, so read
+    // it first: computing from the old rectangle leaves the client one resize
+    // behind, and the layout stops short of (or runs past) the new edge.
+    // SAFETY: `params` is valid for reads as above.
+    let proposed = unsafe { (*params).rgrc[0] };
+    let window = Rect::new(proposed.left, proposed.top, proposed.right, proposed.bottom);
+    // Let the default compute the frame metrics, so the resize borders and the
+    // maximized placement stay native.
     // SAFETY: `hwnd` is live and the message fields follow the documented
     // `WM_NCCALCSIZE` contract.
     let _ = unsafe { DefWindowProcW(hwnd, WM_NCCALCSIZE, wparam, lparam) };
-    // SAFETY: with `wparam` TRUE, `lparam` is a `NCCALCSIZE_PARAMS*` owned
-    // by the system for the duration of the message; `rgrc[1]` is the window
-    // rect.
-    let params = unsafe { &mut *(lparam.0 as *mut NCCALCSIZE_PARAMS) };
-    let window = Rect::new(
-        params.rgrc[1].left,
-        params.rgrc[1].top,
-        params.rgrc[1].right,
-        params.rgrc[1].bottom,
-    );
-    // Windows sends the maximize transition's `WM_NCCALCSIZE` with the *old*
-    // window rectangle, so the client would stay small; the window is then
-    // moved without a second `WM_NCCALCSIZE`. The mismatch is detected in
-    // `WM_SIZE` (see [`client_mismatch`]) and a frame change forces the client
-    // to be recomputed against the final window rectangle.
+    // SAFETY: `params` is still the system-owned struct; no other reference to
+    // it is live.
+    let params = unsafe { &mut *params };
     let client = extended_client_rect(window, frame_thickness(hwnd), is_maximized(hwnd));
     params.rgrc[0] = RECT {
         left: client.left,

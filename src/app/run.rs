@@ -28,7 +28,7 @@ where
 
     let theme = spec.parts().3;
     let built = build(spec, theme, None, false, make)?;
-    built.window.show();
+    built.window.show_painted();
     let _code = crate::looper::run();
     built.window.destroy();
     Ok(())
@@ -291,12 +291,13 @@ impl<A: App> WindowHandler for AppHandler<A> {
                 // The top bar's items are laid out against the new client
                 // width, and its band against the (possibly re-read) strip.
                 self.core.refresh_material_top_bar();
-                // A resize/restore re-creates the DWM frame and can drop the
-                // material surface's contents; repaint the whole window so the
-                // strip and status bar come back without needing a click.
-                if self.core.has_material_surface() {
-                    sys::window::redraw_children(window.hwnd());
-                }
+                // `relayout` marked the whole tree for repaint (which also
+                // brings back a material surface the DWM frame dropped). During
+                // a live resize the window manager presents a frame before a
+                // deferred `WM_PAINT` runs, leaving ghosts of moved widgets in
+                // the area they vacated, so paint now. Every borrow taken above
+                // has been released, so the nested paint cannot conflict.
+                sys::window::paint_now(window.hwnd());
                 Some(0)
             }
             // Becoming active (e.g. restoring from minimized) can leave the

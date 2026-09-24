@@ -288,6 +288,15 @@ impl Window {
         sys::window::show(self.hwnd, sys::window::ShowKind::Normal);
     }
 
+    /// Shows the window with its content already painted, so it never appears
+    /// with blank (white or grey) controls.
+    pub(crate) fn show_painted(&self) {
+        let hwnd = self.hwnd;
+        sys::first_show::show_painted(hwnd, || {
+            sys::window::show(hwnd, sys::window::ShowKind::Normal);
+        });
+    }
+
     /// Maximizes the window.
     pub fn show_maximized(&self) {
         sys::window::show(self.hwnd, sys::window::ShowKind::Maximized);
