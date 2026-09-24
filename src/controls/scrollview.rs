@@ -41,6 +41,17 @@ pub(crate) struct ScrollShared {
     /// content height recomputed to the same value) does not re-issue a
     /// `MoveWindow` and repaint the whole content.
     last_bounds: Cell<Rect>,
+    /// The viewport height `last_bounds` was computed against. The content's
+    /// bounds (position within its own, always-full-document coordinate
+    /// space) do not depend on the viewport's height at all, so a viewport
+    /// resize that only changes height — e.g. the Albums grid shrinking to
+    /// make room for the track list — leaves `bounds` unchanged and skips the
+    /// `MoveWindow` above. But the *visible*, clipped portion of the content
+    /// did change, and nothing else repaints the area the viewport gave up:
+    /// the OS does not retroactively erase a child's already-composited
+    /// pixels just because its ancestor's client rect shrank. Tracking the
+    /// page size separately lets `move_content` still force that repaint.
+    last_page: Cell<i32>,
 }
 
 impl ScrollShared {
@@ -54,6 +65,7 @@ impl ScrollShared {
             notch: Cell::new(notch.max(1)),
             wheel_accum: Cell::new(0),
             last_bounds: Cell::new(Rect::default()),
+            last_page: Cell::new(0),
         }
     }
 
@@ -105,13 +117,27 @@ impl ScrollShared {
         }
         let width = sys::window::client_rect(viewport).width();
         let bounds = Rect::new(0, -self.offset.get(), width, self.content_height.get());
+        let page = self.page.get();
         // A recomputed content height that lands on the same size (the
         // `GridView` resize callback recomputes it from the new width) must not
         // re-issue `MoveWindow`: that would send another `WM_SIZE` and loop.
         if self.last_bounds.get() == bounds {
+            // `bounds` is in the content's own coordinate space and never
+            // depends on the viewport's height, so a viewport resize that
+            // only changes height (a sibling being shown/hidden next to it,
+            // say) lands here even though the visible, clipped portion of
+            // the content changed. Nothing else repaints the area the
+            // viewport gave up or reclaimed — a shrunk/grown parent does not
+            // retroactively invalidate a child's already-composited pixels —
+            // so force that repaint directly instead of skipping entirely.
+            if self.last_page.get() != page {
+                self.last_page.set(page);
+                sys::window::invalidate(content);
+            }
             return;
         }
         self.last_bounds.set(bounds);
+        self.last_page.set(page);
         sys::window::move_window(content, bounds);
     }
 
@@ -212,6 +238,7 @@ impl ScrollView {
         sys::window::set_parent(hwnd, viewport);
         self.shared.content.set(hwnd);
         self.shared.last_bounds.set(Rect::default());
+        self.shared.last_page.set(-1);
         let height = content.bounds().height();
         if height > 0 {
             self.shared.content_height.set(height);
