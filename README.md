@@ -115,6 +115,7 @@ already retained), and closures that capture shared mutable app state.
 | Menus mapped to `Msg`: menu bar, context popups, owner-drawn dark items | exist (#16) |
 | Draggable `split_row!`/`split_col!` layout nodes; themed `ScrollView` (native vertical scrollbar, wheel, `scroll_to`) | exist (#11) |
 | Custom widgets: Direct2D paint path (`CustomWidget::renderer`/`paint_d2d`), a built-in vertical scroll host (`Custom::with_vscroll`, `scroll_to`, `Scrolled` event) and rect-scoped repaints (`invalidate_rect`, the dirty rect honoured by both paths) | exist (#64, #83) |
+| Custom widgets: OpenGL paint path (`Renderer::Gl`, `CustomWidget::paint_gl`) over a per-window WGL core-profile context (`GlSurface`), with `WGL_EXT_swap_control` vsync, resize/DPI handling and a GDI fallback; `glow` re-exported as `win32ui::glow` | exists (#131) |
 | `Slider`: Direct2D-painted, `f64` values, sub-pixel thumb, mouse capture, coalesced `on_change` + `on_commit` + `on_hover`, eased hover/press/focus, keyboard and wheel, buffered range, vertical, RTL | exists (#46) |
 | `FlowText`: wrapped inline runs (normal / weak / link) with per-run clicks, hand cursor and hover underline; rich-text layout with per-range DirectWrite formatting | exists (#48) |
 | `tabs!` paged layout node: native `SysTabControl32`, owner-drawn tabs, pages are layout subtrees; runtime `set_selected`/`selected`/`set_visible` | exists (#15, #120) |
@@ -153,6 +154,7 @@ src/
   gdi/            RAII `Font` / `Brush` / `Pen` / `Bitmap`, `Paint`, `Canvas`
   d2d/            anti-aliased Direct2D: `D2dSurface`/`D2dCanvas` for an `HWND`,
                   `DcCanvas` over an owner-draw `HDC`
+  gl/             OpenGL: `GlSurface`, a WGL context for an `HWND` (unsafe in `sys/gl/`)
   controls/       `ListView`, `TreeView`, `Toolbar`, `StatusBar`, `Label`,
                   `Edit`, `ProgressBar`, `TaskDialog`, `Button`, `CheckBox`,
                   `ColorPicker`, `RadioGroup`, `GroupBox`, `Menu`, `Panel`,

@@ -61,6 +61,7 @@ pub mod clipboard;
 pub mod controls;
 pub mod d2d;
 pub mod gdi;
+pub mod gl;
 pub mod looper;
 mod sys;
 
@@ -74,6 +75,9 @@ pub use capture::RgbaImage;
 pub use color::Color;
 pub use error::{CaptureError, Error, Result, Win32Error};
 pub use geometry::{Point, Rect, Size};
+/// The OpenGL binding [`Renderer::Gl`] widgets draw with, re-exported so an
+/// implementor names the exact version this crate links against.
+pub use glow;
 pub use hwnd::Hwnd;
 pub use layout::{Dock, DockLayout, Insets, Stack, StackDirection, StackSlot};
 pub use message::{

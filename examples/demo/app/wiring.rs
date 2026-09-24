@@ -8,6 +8,7 @@ use win32ui::{column, row, tabs};
 use super::document;
 use super::flow_text::Flow;
 use super::form::Form;
+use super::gl_cube;
 use super::grid::Grid;
 use super::library::Library;
 use super::mail::MailTab;
@@ -86,6 +87,7 @@ pub(super) fn build(ui: &mut Ui<Msg>) -> App {
     let flow = Flow::build(ui);
     let grid = Grid::build(ui);
     let form = Form::build(ui);
+    let cube = gl_cube::Cube::build(ui);
     let views = tabs![
         ("Library", library_page),
         ("Mail", mail_page),
@@ -95,6 +97,7 @@ pub(super) fn build(ui: &mut Ui<Msg>) -> App {
         ("Flow", flow.page()),
         ("Grid", grid.page()),
         ("Form", form.page()),
+        ("Cube", cube.page()),
     ]
     // `WIN32UI_DEMO_TAB=3` opens the Sliders tab for a screenshot run.
     .initial(env_dip("WIN32UI_DEMO_TAB", 0.0) as usize)
@@ -163,6 +166,7 @@ pub(super) fn build(ui: &mut Ui<Msg>) -> App {
         flow,
         grid,
         form,
+        cube,
         prefs: None,
         top_bar,
     };

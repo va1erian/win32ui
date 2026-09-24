@@ -20,7 +20,9 @@ use crate::window::CursorShape;
 /// [`CustomWidget::paint`](super::CustomWidget::paint) into a GDI
 /// [`Canvas`](crate::gdi::Canvas). A widget that needs anti-aliasing opts into
 /// [`Renderer::Direct2D`] and draws with
-/// [`CustomWidget::paint_d2d`](super::CustomWidget::paint_d2d) instead.
+/// [`CustomWidget::paint_d2d`](super::CustomWidget::paint_d2d) instead; one
+/// that renders with the GPU opts into [`Renderer::Gl`] and draws with
+/// [`CustomWidget::paint_gl`](super::CustomWidget::paint_gl).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Renderer {
     /// Paint with GDI through [`CustomWidget::paint`](super::CustomWidget::paint).
@@ -29,6 +31,11 @@ pub enum Renderer {
     /// Paint with Direct2D through
     /// [`CustomWidget::paint_d2d`](super::CustomWidget::paint_d2d).
     Direct2D,
+    /// Paint with OpenGL through
+    /// [`CustomWidget::paint_gl`](super::CustomWidget::paint_gl), receiving the
+    /// window's [`glow::Context`] with the framebuffer already sized, cleared
+    /// and current.
+    Gl,
 }
 
 /// An input event delivered to a [`CustomWidget`](super::CustomWidget).

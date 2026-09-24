@@ -86,6 +86,11 @@ pub enum Error {
     #[error("invalid Direct2D use: {0}")]
     Direct2d(&'static str),
 
+    /// An OpenGL (WGL) context could not be created on a window, so its widget
+    /// falls back to GDI.
+    #[error("could not create an OpenGL context: {0}")]
+    Gl(&'static str),
+
     /// The occlusion-proof `Windows.Graphics.Capture` path failed for a
     /// reason callers may want to distinguish. Other Win32 failures keep
     /// their [`Win32`](Error::Win32) variant.
