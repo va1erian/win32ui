@@ -20,6 +20,8 @@ use win32ui::column;
 use win32ui::d2d::{D2dCanvas, RectF};
 use win32ui::gdi::Canvas;
 use win32ui::prelude::*;
+use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
+use windows::Win32::UI::WindowsAndMessaging::{SendMessageW, WM_KEYDOWN};
 
 /// A widget that raises its event the moment it gains focus.
 struct FocusWidget;
@@ -357,5 +359,153 @@ fn direct2d_scroll_host_resets_translation_at_offset_zero() {
         count_color(&top, SCROLL_BAND) > 100,
         "after returning to offset 0 the top band must be visible again; \
          a stale Direct2D translation left the viewport blank"
+    );
+}
+
+/// A widget that claims `Down`/`PageDown` in
+/// [`CustomWidget::key`] — as a list moving its focused row would — and leaves
+/// every other key to the scroll host.
+struct NavWidget {
+    claimed: Rc<Cell<u32>>,
+}
+
+impl CustomWidget for NavWidget {
+    type Event = ();
+
+    fn paint(&self, _canvas: &Canvas, _bounds: Rect, _theme: &Theme) {}
+
+    fn key(&self, key: Key, _modifiers: Modifiers, _cx: &mut WidgetCx<()>) -> KeyResult {
+        match key {
+            Key::DOWN | Key::PAGE_DOWN => {
+                self.claimed.set(self.claimed.get() + 1);
+                KeyResult::Handled
+            }
+            _ => KeyResult::Ignored,
+        }
+    }
+}
+
+/// A widget that never claims a navigation key: the scroll host keeps them.
+struct IgnoreWidget;
+
+impl CustomWidget for IgnoreWidget {
+    type Event = ();
+
+    fn paint(&self, _canvas: &Canvas, _bounds: Rect, _theme: &Theme) {}
+}
+
+/// Sends `key` down to the widget's child window.
+fn send_key_down(hwnd: Hwnd, key: Key) {
+    let window = HWND(hwnd.raw() as *mut core::ffi::c_void);
+    // SAFETY: a synchronous message to the widget's own live window.
+    unsafe {
+        SendMessageW(
+            window,
+            WM_KEYDOWN,
+            Some(WPARAM(usize::from(key.code()))),
+            Some(LPARAM(0)),
+        );
+    }
+}
+
+#[derive(Default)]
+struct KeyChecks {
+    nav_down: Cell<f32>,
+    nav_page: Cell<f32>,
+    nav_end: Cell<f32>,
+    plain_down: Cell<f32>,
+    claimed: Cell<u32>,
+}
+
+struct KeyApp {
+    nav: Custom<NavWidget, ()>,
+    plain: Custom<IgnoreWidget, ()>,
+    claimed: Rc<Cell<u32>>,
+    checks: Rc<KeyChecks>,
+}
+
+impl App for KeyApp {
+    type Msg = ();
+
+    fn update(&mut self, _msg: (), ui: &mut Ui<()>) {
+        let nav = self.nav.hwnd();
+        self.nav.scroll_to(dip(0.0));
+        send_key_down(nav, Key::DOWN);
+        self.checks.nav_down.set(self.nav.scroll_offset().value());
+        send_key_down(nav, Key::PAGE_DOWN);
+        self.checks.nav_page.set(self.nav.scroll_offset().value());
+        send_key_down(nav, Key::END);
+        self.checks.nav_end.set(self.nav.scroll_offset().value());
+        self.checks.claimed.set(self.claimed.get());
+
+        let plain = self.plain.hwnd();
+        self.plain.scroll_to(dip(0.0));
+        send_key_down(plain, Key::DOWN);
+        self.checks
+            .plain_down
+            .set(self.plain.scroll_offset().value());
+
+        ui.quit();
+    }
+}
+
+/// A widget that claims `Down`/`PageDown` in `CustomWidget::key` stops the
+/// scroll host from consuming them; a widget that ignores them still scrolls.
+#[test]
+fn custom_widget_can_claim_scroll_navigation_keys() {
+    let claimed = Rc::new(Cell::new(0u32));
+    let claimed_for_make = Rc::clone(&claimed);
+    let checks = Rc::new(KeyChecks::default());
+    let checks_for_make = Rc::clone(&checks);
+
+    let Some(run) = run_app_with_watchdog("win32ui.custom.keys", move |ui| {
+        let viewport = dip(300.0).to_px(ui.dpi()).value();
+        let nav = Custom::new(
+            ui,
+            NavWidget {
+                claimed: claimed_for_make,
+            },
+        )
+        .expect("nav widget")
+        .with_vscroll();
+        nav.set_bounds(Rect::new(0, 0, viewport, viewport));
+        nav.set_content_height(dip(5000.0));
+        let plain = Custom::new(ui, IgnoreWidget)
+            .expect("plain widget")
+            .with_vscroll();
+        plain.set_bounds(Rect::new(0, 0, viewport, viewport));
+        plain.set_content_height(dip(5000.0));
+        ui.emit(());
+        KeyApp {
+            nav,
+            plain,
+            claimed,
+            checks: checks_for_make,
+        }
+    }) else {
+        return;
+    };
+
+    assert!(!run.timed_out, "the watchdog fired before the app quit");
+    assert_eq!(
+        checks.claimed.get(),
+        2,
+        "the widget did not claim Down and PageDown"
+    );
+    assert_eq!(checks.nav_down.get(), 0.0, "a claimed Down must not scroll");
+    assert_eq!(
+        checks.nav_page.get(),
+        0.0,
+        "a claimed PageDown must not scroll"
+    );
+    assert!(
+        (checks.nav_end.get() - dip(4700.0).value()).abs() < 1.0,
+        "an ignored End should still scroll to the bottom (got {})",
+        checks.nav_end.get()
+    );
+    assert!(
+        (checks.plain_down.get() - dip(48.0).value()).abs() < 1.0,
+        "a widget that ignores Down should scroll one line (got {})",
+        checks.plain_down.get()
     );
 }
