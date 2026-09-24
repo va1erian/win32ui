@@ -16,6 +16,7 @@ pub mod edit;
 pub(crate) mod edit_events;
 pub(crate) mod edit_text;
 pub mod flow_text;
+pub mod grid_view;
 pub mod groupbox;
 pub mod label;
 pub mod listview;
@@ -48,6 +49,7 @@ pub mod prelude {
     pub use super::custom::{Custom, CustomWidget, Input, KeyResult, Renderer, WidgetCx};
     pub use super::edit::Edit;
     pub use super::flow_text::{FlowText, Run, RunStyle};
+    pub use super::grid_view::{GridModel, GridView, GridViewTheme, TileSizeSpec, TileState};
     pub use super::groupbox::GroupBox;
     pub use super::label::Label;
     pub use super::listview::{

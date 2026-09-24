@@ -123,6 +123,7 @@ already retained), and closures that capture shared mutable app state.
 | Mica/Mica Alt/Acrylic backdrop and themed caption (`Backdrop`, `TitleBar`), GDI fallback | exists (#53 phase 1) |
 | Extended title bar (`WM_NCCALCSIZE`, `DwmDefWindowProc` hit-test, `caption_inset`, `set_caption_interactive`, top-strip frame extension) | exists (#53 phase 2, fixed by #76) |
 | DirectWrite text, gradients, bitmaps, rounded clips, colour emoji | #22 follow-up |
+| `GridView<T>`: virtualized tile grid (a `CustomWidget` hosted in a `ScrollView`), typed `GridModel`, single selection, wrap-around keyboard navigation, live tile-size range | exists (#47) |
 
 ## Source layout
 
@@ -149,7 +150,8 @@ src/
                   `DcCanvas` over an owner-draw `HDC`
   controls/       `ListView`, `TreeView`, `Toolbar`, `StatusBar`, `Label`,
                   `Edit`, `ProgressBar`, `TaskDialog`, `Button`, `CheckBox`,
-                  `RadioGroup`, `GroupBox`, `Menu`, `ScrollView`, `FlowText`
+                  `RadioGroup`, `GroupBox`, `Menu`, `ScrollView`, `FlowText`,
+                  `Slider`, `GridView`
   controls/control.rs   `Control`, `AsControl`, `ControlExt`, `HasText`
   controls/registry.rs  routes a control's own notifications back to it
   sys/            ALL `unsafe` lives here; every block has a `// SAFETY:` note

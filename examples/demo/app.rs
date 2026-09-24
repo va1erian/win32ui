@@ -16,6 +16,7 @@ mod data;
 mod dialogs;
 mod document;
 mod flow_text;
+mod grid;
 mod library;
 mod menus;
 mod options;
@@ -36,6 +37,7 @@ use win32ui::{column, row, tabs};
 
 use self::document::DocumentWidget;
 use self::flow_text::Flow;
+use self::grid::Grid;
 use self::library::{Library, SortKey};
 use self::options::{Options, ThemeChoice};
 use self::secondary::PrefsMsg;
@@ -120,12 +122,14 @@ pub(crate) fn main() {
             let sliders = Sliders::build(ui);
             let sliders_page = sliders.page();
             let flow = Flow::build(ui);
+            let grid = Grid::build(ui);
             let views = tabs![
                 ("Library", library_page),
                 ("Primitives", primitives),
                 ("Document", document),
                 ("Sliders", sliders_page),
                 ("Flow", flow.page()),
+                ("Grid", grid.page()),
             ]
             // `WIN32UI_DEMO_TAB=3` opens the Sliders tab for a screenshot run.
             .selected(env_dip("WIN32UI_DEMO_TAB", 0.0) as usize)
@@ -176,6 +180,7 @@ pub(crate) fn main() {
                 options,
                 sliders,
                 flow,
+                grid,
                 prefs: None,
             };
 
@@ -295,6 +300,7 @@ enum Msg {
     TabsPage(usize),
     Slider(slider::SliderMsg),
     Flow(flow_text::FlowMsg),
+    Grid(grid::GridMsg),
 }
 
 struct App {
@@ -312,6 +318,7 @@ struct App {
     options: Options,
     sliders: Sliders,
     flow: Flow,
+    grid: Grid,
     prefs: Option<WindowHandle<PrefsMsg>>,
 }
 
@@ -339,6 +346,9 @@ impl win32ui::App for App {
             return;
         }
         if self.flow.update(&msg, &self.status) {
+            return;
+        }
+        if self.grid.update(&msg) {
             return;
         }
         match msg {
