@@ -271,10 +271,13 @@ fn composited_capture_includes_dwm_caption_chrome() {
     // Rounded corners are the visible evidence that the composited capture kept
     // (and un-premultiplied) the alpha channel. They only exist when DWM
     // reports a corner preference other than "do not round"; older Windows does
-    // not report the attribute at all.
+    // not report the attribute at all. GitHub's Windows Server runners report
+    // the default preference but draw square, opaque corners, so the corner
+    // assertion is skipped there (`GITHUB_ACTIONS`); it runs on a desktop.
     let rounded = chrome
         .corner_preference
-        .is_some_and(|value| value != DWMWCP_DONOTROUND.0);
+        .is_some_and(|value| value != DWMWCP_DONOTROUND.0)
+        && std::env::var_os("GITHUB_ACTIONS").is_none();
     if rounded {
         let corners = [
             (0, 0),
