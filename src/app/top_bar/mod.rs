@@ -3,23 +3,25 @@
 //! [`MaterialTopBar`]: an interactive bar drawn on the window's top backdrop
 //! band instead of in a child window.
 //!
-//! A child `HWND` composites opaquely, so it cannot show the parent's DWM
-//! material. This bar, like the top strip menu and the bottom
-//! [`MaterialStatusBar`](crate::MaterialStatusBar), is not a child at all: the
-//! app installs one, reserves its band with
-//! [`Ui::material_top_bar_height`](crate::Ui::material_top_bar_height), and the
-//! top-level transparent Direct2D surface paints the items over the material.
-//! On a window whose material cannot be shown the band is filled opaque from
-//! [`Theme::background`](crate::Theme::background) instead, and the items paint
-//! with the normal theme tokens.
+//! Like the top strip menu and the bottom
+//! [`MaterialStatusBar`](crate::MaterialStatusBar), the bar is not a child
+//! window: the app installs one, reserves its band with
+//! [`Ui::material_top_bar_height`](crate::Ui::material_top_bar_height), the
+//! window's extended frame grows over the band, and the top-level transparent
+//! Direct2D surface paints the items over the material. On a window whose
+//! material cannot be shown the band is filled opaque from
+//! [`Theme::surface`](crate::Theme::surface) instead, and the items paint with
+//! the normal theme tokens.
 //!
 //! The bar's items are set as a list on each sync; painting and layout allocate
 //! nothing per frame. A [`Native`](TopBarItem::native) item is a slot the app
-//! fills with its own child control (an `Edit` search box): it stays opaque,
-//! because native input needs IME and accessibility, and the app either hands
-//! the child to the slot with [`TopBarItem::child`], so the bar keeps it
-//! positioned across resizes, or positions it itself in the slot returned by
-//! [`Ui::material_top_bar_slot`](crate::Ui::material_top_bar_slot).
+//! fills with its own child control (an `Edit` search box), which keeps native
+//! IME and accessibility. The app either hands the child to the slot with
+//! [`TopBarItem::child`], so the bar keeps it positioned across resizes, or
+//! positions it itself in the slot returned by
+//! [`Ui::material_top_bar_slot`](crate::Ui::material_top_bar_slot). Either way
+//! the direct child at the slot paints opaquely (GDI's zero alpha would let DWM
+//! drop it over the material); a control nested in another child is not.
 
 mod input;
 mod layout;

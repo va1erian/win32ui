@@ -23,6 +23,8 @@ pub(crate) mod dpi;
 pub(crate) mod dwm;
 pub(crate) mod edit;
 pub(crate) mod gdi;
+pub(crate) mod glass_child;
+pub(crate) mod glass_paint;
 pub(crate) mod image_list;
 pub(crate) mod layout;
 pub(crate) mod listview;

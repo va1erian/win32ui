@@ -198,6 +198,13 @@ pub(crate) fn apply_extended_frame(window: Hwnd) -> bool {
     let raw = raw_hwnd(window);
     let height = strip_height(raw);
     crate::window::nc::set_strip_height(window, height);
+    // A material top bar's band sits below the strip (and any menu bar) and
+    // shows the material too; its native children paint opaquely (see
+    // `sys::glass_child`).
+    let top = match crate::window::nc::top_bar(window) {
+        0 => height,
+        band => super::title_bar_height(window) + band,
+    };
     let bottom = crate::window::nc::status_bar(window);
-    crate::sys::dwm::extend_frame(window, height, bottom)
+    crate::sys::dwm::extend_frame(window, top, bottom)
 }
