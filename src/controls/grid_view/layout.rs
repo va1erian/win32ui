@@ -54,7 +54,8 @@ pub(super) fn visible_row_range(
     }
     let stride = tile + spacing.max(0);
     let first = (offset.max(0) / stride) as usize;
-    let last = (offset.max(0) + viewport_height).div_ceil(stride).max(0) as usize;
+    let extent = offset.max(0) + viewport_height;
+    let last = ((extent + stride - 1) / stride).max(0) as usize;
     first.min(row_count)..last.min(row_count)
 }
 
