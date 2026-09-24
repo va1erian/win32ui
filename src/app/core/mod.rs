@@ -28,6 +28,7 @@ use crate::window::{TitleBar, Window};
 mod layout;
 mod status_bar;
 mod title_menu;
+mod top_bar;
 
 pub(crate) use status_bar::MaterialStatusBarState;
 
@@ -76,6 +77,10 @@ pub(crate) struct Core<M> {
     strip_surface: RefCell<Option<D2dSurface>>,
     /// The bottom material status bar, if the app installed one.
     material_status_bar: RefCell<Option<Rc<status_bar::MaterialStatusBarState>>>,
+    /// The top material top bar, if the app installed one.
+    material_top_bar: RefCell<Option<Rc<crate::app::top_bar::TopBarState>>>,
+    /// The app's mapping from top bar events to messages.
+    top_bar_events: RefCell<Option<top_bar::TopBarMapper<M>>>,
 }
 
 impl<M> Core<M> {
@@ -112,6 +117,8 @@ impl<M> Core<M> {
             title_menu: RefCell::new(None),
             strip_surface: RefCell::new(None),
             material_status_bar: RefCell::new(None),
+            material_top_bar: RefCell::new(None),
+            top_bar_events: RefCell::new(None),
         }
     }
 

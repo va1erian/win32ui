@@ -108,7 +108,10 @@ impl<M: 'static> Ui<M> {
             return dip(0.0);
         }
         let dpi = sys::dpi::window_dpi(hwnd);
-        Px(sys::nc::title_bar_height(hwnd)).to_dip(dpi)
+        // The material top bar band sits directly below the strip, so any
+        // layout that reserves the strip reserves the bar too.
+        let px = sys::nc::title_bar_height(hwnd) + crate::window::nc::top_bar(hwnd);
+        Px(px).to_dip(dpi)
     }
 
     /// The height of the bottom material status bar band, in design units, so
@@ -119,6 +122,21 @@ impl<M: 'static> Ui<M> {
         Px(px).to_dip(self.dpi())
     }
 
+    /// The height of the top material top bar band, in design units, so the app
+    /// leaves room for it with a top layout margin. Zero when no
+    /// [`MaterialTopBar`](crate::MaterialTopBar) is installed.
+    pub fn material_top_bar_height(&self) -> Dip {
+        Px(self.core.material_top_bar_height_px()).to_dip(self.dpi())
+    }
+
+    /// The client rectangle a [`TopBarItem::native`](crate::TopBarItem::native)
+    /// slot reserves, so the app can position its own child control there. The
+    /// rect is in client coordinates (device pixels). `None` when no item with
+    /// `id` is laid out.
+    pub fn material_top_bar_slot(&self, id: impl Into<crate::TopBarId>) -> Option<Rect> {
+        self.core.top_bar_rect(id.into())
+    }
+
     /// Installs a material status bar's shared state and repaints.
     pub(crate) fn install_material_status_bar(
         &self,
@@ -126,6 +144,24 @@ impl<M: 'static> Ui<M> {
     ) {
         self.core.set_material_status_bar(state);
         sys::window::invalidate(self.core.hwnd());
+    }
+
+    /// Installs a material top bar's shared state and reserves its band.
+    pub(crate) fn install_material_top_bar(&self, state: Rc<super::top_bar::TopBarState>) {
+        self.core.set_material_top_bar(state);
+    }
+
+    /// Installs the app's top bar event mapping.
+    pub(crate) fn set_material_top_bar_events(
+        &self,
+        f: impl Fn(super::top_bar::TopBarEvent) -> Option<M> + 'static,
+    ) {
+        self.core.set_material_top_bar_events(f);
+    }
+
+    /// Recomputes the top bar's band height and item layout, then repaints.
+    pub(crate) fn refresh_material_top_bar(&self) {
+        self.core.refresh_material_top_bar();
     }
 
     /// The caption buttons' bounds, relative to the window's top-left corner (as

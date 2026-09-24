@@ -88,7 +88,7 @@ impl Layout {
 
 impl SliderState {
     /// Draws the slider into `bounds` (device-independent pixels).
-    pub(super) fn draw(&self, canvas: &mut D2dCanvas<'_>, bounds: RectF, theme: &Theme) {
+    pub(crate) fn draw(&self, canvas: &mut D2dCanvas<'_>, bounds: RectF, theme: &Theme) {
         let layout = Layout {
             vertical: self.vertical,
         };

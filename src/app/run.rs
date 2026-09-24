@@ -108,6 +108,57 @@ impl<A: App> AppHandler<A> {
         }
     }
 
+    /// Mouse and keyboard input for the material top bar. Returns `None` when
+    /// no top bar is active or the message is not one the bar handles.
+    fn top_bar_input(&self, window: &Window, message: &Message) -> Option<LResult> {
+        if !self.core.has_material_top_bar() {
+            return None;
+        }
+        let hwnd = window.hwnd();
+        match message {
+            Message::MouseMove { x, y } => {
+                if self.core.top_bar_pointer_move(Point::new(*x, *y)) {
+                    let _ = window.track_mouse_leave();
+                    Some(0)
+                } else {
+                    None
+                }
+            }
+            Message::MouseDown {
+                x,
+                y,
+                button: MouseButton::Left,
+            } => {
+                if self.core.top_bar_pointer_down(Point::new(*x, *y)) {
+                    // A slider drag keeps tracking outside the band through the
+                    // capture, and must not start a window drag.
+                    if self.core.top_bar_slider_dragging() {
+                        sys::window_input::set_capture(hwnd);
+                    }
+                    Some(0)
+                } else {
+                    None
+                }
+            }
+            Message::MouseUp {
+                x,
+                y,
+                button: MouseButton::Left,
+            } => {
+                if self.core.top_bar_pointer_up(Point::new(*x, *y)) {
+                    if !self.core.top_bar_slider_dragging() {
+                        sys::window_input::release_capture();
+                    }
+                    Some(0)
+                } else {
+                    None
+                }
+            }
+            Message::KeyDown { key, .. } => self.core.top_bar_key(*key).then_some(0),
+            _ => None,
+        }
+    }
+
     /// Delivers queued messages, one `update` at a time, until the queue is
     /// empty or the app is busy.
     ///
@@ -141,6 +192,27 @@ impl<A: App> WindowHandler for AppHandler<A> {
         // Direct2D surface and reads its own mouse/keyboard input.
         if matches!(&message, Message::Paint) && self.core.try_paint_material() {
             return Some(0);
+        }
+        // A pointer leaving the window must clear both the strip menu's and the
+        // top bar's hover, so it is handled once here rather than by whichever
+        // of the two is routed first.
+        if matches!(&message, Message::MouseLeave) {
+            let mut handled = false;
+            if self.core.has_title_menu() {
+                self.core.title_menu_set_hover(None);
+                self.core.title_menu_set_pressed(None);
+                handled = true;
+            }
+            if self.core.has_material_top_bar() {
+                self.core.top_bar_pointer_leave();
+                handled = true;
+            }
+            if handled {
+                return Some(0);
+            }
+        }
+        if let Some(result) = self.top_bar_input(window, &message) {
+            return Some(result);
         }
         if let Some(result) = self.title_menu_input(window, &message) {
             return Some(result);
@@ -212,6 +284,9 @@ impl<A: App> WindowHandler for AppHandler<A> {
                 }
                 sys::nc::refresh_caption_inset(window.hwnd());
                 self.core.relayout();
+                // The top bar's items are laid out against the new client
+                // width, and its band against the (possibly re-read) strip.
+                self.core.refresh_material_top_bar();
                 // A resize/restore re-creates the DWM frame and can drop the
                 // material surface's contents; repaint the whole window so the
                 // strip and status bar come back without needing a click.
@@ -237,6 +312,7 @@ impl<A: App> WindowHandler for AppHandler<A> {
                 // DPI, so both are re-read for the new scale.
                 self.core.refresh_menu_strip();
                 self.core.refresh_material_status_bar();
+                self.core.refresh_material_top_bar();
                 sys::nc::apply_extended_frame(window.hwnd());
                 sys::nc::refresh_caption_inset(window.hwnd());
                 Some(0)

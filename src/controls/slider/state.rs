@@ -75,7 +75,7 @@ struct Drag {
 
 /// The slider's data and interaction state.
 #[derive(Clone, Debug)]
-pub(super) struct SliderState {
+pub(crate) struct SliderState {
     min: f64,
     max: f64,
     value: f64,
@@ -97,7 +97,7 @@ pub(super) struct SliderState {
 }
 
 impl SliderState {
-    pub(super) fn new(min: f64, max: f64) -> SliderState {
+    pub(crate) fn new(min: f64, max: f64) -> SliderState {
         let (min, max) = if min <= max { (min, max) } else { (max, min) };
         let span = max - min;
         SliderState {
@@ -257,6 +257,93 @@ impl SliderState {
         self.drag = None;
         self.hover = false;
         self.pending_hover = None;
+    }
+}
+
+/// A crate-visible facade for callers that drive a slider whose value is mapped
+/// to their own item geometry (the material top bar), rather than a child
+/// window. It keeps the `Axis`/`Step`/`Anim` internals private.
+impl SliderState {
+    /// Enables or disables the slider, ending any drag and settling the visuals.
+    pub(crate) fn set_enabled(&mut self, enabled: bool) {
+        if enabled {
+            self.enabled = true;
+        } else {
+            self.disable();
+        }
+        self.settle_anim();
+    }
+
+    /// Whether the user is dragging the thumb.
+    pub(crate) fn dragging(&self) -> bool {
+        self.is_dragging()
+    }
+
+    /// The current value.
+    #[cfg(test)]
+    pub(crate) fn current(&self) -> f64 {
+        self.value()
+    }
+
+    /// Sets the value from the app (never raises an event). Returns whether it
+    /// changed.
+    pub(crate) fn set_value_quiet(&mut self, value: f64) -> bool {
+        self.set_value(value)
+    }
+
+    /// Begins a drag at `pos` (device-independent pixels along the `length`
+    /// long main axis). Returns whether the value changed.
+    pub(crate) fn begin_drag(&mut self, length: f64, pos: f64) -> bool {
+        let axis = self.axis(length);
+        self.press(&axis, pos)
+    }
+
+    /// Continues a drag at `pos`.
+    pub(crate) fn drag_to(&mut self, length: f64, pos: f64) -> bool {
+        let axis = self.axis(length);
+        self.pointer_moved(&axis, pos)
+    }
+
+    /// Ends a drag, returning the committed value.
+    pub(crate) fn end_drag(&mut self) -> Option<f64> {
+        self.release()
+    }
+
+    /// Records hover on or off and settles the visuals.
+    pub(crate) fn set_hover(&mut self, on: bool) {
+        if on {
+            self.hover = true;
+        } else {
+            self.pointer_left();
+        }
+        self.settle_anim();
+    }
+
+    /// Records keyboard focus (the ring shows when `focused`) and settles the
+    /// visuals.
+    pub(crate) fn set_focused(&mut self, focused: bool) {
+        self.set_focus(focused, focused);
+        self.settle_anim();
+    }
+
+    /// Moves the value by one keyboard small step with `sign`. Returns whether
+    /// it changed.
+    pub(crate) fn step_small(&mut self, sign: f64) -> bool {
+        let step = self.small_step;
+        self.step(Step::Small(step), sign)
+    }
+
+    /// Takes the value queued by a move, for the caller to report as an event.
+    pub(crate) fn take_change(&mut self) -> Option<f64> {
+        self.take_pending_change()
+    }
+
+    /// Jumps every animation channel to its target (the top bar paints from the
+    /// theme without a per-item easing timer).
+    pub(crate) fn settle_anim(&mut self) {
+        let targets = self.targets();
+        self.anim.retarget(targets);
+        self.anim.snap();
     }
 }
 

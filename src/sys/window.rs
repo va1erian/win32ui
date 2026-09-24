@@ -3,7 +3,7 @@
 use core::cell::Cell;
 use core::ffi::c_void;
 
-use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, RECT, WPARAM};
+use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     GetUpdateRect, HBRUSH, InvalidateRect, RDW_ALLCHILDREN, RDW_ERASE, RDW_INVALIDATE,
     RedrawWindow, UpdateWindow, ValidateRect,
@@ -12,11 +12,12 @@ use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent};
 use windows::Win32::UI::Shell::SUBCLASSPROC;
 use windows::Win32::UI::WindowsAndMessaging::{
-    CS_DBLCLKS, CreateWindowExW, DestroyWindow, GWL_STYLE, GetClientRect, GetWindowLongPtrW,
-    GetWindowRect, HCURSOR, HMENU, HWND_BOTTOM, IDC_ARROW, KillTimer, LoadCursorW, MoveWindow,
-    RegisterClassExW, SW_HIDE, SW_SHOW, SW_SHOWMAXIMIZED, SW_SHOWMINIMIZED, SWP_NOACTIVATE,
-    SWP_NOMOVE, SWP_NOSIZE, SetTimer, SetWindowLongPtrW, SetWindowPos, SetWindowTextW, ShowWindow,
-    UnregisterClassW, WINDOW_EX_STYLE, WINDOW_STYLE, WNDCLASSEXW, WS_TABSTOP,
+    CS_DBLCLKS, CWP_SKIPDISABLED, CWP_SKIPINVISIBLE, ChildWindowFromPointEx, CreateWindowExW,
+    DestroyWindow, GWL_STYLE, GetClientRect, GetWindowLongPtrW, GetWindowRect, HCURSOR, HMENU,
+    HWND_BOTTOM, IDC_ARROW, KillTimer, LoadCursorW, MoveWindow, RegisterClassExW, SW_HIDE, SW_SHOW,
+    SW_SHOWMAXIMIZED, SW_SHOWMINIMIZED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetTimer,
+    SetWindowLongPtrW, SetWindowPos, SetWindowTextW, ShowWindow, UnregisterClassW, WINDOW_EX_STYLE,
+    WINDOW_STYLE, WNDCLASSEXW, WS_TABSTOP,
 };
 use windows::core::{HSTRING, PCWSTR};
 
@@ -237,6 +238,27 @@ pub(crate) fn redraw_children(hwnd: Hwnd) {
             None,
             RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN,
         );
+    }
+}
+
+/// Marks the child of `parent` at `point` (client coordinates) for a repaint,
+/// so a native control sitting on a Direct2D-painted band is drawn back on top
+/// after the band's frame was presented. No-op when no visible child is there.
+pub(crate) fn invalidate_child_at(parent: Hwnd, point: Point) {
+    let raw = POINT {
+        x: point.x,
+        y: point.y,
+    };
+    // SAFETY: `parent` is live and `raw` is a client point; the call only reads.
+    let child = unsafe {
+        ChildWindowFromPointEx(raw_hwnd(parent), raw, CWP_SKIPINVISIBLE | CWP_SKIPDISABLED)
+    };
+    if !child.0.is_null() {
+        // SAFETY: `child` is a live child window; a null rectangle invalidates
+        // its whole client area without erasing it.
+        unsafe {
+            let _ = InvalidateRect(Some(child), None, false);
+        }
     }
 }
 

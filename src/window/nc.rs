@@ -27,6 +27,9 @@ struct Entry {
     /// The height of the bottom material band (a material status bar), in
     /// device pixels; zero when there is none.
     status_bar: i32,
+    /// The height of the top material band (a material top bar), in device
+    /// pixels; zero when there is none.
+    top_bar: i32,
     /// The strip menu's item rectangles in client coordinates.
     menu_items: Vec<Rect>,
 }
@@ -114,6 +117,23 @@ pub(crate) fn status_bar(window: Hwnd) -> i32 {
         map.borrow()
             .get(&window.raw())
             .map_or(0, |entry| entry.status_bar)
+    })
+}
+
+/// Records the top material band's height (device pixels) for `window`.
+pub(crate) fn set_top_bar(window: Hwnd, height: i32) {
+    WINDOWS.with(|map| {
+        map.borrow_mut().entry(window.raw()).or_default().top_bar = height;
+    });
+}
+
+/// The top material band's height (device pixels) for `window`, or 0 when there
+/// is none.
+pub(crate) fn top_bar(window: Hwnd) -> i32 {
+    WINDOWS.with(|map| {
+        map.borrow()
+            .get(&window.raw())
+            .map_or(0, |entry| entry.top_bar)
     })
 }
 
