@@ -33,9 +33,13 @@ pub struct D2dSurface {
     transparent: bool,
     pub(super) drawing: Cell<bool>,
     pub(super) images: RefCell<ImageCache>,
-    /// The device-pixel rectangle this frame is clipped to (and validated at
-    /// the end), or `None` for a whole-window frame.
+    /// The device-pixel rectangle this frame is clipped to, or `None` for a
+    /// whole-window frame. `D2dCanvas::paint_rect` reports it so a virtualized
+    /// widget knows what to draw.
     frame: Cell<Option<Rect>>,
+    /// Set when the render target was resized, which blanks it: the next frame
+    /// must repaint the whole client, not just the newly exposed rectangle.
+    needs_full_repaint: Cell<bool>,
 }
 
 impl D2dSurface {
@@ -70,6 +74,8 @@ impl D2dSurface {
             drawing: Cell::new(false),
             images: RefCell::new(ImageCache::new()),
             frame: Cell::new(None),
+            // A fresh surface is blank, so its first frame repaints everything.
+            needs_full_repaint: Cell::new(true),
         })
     }
 
@@ -86,6 +92,9 @@ impl D2dSurface {
             return;
         }
         self.pixels.set(pixels);
+        // `Resize` discards the surface's contents, so the next frame has to
+        // paint every pixel again.
+        self.needs_full_repaint.set(true);
         let mut target = self.target.borrow_mut();
         if let Some(live) = target.as_mut()
             && live.resize(pixels.0, pixels.1).is_err()
@@ -137,7 +146,7 @@ impl D2dSurface {
         if self.drawing.replace(true) {
             return Err(Error::Direct2d("begin_draw while a frame is in progress"));
         }
-        let created = self.target.borrow().is_none();
+        let created = self.target.borrow().is_none() || self.needs_full_repaint.replace(false);
         match self.prepare_target() {
             Ok(()) => {
                 let mut canvas = D2dCanvas::begin(self);

@@ -4,6 +4,7 @@
 
 use crate::color::Color;
 use crate::error::Result;
+use crate::geometry::Rect;
 use crate::sys;
 use crate::sys::d2d::{EndDraw, Target};
 
@@ -45,6 +46,23 @@ impl<'a> D2dCanvas<'a> {
             .as_ref()
             .map_or((0.0, 0.0), Target::size);
         RectF::new(0.0, 0.0, width, height)
+    }
+
+    /// The device-pixel rectangle this frame is clipped to — the window's
+    /// update region — or the whole client area for a whole-window frame, like
+    /// [`Canvas::paint_rect`](crate::gdi::Canvas::paint_rect). A widget that
+    /// draws only what is visible (a virtualized list) reads it to skip the
+    /// rest; convert with [`scale`](D2dCanvas::scale) to the canvas's
+    /// device-independent coordinates.
+    pub fn paint_rect(&self) -> Rect {
+        self.surface
+            .frame()
+            .unwrap_or_else(|| sys::window::client_rect(self.surface.hwnd()))
+    }
+
+    /// The scale from device-independent to device pixels (1.0 at 96 DPI).
+    pub fn scale(&self) -> f32 {
+        self.surface.scale()
     }
 
     /// Fills the whole surface with `color`, or — inside a clip, as during a
@@ -140,7 +158,13 @@ impl<'a> D2dCanvas<'a> {
             .with(Target::end_draw)
             .unwrap_or(Ok(EndDraw::Presented));
         self.surface.drawing.set(false);
-        sys::d2d::validate(self.surface.hwnd(), self.surface.frame());
+        // Validate the whole client, like `EndPaint` does for the GDI path. A
+        // tall window scrolled mostly off its parent (a grid's content) reports
+        // an update rectangle clipped to its visible part; validating only that
+        // leaves the rest permanently invalid, and Windows asks for the same
+        // paint forever — a repaint storm that starves timers. The frame clip
+        // still limits what was actually drawn.
+        sys::d2d::validate(self.surface.hwnd(), None);
         if outcome? == EndDraw::TargetLost {
             self.surface.recreate_later();
         }

@@ -127,7 +127,7 @@ already retained), and closures that capture shared mutable app state.
 | Strip menu: `WindowSpec::menu_in_strip` draws the menu in the acrylic strip (stacked or inline), alpha-correct Direct2D/DirectWrite, native popups | exists (#88) |
 | `MaterialStatusBar`: status bar painted on a bottom acrylic band; extended-frame maximize/de-maximize/minimize fixes | exists (#99) |
 | DirectWrite text, gradients, bitmaps, rounded clips, colour emoji | #22 follow-up |
-| `GridView<T>`: virtualized tile grid (a `CustomWidget` hosted in a `ScrollView`), typed `GridModel`, single selection, wrap-around keyboard navigation, live tile-size range | exists (#47) |
+| `GridView<T>`: virtualized tile grid (a `CustomWidget` hosted in a `ScrollView`), typed `GridModel`, single selection, wrap-around keyboard navigation, live tile-size range, GDI or Direct2D tile content (scaled bitmaps), resize-synced scroll extent | exists (#47) |
 | Occlusion-proof capture (`Windows.Graphics.Capture`, `wgc` feature): `Window::capture_composited`, `capture::capture_hwnd`, `examples/capture`; never raises a window or moves the pointer | exists (#111) |
 
 ## Source layout

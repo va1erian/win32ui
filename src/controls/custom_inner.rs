@@ -27,6 +27,9 @@ use crate::window::{Window, WindowHandler};
 /// Maps a widget event to an optional app message.
 type EventMapper<W, M> = Box<dyn Fn(<W as CustomWidget>::Event) -> Option<M>>;
 
+/// A callback run when the widget's client area changes size.
+type ResizeFn = Rc<dyn Fn(Rect)>;
+
 /// The state shared between [`Custom`](super::custom::Custom) and its handler:
 /// the widget itself, the event mapper set by `on_event`, the `Ui` used to
 /// enqueue mapped messages, and the optional vertical scroll host.
@@ -34,6 +37,9 @@ pub(super) struct CustomShared<W: CustomWidget, M> {
     pub(super) widget: Rc<RefCell<W>>,
     pub(super) mapper: RefCell<Option<EventMapper<W, M>>>,
     pub(super) scroll: RefCell<Option<Rc<CustomScroll<M>>>>,
+    /// Runs when the widget's client area changes size; see
+    /// [`Custom::on_resize`](super::custom::Custom::on_resize).
+    pub(super) resize: RefCell<Option<ResizeFn>>,
     /// The running animation timer, if any: it exists only while the widget
     /// has asked for animation ticks.
     pub(super) timer: Cell<Option<TimerId>>,
@@ -186,11 +192,19 @@ impl<W: CustomWidget, M: 'static> WindowHandler for CustomHandler<W, M> {
                 Some(crate::sys::window_input::DLGC_WANTARROWS)
             }
             Message::Size { width, height } => {
-                self.bounds.set(Rect::new(0, 0, width, height));
+                let bounds = Rect::new(0, 0, width, height);
+                self.bounds.set(bounds);
                 if let Some(scroll) = self.shared.scroll.borrow().as_ref() {
                     scroll.on_size();
                 }
                 self.renderer.borrow().resize(width, height);
+                // Drop the borrow before the callback: it may move windows (a
+                // composite widget resizing its own content extent), which
+                // re-enters this handler.
+                let resize = self.shared.resize.borrow().as_ref().cloned();
+                if let Some(resize) = resize {
+                    resize(bounds);
+                }
                 Some(0)
             }
             Message::MouseWheel {
