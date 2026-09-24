@@ -20,7 +20,8 @@ const SEARCH: TopBarId = TopBarId::new(8);
 /// The demo transport bar and its app-owned search box.
 pub(super) struct TopBar {
     bar: MaterialTopBar<Msg>,
-    search: Edit<Msg>,
+    /// Kept alive here: the bar positions it but the app owns it.
+    _search: Edit<Msg>,
     repeat: bool,
     elapsed: f64,
     duration: f64,
@@ -37,6 +38,10 @@ pub(super) fn build(ui: &mut Ui<Msg>) -> Option<TopBar> {
         }
     };
     let duration = 215.0;
+    let search = Edit::single_line(ui)
+        .ok()?
+        .cue("Search")
+        .on_change(|text| Some(Msg::Search(text.to_owned())));
     bar.set_items(vec![
         TopBarItem::icon_button(1u32, Fluent::PREVIOUS).tooltip("Previous"),
         TopBarItem::icon_button(2u32, Fluent::PLAY).tooltip("Play"),
@@ -47,23 +52,18 @@ pub(super) fn build(ui: &mut Ui<Msg>) -> Option<TopBar> {
         TopBarItem::slider(SEEK, 42.0, 0.0..=duration).expand(true),
         TopBarItem::label(ELAPSED, "0:42"),
         TopBarItem::slider(7u32, 0.7, 0.0..=1.0).width(dip(90.0)),
-        TopBarItem::native(SEARCH, dip(200.0)).tooltip("Search"),
+        // The bar keeps the edit in its slot across resizes, at the edit's
+        // natural single-line height.
+        TopBarItem::native(SEARCH, dip(200.0))
+            .height(dip(20.0))
+            .child(&search)
+            .tooltip("Search"),
     ]);
-
-    let search = Edit::single_line(ui)
-        .ok()?
-        .cue("Search")
-        .on_change(|text| Some(Msg::Search(text.to_owned())));
-    // The band is inside the client, below the extended strip, so the slot is
-    // already reported as client area; the app only has to position its child.
-    if let Some(rect) = ui.material_top_bar_slot(SEARCH) {
-        search.set_bounds(rect);
-    }
 
     let bar = bar.on_event(|event| Some(Msg::TopBar(event)));
     Some(TopBar {
         bar,
-        search,
+        _search: search,
         repeat: false,
         elapsed: 42.0,
         duration,
@@ -71,12 +71,9 @@ pub(super) fn build(ui: &mut Ui<Msg>) -> Option<TopBar> {
 }
 
 impl TopBar {
-    /// Called on a timer: keeps the native search box in its slot and advances
-    /// the seek slider through the cheap per-frame updates.
-    pub(super) fn tick(&self, ui: &Ui<Msg>) {
-        if let Some(rect) = ui.material_top_bar_slot(SEARCH) {
-            self.search.set_bounds(rect);
-        }
+    /// Called on a timer: advances the seek slider through the cheap
+    /// per-frame updates.
+    pub(super) fn tick(&self) {
         let elapsed = (self.elapsed + 0.5).min(self.duration);
         self.bar.set_value(SEEK, elapsed);
         self.bar.set_text(ELAPSED, &format_clock(elapsed));
