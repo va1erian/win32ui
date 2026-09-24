@@ -117,7 +117,9 @@ already retained), and closures that capture shared mutable app state.
 | Custom widgets: Direct2D paint path (`CustomWidget::renderer`/`paint_d2d`), a built-in vertical scroll host (`Custom::with_vscroll`, `scroll_to`, `Scrolled` event) and rect-scoped repaints (`invalidate_rect`, the dirty rect honoured by both paths) | exist (#64, #83) |
 | `Slider`: Direct2D-painted, `f64` values, sub-pixel thumb, mouse capture, coalesced `on_change` + `on_commit` + `on_hover`, eased hover/press/focus, keyboard and wheel, buffered range, vertical, RTL | exists (#46) |
 | `FlowText`: wrapped inline runs (normal / weak / link) with per-run clicks, hand cursor and hover underline; rich-text layout with per-range DirectWrite formatting | exists (#48) |
-| `tabs!` paged layout node: native `SysTabControl32`, owner-drawn tabs, pages are layout subtrees | exists (#15) |
+| `tabs!` paged layout node: native `SysTabControl32`, owner-drawn tabs, pages are layout subtrees; runtime `set_selected`/`selected`/`set_visible` | exists (#15, #120) |
+| `Panel`: a container owning a layout subtree of standard controls, for scrollable forms inside `ScrollView` | exists (#119) |
+| `ColorPicker`: owner-drawn swatch that opens the common `ChooseColor` dialog and maps the choice to `Msg` | exists (#121) |
 | Tooltips: `ControlExt::set_tooltip`, region tooltips, toolbar item tooltips, dark owner-draw | exists (#17) |
 | Direct2D shapes, clips and transforms (`d2d`, anti-aliased); `ProgressBar` and the owner-drawn shapes (radio, group box, toolbar, tabs, menus, sort arrow) draw with it (GDI fallback) | exists (#22, #77) |
 | Mica/Mica Alt/Acrylic backdrop and themed caption (`Backdrop`, `TitleBar`), GDI fallback | exists (#53 phase 1) |
@@ -153,8 +155,8 @@ src/
                   `DcCanvas` over an owner-draw `HDC`
   controls/       `ListView`, `TreeView`, `Toolbar`, `StatusBar`, `Label`,
                   `Edit`, `ProgressBar`, `TaskDialog`, `Button`, `CheckBox`,
-                  `RadioGroup`, `GroupBox`, `Menu`, `ScrollView`, `FlowText`,
-                  `Slider`, `GridView`
+                  `ColorPicker`, `RadioGroup`, `GroupBox`, `Menu`, `Panel`,
+                  `ScrollView`, `FlowText`, `Slider`, `GridView`
   controls/control.rs   `Control`, `AsControl`, `ControlExt`, `HasText`
   controls/registry.rs  routes a control's own notifications back to it
   sys/            ALL `unsafe` lives here; every block has a `// SAFETY:` note
@@ -383,6 +385,48 @@ takes no space and cannot receive focus). The native tabs ignore dark mode, so
 the control is `TCS_OWNERDRAWFIXED` and each tab is painted from theme tokens on
 `WM_DRAWITEM` — including hover, selected and focus states — with a small
 subclass tracking the hot tab and `Ctrl+Tab`.
+
+A held `Tabs` handle also drives the node at runtime, so it can be embedded in a
+view that switches in and out without rebuilding the window: `set_selected`
+repages and raises `on_change`, `selected` reads the current index, and
+`set_visible` hides the strip (taking it out of layout and hiding every page)
+without dropping the node. `initial` is the builder-time equivalent of
+`set_selected`.
+
+## Panels and scrollable forms
+
+Standard controls always parent to the top-level window, so `ScrollView` could
+only host one custom-drawn `Custom` pane. A `Panel` is the missing container: it
+owns a plain child window, and the controls created through
+`panel.ui(ui)` become *its* children, positioned by the panel's own layout and
+clipped to its client area. Hand the panel to `ScrollView::set_content` and the
+whole form follows the scroll offset as a single window:
+
+```rust
+let panel = Panel::new(ui)?;
+let mut form = panel.ui(ui);                 // controls parent to the panel
+let name = Edit::single_line(&mut form).on_change(|t| Some(Msg::Name(t.into())));
+let save = Button::new(&mut form, "Save").on_click(|| Some(Msg::Save));
+panel.set_layout(column![name, save].spacing(dip(8.0)));
+let view = ScrollView::new(ui)?;
+view.set_content(&panel);
+view.set_content_height(dip(640.0));         // the scroll range
+```
+
+A panel is a normal widget (`AsControl`/`ControlExt`), so it can sit in an outer
+layout or nest inside another panel; theme state is keyed on the top-level
+window, so nested controls still theme live. Only widgets and nested `column!`/
+`row!` layouts belong in a panel's tree (a `Tabs`/`Split` node is hosted by the
+window instead).
+
+## Colour picker
+
+`ColorPicker` is an owner-drawn swatch button: it shows
+the current colour painted from the theme's border token, and pressing it opens
+the documented `ChooseColor` dialog seeded with that colour. A chosen colour
+raises `on_change(Color)` (the crate's existing RGB type); `set_color`/`color`
+read and replace it from code without raising the event. It is the "read-only
+swatch plus *More colours…*" shape a settings page needs.
 
 ## Trees
 

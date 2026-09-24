@@ -14,6 +14,7 @@ pub(crate) mod capture_wgc;
 pub(crate) mod capture_wgc_device;
 pub(crate) mod client_edge;
 pub(crate) mod clipboard;
+pub(crate) mod colorpicker;
 pub(crate) mod combobox;
 pub(crate) mod control;
 pub(crate) mod d2d;

@@ -16,6 +16,7 @@ mod data;
 mod dialogs;
 mod document;
 mod flow_text;
+mod form;
 mod grid;
 mod library;
 mod mail;
@@ -39,6 +40,7 @@ use win32ui::{column, row, tabs};
 
 use self::document::DocumentWidget;
 use self::flow_text::Flow;
+use self::form::{Form, FormMsg};
 use self::grid::Grid;
 use self::library::{Library, SortKey};
 use self::mail::MailTab;
@@ -156,6 +158,7 @@ pub(crate) fn main() {
             let sliders_page = sliders.page();
             let flow = Flow::build(ui);
             let grid = Grid::build(ui);
+            let form = Form::build(ui);
             let views = tabs![
                 ("Library", library_page),
                 ("Mail", mail_page),
@@ -164,9 +167,10 @@ pub(crate) fn main() {
                 ("Sliders", sliders_page),
                 ("Flow", flow.page()),
                 ("Grid", grid.page()),
+                ("Form", form.page()),
             ]
             // `WIN32UI_DEMO_TAB=3` opens the Sliders tab for a screenshot run.
-            .selected(env_dip("WIN32UI_DEMO_TAB", 0.0) as usize)
+            .initial(env_dip("WIN32UI_DEMO_TAB", 0.0) as usize)
             .on_change(|page| Some(Msg::TabsPage(page)));
 
             // Options panel: a default push button, a check box, a labelled
@@ -237,6 +241,7 @@ pub(crate) fn main() {
                 sliders,
                 flow,
                 grid,
+                form,
                 prefs: None,
                 top_bar,
             };
@@ -374,6 +379,7 @@ enum Msg {
     Slider(slider::SliderMsg),
     Flow(flow_text::FlowMsg),
     Grid(grid::GridMsg),
+    Form(FormMsg),
     TopBar(TopBarEvent),
 }
 
@@ -429,6 +435,7 @@ struct App {
     sliders: Sliders,
     flow: Flow,
     grid: Grid,
+    form: Form,
     prefs: Option<WindowHandle<PrefsMsg>>,
     /// The material transport bar, when `WIN32UI_DEMO_TOP_BAR` is set.
     top_bar: Option<topbar::TopBar>,
@@ -464,6 +471,9 @@ impl win32ui::App for App {
             return;
         }
         if self.grid.update(&msg) {
+            return;
+        }
+        if self.form.update(&msg, &self.status) {
             return;
         }
         match msg {

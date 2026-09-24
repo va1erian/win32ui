@@ -89,6 +89,7 @@ pub use window::{
 
 pub use controls::button::Button;
 pub use controls::checkbox::CheckBox;
+pub use controls::color_picker::ColorPicker;
 pub use controls::combobox::ComboBox;
 pub use controls::control::{AsControl, Control, ControlExt, HasText};
 pub use controls::custom::{Custom, CustomWidget, Input, KeyResult, Renderer, WidgetCx};
@@ -102,6 +103,7 @@ pub use controls::listview::{
     RowStyle, SortDirection,
 };
 pub use controls::menu::Menu;
+pub use controls::panel::Panel;
 pub use controls::progressbar::{ProgressBar, ProgressState};
 pub use controls::progressbar_theme::ProgressBarTheme;
 pub use controls::radio::{RadioGroup, RadioOption};

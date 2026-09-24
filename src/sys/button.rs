@@ -7,8 +7,8 @@ use windows::Win32::Foundation::{LPARAM, WPARAM};
 use windows::Win32::UI::Controls::{BST_CHECKED, BST_UNCHECKED};
 use windows::Win32::UI::WindowsAndMessaging::{
     BM_CLICK, BM_GETCHECK, BM_SETCHECK, BM_SETSTYLE, BS_AUTOCHECKBOX, BS_AUTORADIOBUTTON,
-    BS_DEFPUSHBUTTON, BS_GROUPBOX, BS_PUSHBUTTON, BS_TYPEMASK, DM_SETDEFID, GWL_STYLE,
-    GetWindowLongPtrW, SendMessageW, WS_GROUP,
+    BS_DEFPUSHBUTTON, BS_GROUPBOX, BS_OWNERDRAW, BS_PUSHBUTTON, BS_TYPEMASK, DM_SETDEFID,
+    GWL_STYLE, GetWindowLongPtrW, SendMessageW, WS_GROUP,
 };
 
 use crate::hwnd::Hwnd;
@@ -22,6 +22,12 @@ pub(crate) fn button_style(is_default: bool) -> u32 {
     } else {
         BS_PUSHBUTTON as u32
     }
+}
+
+/// `BUTTON` style for a fully owner-drawn push button (`Winuser.h`:
+/// `BS_OWNERDRAW`): the parent paints it on `WM_DRAWITEM`.
+pub(crate) fn owner_draw_style() -> u32 {
+    BS_OWNERDRAW as u32
 }
 
 /// `BUTTON` style for a two-state check box (`Winuser.h`: `BS_AUTOCHECKBOX`).

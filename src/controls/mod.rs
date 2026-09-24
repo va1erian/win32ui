@@ -6,6 +6,7 @@
 
 pub mod button;
 pub mod checkbox;
+pub mod color_picker;
 pub mod combobox;
 pub(crate) mod combobox_events;
 pub(crate) mod combobox_model;
@@ -21,6 +22,7 @@ pub mod groupbox;
 pub mod label;
 pub mod listview;
 pub mod menu;
+pub mod panel;
 pub mod progressbar;
 pub mod progressbar_theme;
 pub mod radio;
@@ -44,6 +46,7 @@ pub use toolbar_icon::ToolbarIcon;
 pub mod prelude {
     pub use super::button::Button;
     pub use super::checkbox::CheckBox;
+    pub use super::color_picker::ColorPicker;
     pub use super::combobox::ComboBox;
     pub use super::control::{AsControl, Control, ControlExt, HasText};
     pub use super::custom::{Custom, CustomWidget, Input, KeyResult, Renderer, WidgetCx};
@@ -57,6 +60,7 @@ pub mod prelude {
         RowStyle, SortDirection,
     };
     pub use super::menu::Menu;
+    pub use super::panel::Panel;
     pub use super::progressbar::{ProgressBar, ProgressState};
     pub use super::progressbar_theme::ProgressBarTheme;
     pub use super::radio::{RadioGroup, RadioOption};
@@ -114,6 +118,7 @@ pub(crate) mod style {
     pub(crate) const WS_CHILD: u32 = 0x4000_0000;
     pub(crate) const WS_VISIBLE: u32 = 0x1000_0000;
     pub(crate) const WS_BORDER: u32 = 0x0080_0000;
+    pub(crate) const WS_CLIPSIBLINGS: u32 = 0x0400_0000;
     pub(crate) const WS_TABSTOP: u32 = 0x0001_0000;
     pub(crate) const WS_VSCROLL: u32 = 0x0020_0000;
     pub(crate) const WS_EX_CLIENTEDGE: u32 = 0x0000_0200;

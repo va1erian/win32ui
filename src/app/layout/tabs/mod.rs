@@ -36,12 +36,20 @@ use self::host::hover_handler;
 use self::paint::paint_tab;
 use super::{Content, IntoLayoutItem, LayoutItem, Placed, Sizing, WidgetHandle};
 
+/// Repages and relayouts a tabs node after a programmatic change; the flag is
+/// whether to raise `on_change`.
+type Relayout = Rc<dyn Fn(bool)>;
+
 /// State a [`Tabs`] node shares with its native control, its subclass and the
 /// themed-children registry.
 pub(crate) struct TabsShared {
     hwnd: Cell<Hwnd>,
     selected: Cell<usize>,
     count: Cell<usize>,
+    /// Whether the strip takes part in layout. Set by
+    /// [`Tabs::set_visible`] so the node can be hidden without rebuilding the
+    /// window.
+    visible: Cell<bool>,
     /// The tab currently under the pointer, tracked by the subclass.
     hot: Cell<Option<usize>>,
     titles: RefCell<Vec<String>>,
@@ -50,6 +58,9 @@ pub(crate) struct TabsShared {
     mapper: RefCell<Option<Box<dyn Any>>>,
     /// The bound native control and its resources, created by [`build_tabs`].
     bound: RefCell<Option<Rc<Bound>>>,
+    /// Repages and relayouts after a programmatic change. Set by [`build_tabs`]
+    /// once the control exists.
+    relayout: RefCell<Option<Relayout>>,
 }
 
 impl TabsShared {
@@ -58,10 +69,12 @@ impl TabsShared {
             hwnd: Cell::new(Hwnd::NULL),
             selected: Cell::new(0),
             count: Cell::new(0),
+            visible: Cell::new(true),
             hot: Cell::new(None),
             titles: RefCell::new(Vec::new()),
             mapper: RefCell::new(None),
             bound: RefCell::new(None),
+            relayout: RefCell::new(None),
         }
     }
 
@@ -102,9 +115,10 @@ pub(crate) struct TabsNode {
 }
 
 impl TabsNode {
-    /// A tab strip is always worth showing, even when a page is empty.
+    /// Whether the strip takes part in layout; [`Tabs::set_visible`] hides it
+    /// without dropping the node.
     pub(crate) fn is_visible(&self) -> bool {
-        true
+        self.shared.visible.get()
     }
 
     /// How many pages the node holds.
@@ -177,10 +191,53 @@ impl Tabs {
         self
     }
 
-    /// Selects the page at `index` initially.
-    pub fn selected(self, index: usize) -> Tabs {
+    /// Selects the page at `index` when the layout is first installed.
+    pub fn initial(self, index: usize) -> Tabs {
         self.shared.selected.set(index);
         self
+    }
+
+    /// Selects the page at `index` at runtime: the strip repages (showing only
+    /// that page) and `on_change` is raised as if the user had clicked the tab.
+    pub fn set_selected(&self, index: usize) {
+        let count = self.pages.len();
+        if count == 0 {
+            return;
+        }
+        let index = index.min(count - 1);
+        self.shared.selected.set(index);
+        let hwnd = self.shared.hwnd.get();
+        if hwnd.is_alive() {
+            sys::tabs::set_cur_sel(hwnd, index);
+        }
+        if let Some(relayout) = self.shared.relayout.borrow().clone() {
+            relayout(true);
+        }
+    }
+
+    /// The currently selected page index.
+    pub fn selected(&self) -> usize {
+        self.shared.selected.get()
+    }
+
+    /// Shows or hides the strip without dropping the node. A hidden strip takes
+    /// no space and every page is hidden; showing it repages the selection.
+    pub fn set_visible(&self, visible: bool) {
+        self.shared.visible.set(visible);
+        if let Some(bound) = self.shared.bound.borrow().as_ref() {
+            self.shared.handle(bound).set_visible(visible);
+        }
+        for (_, page) in &self.pages {
+            page.set_tree_visible(visible);
+        }
+        if let Some(relayout) = self.shared.relayout.borrow().clone() {
+            relayout(false);
+        }
+    }
+
+    /// Whether the strip is shown.
+    pub fn is_visible(&self) -> bool {
+        self.shared.visible.get()
     }
 
     /// Maps a selection to an app message. The closure returns `Some(msg)` to
@@ -295,6 +352,16 @@ pub(crate) fn build_tabs<M: 'static>(ui: &Ui<M>, node: &TabsNode) {
         _host: host,
     }));
     shared.hwnd.set(hwnd);
+
+    // A runtime selection/visibility change repages and relayouts through this
+    // closure, which is monomorphised for the app's `Msg` here.
+    let weak = Rc::downgrade(&shared);
+    let core_for_relayout = core.clone();
+    *shared.relayout.borrow_mut() = Some(Rc::new(move |emit| {
+        if let Some(shared) = weak.upgrade() {
+            apply(&shared, &core_for_relayout, emit);
+        }
+    }));
 
     let weak = Rc::downgrade(&shared);
     let core_for_events = core.clone();

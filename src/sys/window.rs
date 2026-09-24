@@ -13,11 +13,11 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{TME_LEAVE, TRACKMOUSEEVENT, Tr
 use windows::Win32::UI::Shell::SUBCLASSPROC;
 use windows::Win32::UI::WindowsAndMessaging::{
     CS_DBLCLKS, CWP_SKIPDISABLED, CWP_SKIPINVISIBLE, ChildWindowFromPointEx, CreateWindowExW,
-    DestroyWindow, GWL_STYLE, GetClientRect, GetWindowLongPtrW, GetWindowRect, HCURSOR, HMENU,
-    HWND_BOTTOM, IDC_ARROW, KillTimer, LoadCursorW, MoveWindow, RegisterClassExW, SW_HIDE, SW_SHOW,
-    SW_SHOWMAXIMIZED, SW_SHOWMINNOACTIVE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetTimer,
-    SetWindowLongPtrW, SetWindowPos, SetWindowTextW, ShowWindow, UnregisterClassW, WINDOW_EX_STYLE,
-    WINDOW_STYLE, WNDCLASSEXW, WS_TABSTOP,
+    DestroyWindow, GA_ROOT, GWL_STYLE, GetAncestor, GetClientRect, GetWindowLongPtrW,
+    GetWindowRect, HCURSOR, HMENU, HWND_BOTTOM, IDC_ARROW, KillTimer, LoadCursorW, MoveWindow,
+    RegisterClassExW, SW_HIDE, SW_SHOW, SW_SHOWMAXIMIZED, SW_SHOWMINNOACTIVE, SWP_NOACTIVATE,
+    SWP_NOMOVE, SWP_NOSIZE, SetTimer, SetWindowLongPtrW, SetWindowPos, SetWindowTextW, ShowWindow,
+    UnregisterClassW, WINDOW_EX_STYLE, WINDOW_STYLE, WNDCLASSEXW, WS_TABSTOP,
 };
 use windows::core::{HSTRING, PCWSTR};
 
@@ -203,6 +203,20 @@ pub(crate) fn set_subclass(hwnd: Hwnd, proc: SUBCLASSPROC, id: usize, refdata: u
 pub(crate) fn remove_subclass(hwnd: Hwnd, proc: SUBCLASSPROC, id: usize) -> bool {
     // SAFETY: `proc`/`id` identify a previously installed subclass.
     unsafe { windows::Win32::UI::Shell::RemoveWindowSubclass(raw_hwnd(hwnd), proc, id) }.as_bool()
+}
+
+/// The top-level (root) ancestor of `hwnd`, or `hwnd` itself when it has no
+/// parent or the handle is stale. Used to key per-window theme state on the
+/// top-level window even for controls nested in a container child window.
+pub(crate) fn root(hwnd: Hwnd) -> Hwnd {
+    // SAFETY: `GetAncestor` only walks the parent chain of a handle; a stale
+    // handle yields null, which falls back to `hwnd`.
+    let root = unsafe { GetAncestor(raw_hwnd(hwnd), GA_ROOT) };
+    if root.0.is_null() {
+        hwnd
+    } else {
+        super::hwnd_from(root)
+    }
 }
 
 /// Whether `hwnd` still identifies a live window.
