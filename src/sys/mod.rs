@@ -10,6 +10,8 @@ pub(crate) mod button_draw;
 pub(crate) mod capture;
 #[cfg(feature = "wgc")]
 pub(crate) mod capture_wgc;
+#[cfg(feature = "wgc")]
+pub(crate) mod capture_wgc_device;
 pub(crate) mod client_edge;
 pub(crate) mod clipboard;
 pub(crate) mod combobox;
