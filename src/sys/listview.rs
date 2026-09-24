@@ -87,7 +87,7 @@ pub(crate) fn lv_custom_draw(
         stage: info.nmcd.dwDrawStage.0,
         item: info.nmcd.dwItemSpec as i32,
         hdc: info.nmcd.hdc,
-        hot: info.nmcd.uItemState & CDIS_HOT != 0,
+        hot: info.nmcd.uItemState.0 & CDIS_HOT != 0,
     };
     match draw(&context) {
         CustomDrawResult::Default => 0,

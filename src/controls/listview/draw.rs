@@ -13,7 +13,7 @@ use std::rc::Rc;
 use windows::Win32::UI::Controls::{HIMAGELIST, LVN_GETDISPINFO, NM_CUSTOMDRAW};
 
 use crate::controls::listview::model::{Column, ColumnWidth, ListModel};
-use crate::controls::listview::style::{RowState, RowStyle};
+use crate::controls::listview::row_style::{RowState, RowStyle};
 use crate::controls::listview::theme::ListViewTheme;
 use crate::controls::registry::{ControlEvents, ControlKind};
 use crate::gdi::{Brush, Canvas, Font, TextFormat};
