@@ -111,6 +111,23 @@ impl<M: 'static> Ui<M> {
         Px(sys::nc::title_bar_height(hwnd)).to_dip(dpi)
     }
 
+    /// The height of the bottom material status bar band, in design units, so
+    /// the app leaves room for it with a bottom layout margin. Zero when no
+    /// [`MaterialStatusBar`](crate::MaterialStatusBar) is installed.
+    pub fn material_status_bar_height(&self) -> Dip {
+        let px = self.core.material_status_bar_height_px();
+        Px(px).to_dip(self.dpi())
+    }
+
+    /// Installs a material status bar's shared state and repaints.
+    pub(crate) fn install_material_status_bar(
+        &self,
+        state: Rc<super::core::MaterialStatusBarState>,
+    ) {
+        self.core.set_material_status_bar(state);
+        sys::window::invalidate(self.core.hwnd());
+    }
+
     /// The caption buttons' bounds, relative to the window's top-left corner (as
     /// DWM reports them), or an empty rectangle
     /// when DWM reports none (a standard title bar, or a platform without the

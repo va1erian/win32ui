@@ -5,7 +5,8 @@ use core::ffi::c_void;
 
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
-    GetUpdateRect, HBRUSH, InvalidateRect, UpdateWindow, ValidateRect,
+    GetUpdateRect, HBRUSH, InvalidateRect, RDW_ALLCHILDREN, RDW_ERASE, RDW_INVALIDATE,
+    RedrawWindow, UpdateWindow, ValidateRect,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent};
@@ -217,6 +218,25 @@ pub(crate) fn client_rect(hwnd: Hwnd) -> Rect {
         Rect::new(rect.left, rect.top, rect.right, rect.bottom)
     } else {
         Rect::default()
+    }
+}
+
+/// Invalidates `hwnd` and all its children for a repaint.
+///
+/// Used when a window comes back from minimized/maximized: DWM re-creates the
+/// frame and the material surface plus every child must repaint. Unlike
+/// `RDW_UPDATENOW`, this only marks for painting, so it cannot re-enter
+/// `WM_PAINT` from inside a size/activation handler.
+pub(crate) fn redraw_children(hwnd: Hwnd) {
+    // SAFETY: `hwnd` is live; a null update rectangle means the whole window,
+    // and only documented redraw flags are passed.
+    unsafe {
+        let _ = RedrawWindow(
+            Some(raw_hwnd(hwnd)),
+            None,
+            None,
+            RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN,
+        );
     }
 }
 

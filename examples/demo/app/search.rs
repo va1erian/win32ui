@@ -21,7 +21,7 @@ pub(super) fn build(ui: &mut Ui<Msg>) -> Result<(Label, Edit<Msg>)> {
 
 /// Re-filters the list on `query` (case-insensitive over title, artist and
 /// album) and reports the match count on the status bar.
-pub(super) fn apply(library: &mut Library, query: &str, status: &StatusBar<Msg>) {
+pub(super) fn apply(library: &mut Library, query: &str, status: &dyn super::StatusWriter) {
     let total = library.tracks.len();
     if query.is_empty() {
         library.order = (0..total).collect();

@@ -84,6 +84,10 @@ pub enum Error {
     /// A Direct2D surface was misused (for example, drawn to re-entrantly).
     #[error("invalid Direct2D use: {0}")]
     Direct2d(&'static str),
+
+    /// A feature was used on a window that does not support it.
+    #[error("unsupported window configuration: {0}")]
+    WindowConfig(&'static str),
 }
 
 /// Convenience alias used throughout the crate.

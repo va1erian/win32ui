@@ -11,17 +11,15 @@
 //! `// SAFETY:` note. Only documented APIs are used.
 
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
-use windows::Win32::Graphics::Dwm::{
-    DWMWA_CAPTION_BUTTON_BOUNDS, DwmDefWindowProc, DwmGetWindowAttribute,
-};
+use windows::Win32::Graphics::Dwm::DwmDefWindowProc;
 use windows::Win32::Graphics::Gdi::{ExcludeClipRect, HDC, RestoreDC, SaveDC};
 use windows::Win32::UI::HiDpi::{AdjustWindowRectExForDpi, GetSystemMetricsForDpi};
 use windows::Win32::UI::WindowsAndMessaging::{
     CWP_SKIPDISABLED, CWP_SKIPINVISIBLE, ChildWindowFromPointEx, DefWindowProcW, GWL_EXSTYLE,
-    GWL_STYLE, GetMenuBarInfo, GetWindowLongPtrW, IsZoomed, MENUBARINFO, NCCALCSIZE_PARAMS,
-    OBJID_MENU, SM_CXPADDEDBORDER, SM_CYCAPTION, SM_CYSIZEFRAME, SWP_FRAMECHANGED, SWP_NOACTIVATE,
-    SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SetWindowPos, WINDOW_EX_STYLE, WINDOW_STYLE,
-    WM_ERASEBKGND, WM_NCCALCSIZE, WM_NCHITTEST, WS_CAPTION,
+    GWL_STYLE, GetMenuBarInfo, GetWindowLongPtrW, GetWindowPlacement, IsZoomed, MENUBARINFO,
+    NCCALCSIZE_PARAMS, OBJID_MENU, SM_CXPADDEDBORDER, SM_CYCAPTION, SM_CYSIZEFRAME,
+    SW_SHOWMAXIMIZED, WINDOW_EX_STYLE, WINDOW_STYLE, WINDOWPLACEMENT, WM_ERASEBKGND, WM_NCCALCSIZE,
+    WM_NCHITTEST, WS_CAPTION,
 };
 
 use crate::geometry::{Point, Rect};
@@ -29,8 +27,13 @@ use crate::hwnd::Hwnd;
 
 use super::{hwnd_from, raw_hwnd};
 
+mod frame;
 mod geometry;
 
+pub(crate) use frame::{
+    apply_extended_frame, caption_buttons_in_window, client_mismatch, enable_extended, reframe,
+    refresh_caption_inset,
+};
 use geometry::{FrameInsets, decide, extended_client_rect, hit_code};
 
 /// The frame thickness of `hwnd`, with the caption height excluded from `top`.
@@ -59,6 +62,17 @@ fn frame_thickness(hwnd: HWND) -> FrameInsets {
 }
 
 fn is_maximized(hwnd: HWND) -> bool {
+    // `IsZoomed` stays true through the de-maximize transition, so a restore
+    // would be laid out as maximized. The placement's `showCmd` flips first.
+    let mut placement = WINDOWPLACEMENT {
+        length: size_of::<WINDOWPLACEMENT>() as u32,
+        ..Default::default()
+    };
+    // SAFETY: `hwnd` is live; `placement` is a correctly-sized out-struct.
+    let placed = unsafe { GetWindowPlacement(hwnd, &mut placement) }.is_ok();
+    if placed {
+        return placement.showCmd == SW_SHOWMAXIMIZED.0 as u32;
+    }
     // SAFETY: `hwnd` is a live window; the call only reads its state.
     unsafe { IsZoomed(hwnd) }.as_bool()
 }
@@ -195,6 +209,11 @@ pub(crate) fn calc_size(hwnd: HWND, wparam: WPARAM, lparam: LPARAM) -> Option<LR
         params.rgrc[1].right,
         params.rgrc[1].bottom,
     );
+    // Windows sends the maximize transition's `WM_NCCALCSIZE` with the *old*
+    // window rectangle, so the client would stay small; the window is then
+    // moved without a second `WM_NCCALCSIZE`. The mismatch is detected in
+    // `WM_SIZE` (see [`client_mismatch`]) and a frame change forces the client
+    // to be recomputed against the final window rectangle.
     let client = extended_client_rect(window, frame_thickness(hwnd), is_maximized(hwnd));
     params.rgrc[0] = RECT {
         left: client.left,
@@ -222,10 +241,15 @@ pub(crate) fn hit_test(hwnd: HWND, wparam: WPARAM, lparam: LPARAM) -> Option<LRE
     if unsafe { DwmDefWindowProc(hwnd, WM_NCHITTEST, wparam, lparam, &mut result) }.as_bool() {
         return Some(result);
     }
+    let point = screen_point(lparam);
+    // DWM stops answering the caption buttons when the window is maximized, so
+    // hit-test them from the bounds DWM still reports.
+    if let Some(code) = frame::caption_button_hit(hwnd, point) {
+        return Some(LRESULT(code as isize));
+    }
     // The menu bar stays non-client, positioned below the removed caption; the
     // default non-client hit-testing answers it (and opens the menu), so defer
     // to `DefWindowProc` for points inside it.
-    let point = screen_point(lparam);
     if menu_bar_rect(hwnd_from(hwnd)).is_some_and(|menu| menu.contains(point)) {
         return None;
     }
@@ -241,91 +265,6 @@ pub(crate) fn hit_test(hwnd: HWND, wparam: WPARAM, lparam: LPARAM) -> Option<LRE
     }
     let hit = decide(point, client, frame, strip_height(hwnd), interactive);
     Some(LRESULT(hit_code(hit) as isize))
-}
-
-/// Reads the caption buttons' bounds from DWM, relative to the window's top-left
-/// corner (not the client's, and not the screen), or `None`
-/// when DWM has none (a standard window, or a platform without the attribute).
-pub(crate) fn caption_buttons_in_window(hwnd: Hwnd) -> Option<Rect> {
-    let mut raw = RECT::default();
-    // SAFETY: `hwnd` is live and `raw` is a correctly-sized out-pointer for
-    // `DWMWA_CAPTION_BUTTON_BOUNDS`, which returns window-relative coordinates.
-    let result = unsafe {
-        DwmGetWindowAttribute(
-            raw_hwnd(hwnd),
-            DWMWA_CAPTION_BUTTON_BOUNDS,
-            &mut raw as *mut RECT as *mut core::ffi::c_void,
-            size_of::<RECT>() as u32,
-        )
-    };
-    if result.is_err() {
-        return None;
-    }
-    Some(Rect::new(raw.left, raw.top, raw.right, raw.bottom))
-}
-
-/// Re-reads the caption buttons' bounds from DWM and records them (client
-/// coordinates) for `hwnd`. Returns the bounds, or `None` when DWM has none.
-pub(crate) fn refresh_caption_inset(hwnd: Hwnd) -> Option<Rect> {
-    let bounds = caption_buttons_in_window(hwnd)?;
-    // Window-relative to client-relative: the client's origin is where the
-    // window's top-left corner sits in client coordinates, negated.
-    let window = super::window::window_rect(hwnd);
-    let origin = to_client(raw_hwnd(hwnd), Point::new(window.left, window.top));
-    let client = Rect::new(
-        bounds.left + origin.x,
-        bounds.top + origin.y,
-        bounds.right + origin.x,
-        bounds.bottom + origin.y,
-    );
-    crate::window::nc::set_caption_inset(hwnd, client);
-    Some(client)
-}
-
-/// Marks `hwnd` as using the extended title bar, reads its caption inset and
-/// extends the frame over the caption strip. Returns whether DWM accepted the
-/// extended frame.
-pub(crate) fn enable_extended(hwnd: Hwnd) -> bool {
-    crate::window::nc::set_extended(hwnd, true);
-    // The window was created with a standard caption, so its client area was
-    // first computed above the caption row. Ask Windows to recompute the
-    // non-client area now that the flag is set, so the client — and with it the
-    // strip's Direct2D surface — starts at the window's top edge.
-    force_frame_change(hwnd);
-    let extended = apply_extended_frame(hwnd);
-    let _ = refresh_caption_inset(hwnd);
-    extended
-}
-
-/// Recomputes `hwnd`'s non-client area (and sends `WM_NCCALCSIZE`), so the
-/// extended-frame client rectangle takes effect without moving or resizing.
-fn force_frame_change(hwnd: Hwnd) {
-    // SAFETY: `hwnd` is live; the position/size and z-order are untouched and
-    // only the frame is recalculated.
-    unsafe {
-        let _ = SetWindowPos(
-            raw_hwnd(hwnd),
-            None,
-            0,
-            0,
-            0,
-            0,
-            SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
-        );
-    }
-}
-
-/// Records the caption-strip height of an extended-frame `window` and extends
-/// DWM's frame over it. The strip is where DWM draws the caption buttons and,
-/// with a backdrop, the material. Re-apply after `WM_NCCALCSIZE`, on resize and
-/// on DPI change (the strip height is DPI-dependent).
-pub(crate) fn apply_extended_frame(window: Hwnd) -> bool {
-    if !crate::window::nc::is_extended(window) {
-        return false;
-    }
-    let height = strip_height(raw_hwnd(window));
-    crate::window::nc::set_strip_height(window, height);
-    super::dwm::extend_frame(window, height)
 }
 
 /// Handles `WM_ERASEBKGND` for an extended-frame window, or `None` to let the
@@ -358,9 +297,21 @@ pub(crate) fn erase_background(hwnd: HWND, wparam: WPARAM) -> Option<LRESULT> {
         let _ = unsafe { RestoreDC(dc, saved) };
     }
     let client = super::window::client_rect(window);
-    let strip = Rect::new(0, 0, client.right, strip_height(hwnd).min(client.bottom));
     if let Some(brush) = crate::gdi::cache_brush(crate::color::Color::rgb(0, 0, 0)) {
+        let strip = Rect::new(0, 0, client.right, strip_height(hwnd).min(client.bottom));
         super::gdi::fill_rect(dc, strip, brush);
+        // The material status bar band is glass too: its pixels are cleared to
+        // black so the top-level Direct2D surface can draw over it with alpha.
+        let band = crate::window::nc::status_bar(window);
+        if band > 0 {
+            let bottom = Rect::new(
+                0,
+                (client.bottom - band).max(0),
+                client.right,
+                client.bottom,
+            );
+            super::gdi::fill_rect(dc, bottom, brush);
+        }
     }
     Some(LRESULT(1))
 }

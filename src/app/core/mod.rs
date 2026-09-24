@@ -11,6 +11,7 @@
 use std::any::Any;
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
+use std::rc::Rc;
 
 use crate::accel::Shortcut;
 use crate::app::layout::Layout;
@@ -25,7 +26,10 @@ use crate::theme::Theme;
 use crate::window::{TitleBar, Window};
 
 mod layout;
+mod status_bar;
 mod title_menu;
+
+pub(crate) use status_bar::MaterialStatusBarState;
 
 /// Maps a close request to an optional app message.
 type CloseMapper<M> = Box<dyn Fn() -> Option<M>>;
@@ -70,6 +74,8 @@ pub(crate) struct Core<M> {
     title_menu: RefCell<Option<TitleBarMenu<M>>>,
     /// The top-level window's transparent Direct2D surface for the strip.
     strip_surface: RefCell<Option<D2dSurface>>,
+    /// The bottom material status bar, if the app installed one.
+    material_status_bar: RefCell<Option<Rc<status_bar::MaterialStatusBarState>>>,
 }
 
 impl<M> Core<M> {
@@ -105,6 +111,7 @@ impl<M> Core<M> {
             menu_strip_placement: Cell::new(MenuStripPlacement::default()),
             title_menu: RefCell::new(None),
             strip_surface: RefCell::new(None),
+            material_status_bar: RefCell::new(None),
         }
     }
 
