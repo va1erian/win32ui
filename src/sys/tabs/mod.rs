@@ -13,9 +13,11 @@
 mod buffered;
 mod draw;
 mod host;
+mod scroller;
 
 pub(crate) use draw::{TabPaint, TabVisual, decode_state, draw_tab, fill};
 pub(crate) use host::{TabEvent, TabHost};
+pub(crate) use scroller::apply_scroller_theme;
 
 use windows::Win32::Foundation::{LPARAM, POINT, RECT};
 use windows::Win32::UI::Controls::{

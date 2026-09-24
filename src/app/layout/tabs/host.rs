@@ -46,6 +46,10 @@ pub(super) fn hover_handler<M: 'static>(
                 }
                 None
             }
+            sys::tabs::TabEvent::Resized => {
+                sys::tabs::apply_scroller_theme(shared.hwnd.get(), theme_of(&core).is_dark);
+                None
+            }
             sys::tabs::TabEvent::Key { key, ctrl, shift } => {
                 let count = shared.count.get();
                 if ctrl && sys::tabs::is_tab_key(key) && count > 0 {

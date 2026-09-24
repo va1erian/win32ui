@@ -6,7 +6,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_CONTROL, VK_SH
 use windows::Win32::UI::Shell::DefSubclassProc;
 use windows::Win32::UI::WindowsAndMessaging::{
     DLGC_WANTARROWS, DLGC_WANTTAB, WM_ERASEBKGND, WM_GETDLGCODE, WM_KEYDOWN, WM_LBUTTONDOWN,
-    WM_MOUSEMOVE, WM_PAINT,
+    WM_MOUSEMOVE, WM_PAINT, WM_SIZE,
 };
 
 use crate::geometry::Rect;
@@ -38,6 +38,9 @@ pub(crate) enum TabEvent {
         /// The control's client rectangle.
         bounds: Rect,
     },
+    /// `WM_SIZE`, after the control re-laid out its tabs and (possibly)
+    /// created or removed its overflow scroller.
+    Resized,
     /// `WM_KEYDOWN`, with the modifier state at the time.
     Key {
         /// The virtual key.
@@ -144,6 +147,13 @@ unsafe extern "system" fn tab_proc(
     // blank the strip before the finished frame is blitted.
     if msg == WM_ERASEBKGND && !super::buffered::printing() {
         return LRESULT(1);
+    }
+    if msg == WM_SIZE {
+        // SAFETY: forward to the subclass chain's original window procedure.
+        let result = unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) };
+        // SAFETY: `refdata` is the live `TabRefdata`.
+        let _ = unsafe { forward(refdata, TabEvent::Resized) };
+        return result;
     }
     let event = match msg {
         WM_ERASEBKGND => TabEvent::Erase {
