@@ -30,6 +30,7 @@ mod slider;
 mod swatch;
 mod text_specimen;
 mod toolbar;
+mod topbar;
 
 use win32ui::prelude::*;
 // `column!` is also a std prelude macro (an array helper), so the layout macros
@@ -76,7 +77,12 @@ pub(crate) fn main() {
     // of a native bar (only takes effect with the extended title bar and an
     // active material). `WIN32UI_DEMO_MENU_PLACEMENT=inline|stacked` picks
     // whether the items share the caption row or get a row below it.
-    let menu_in_strip = std::env::var_os("WIN32UI_DEMO_MENU_STRIP").is_some();
+    // The top bar sits below the strip's menu row, so it needs the self-drawn
+    // strip menu rather than a native menu bar (which the transparent surface
+    // would cover). Requesting the top bar therefore also puts the menu on the
+    // strip.
+    let top_bar_on = std::env::var_os("WIN32UI_DEMO_TOP_BAR").is_some();
+    let menu_in_strip = std::env::var_os("WIN32UI_DEMO_MENU_STRIP").is_some() || top_bar_on;
     let menu_placement = match std::env::var("WIN32UI_DEMO_MENU_PLACEMENT").as_deref() {
         Ok("inline") => MenuStripPlacement::Inline,
         _ => MenuStripPlacement::Stacked,
@@ -114,6 +120,9 @@ pub(crate) fn main() {
                     "Ready"
                 },
             );
+            // `WIN32UI_DEMO_TOP_BAR=1` draws an interactive transport bar on the
+            // top material band (only takes effect with `TitleBar::Extended`).
+            let top_bar = if top_bar_on { topbar::build(ui) } else { None };
             let progress = ProgressBar::new(ui)
                 .expect("progress")
                 .range(0..=100)
@@ -229,6 +238,7 @@ pub(crate) fn main() {
                 flow,
                 grid,
                 prefs: None,
+                top_bar,
             };
 
             // A worker thread ticks a counter into the status bar through the
@@ -364,6 +374,7 @@ enum Msg {
     Slider(slider::SliderMsg),
     Flow(flow_text::FlowMsg),
     Grid(grid::GridMsg),
+    TopBar(TopBarEvent),
 }
 
 /// The demo's status bar: a child `StatusBar`, or a `MaterialStatusBar` drawn
@@ -419,6 +430,8 @@ struct App {
     flow: Flow,
     grid: Grid,
     prefs: Option<WindowHandle<PrefsMsg>>,
+    /// The material transport bar, when `WIN32UI_DEMO_TOP_BAR` is set.
+    top_bar: Option<topbar::TopBar>,
 }
 
 impl App {
@@ -466,7 +479,18 @@ impl win32ui::App for App {
                 self.progress.set_value(40);
                 self.set_status("Refreshed");
             }
-            Msg::Tick(tick) => self.set_status(&format!("Worker tick {tick}")),
+            Msg::Tick(tick) => {
+                if let Some(bar) = &self.top_bar {
+                    bar.tick(ui);
+                }
+                self.set_status(&format!("Worker tick {tick}"));
+            }
+            Msg::TopBar(event) => {
+                let text = self.top_bar.as_mut().map(|bar| bar.event(event));
+                if let Some(text) = text {
+                    self.set_status(&text);
+                }
+            }
             Msg::SwatchClicked => {
                 // Mutate the custom widget through its `Cell` state, then ask it
                 // to repaint — the same pattern apps use for their own widgets.

@@ -37,7 +37,7 @@ use crate::geometry::Rect;
 use crate::theme::{Theme, Themed};
 use crate::units::dip;
 
-use state::SliderState;
+pub(crate) use state::SliderState;
 use widget::{LONG_SIDE, SHORT_SIDE, SliderEvent, SliderWidget};
 
 type ValueMapper<M> = RefCell<Option<Box<dyn Fn(f64) -> Option<M>>>>;

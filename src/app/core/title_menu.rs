@@ -51,7 +51,7 @@ impl<M: 'static> Core<M> {
     /// Whether the window paints a material surface (the strip menu and/or the
     /// bottom status bar) and so must repaint its transparent Direct2D layer.
     pub(crate) fn has_material_surface(&self) -> bool {
-        self.has_title_menu() || self.has_material_status_bar()
+        self.has_title_menu() || self.has_material_status_bar() || self.has_material_top_bar()
     }
 
     /// Recomputes the strip menu's row height and item rectangles for the
@@ -120,6 +120,9 @@ impl<M: 'static> Core<M> {
         };
         self.paint_material(&mut canvas);
         let _ = canvas.end_draw();
+        // Presenting the surface writes the whole window, so a native control in
+        // a top bar slot is repainted over it.
+        self.repaint_top_bar_native_children();
         true
     }
 
@@ -145,15 +148,22 @@ impl<M: 'static> Core<M> {
         let client = sys::window::client_rect(hwnd);
         let scale = dpi as f32 / 96.0;
         let width = client.width() as f32 / scale;
-        let strip = crate::window::nc::strip_height(hwnd);
+        // The content starts below the whole reserved top area: the caption,
+        // any menu (a self-drawn strip row or a native menu bar), and the top
+        // bar band.
+        let strip = sys::nc::title_bar_height(hwnd);
+        let top_bar = crate::window::nc::top_bar(hwnd);
         let band = crate::window::nc::status_bar(hwnd);
+        // The content starts below the top bar band, which is painted on the
+        // material (or opaque by `paint_material_top_bar` on the fallback).
+        let content_top = strip + top_bar;
         canvas.clear_rgba(Rgba::TRANSPARENT);
-        let content_bottom = (client.height() - band).max(strip);
-        if content_bottom > strip {
+        let content_bottom = (client.height() - band).max(content_top);
+        if content_bottom > content_top {
             canvas.fill_rect_rgba(
                 RectF::new(
                     0.0,
-                    strip as f32 / scale,
+                    content_top as f32 / scale,
                     width,
                     content_bottom as f32 / scale,
                 ),
@@ -166,6 +176,7 @@ impl<M: 'static> Core<M> {
                 menu.paint(canvas, dpi, &theme);
             }
         }
+        self.paint_material_top_bar(canvas, dpi, &theme);
         self.paint_material_status_bar(canvas, dpi, &theme);
     }
 
