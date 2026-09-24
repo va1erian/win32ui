@@ -3,8 +3,10 @@
 use core::cell::Cell;
 use core::ffi::c_void;
 
-use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, WPARAM};
-use windows::Win32::Graphics::Gdi::{HBRUSH, InvalidateRect, UpdateWindow};
+use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, RECT, WPARAM};
+use windows::Win32::Graphics::Gdi::{
+    GetUpdateRect, HBRUSH, InvalidateRect, UpdateWindow, ValidateRect,
+};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent};
 use windows::Win32::UI::Shell::SUBCLASSPROC;
@@ -331,6 +333,68 @@ pub(crate) fn invalidate(hwnd: Hwnd) {
     // SAFETY: `None`/true means "erase and repaint the whole client area".
     unsafe {
         let _ = InvalidateRect(Some(raw_hwnd(hwnd)), None, true);
+    }
+}
+
+/// Schedules a repaint of `rect` (device pixels, in the window's client
+/// coordinates) *without* erasing it first: the widget repaints those pixels
+/// itself.
+///
+/// Windows unions the rectangle into the window's update region, so several
+/// calls before the next paint coalesce into one `WM_PAINT` whose dirty
+/// rectangle is their bounding box.
+pub(crate) fn invalidate_rect(hwnd: Hwnd, rect: Rect) {
+    if rect.is_empty() {
+        return;
+    }
+    let raw = RECT {
+        left: rect.left,
+        top: rect.top,
+        right: rect.right,
+        bottom: rect.bottom,
+    };
+    // SAFETY: `raw` is a valid rectangle for the duration of the call; a stale
+    // handle makes the call fail harmlessly.
+    unsafe {
+        let _ = InvalidateRect(Some(raw_hwnd(hwnd)), Some(&raw), false);
+    }
+}
+
+/// The window's pending update rectangle (device pixels), or the whole client
+/// area when Windows reports none. The Direct2D paint path clips its frame to
+/// this so pixels outside it are left untouched.
+pub(crate) fn update_rect(hwnd: Hwnd) -> Rect {
+    let mut raw = RECT::default();
+    // SAFETY: `raw` is a valid out-pointer; `berase = false` leaves the erase
+    // state alone and a stale handle makes the call fail harmlessly.
+    let ok = unsafe { GetUpdateRect(raw_hwnd(hwnd), Some(&mut raw), false) };
+    if !ok.as_bool() {
+        return client_rect(hwnd);
+    }
+    Rect::new(raw.left, raw.top, raw.right, raw.bottom)
+}
+
+/// Marks the whole client area as painted, so Windows stops asking for it.
+pub(crate) fn validate(hwnd: Hwnd) {
+    // SAFETY: a null rectangle means the whole client area; a stale handle
+    // makes the call fail harmlessly.
+    unsafe {
+        let _ = ValidateRect(Some(raw_hwnd(hwnd)), None);
+    }
+}
+
+/// Marks `rect` (device pixels) as painted, so Windows stops asking for it.
+pub(crate) fn validate_rect(hwnd: Hwnd, rect: Rect) {
+    let raw = RECT {
+        left: rect.left,
+        top: rect.top,
+        right: rect.right,
+        bottom: rect.bottom,
+    };
+    // SAFETY: `raw` is a valid rectangle for the duration of the call; a stale
+    // handle makes the call fail harmlessly.
+    unsafe {
+        let _ = ValidateRect(Some(raw_hwnd(hwnd)), Some(&raw));
     }
 }
 

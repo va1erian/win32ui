@@ -21,13 +21,13 @@ use windows::Win32::Graphics::Direct2D::{
     D2D1_DASH_STYLE, D2D1_DASH_STYLE_DASH, D2D1_DASH_STYLE_DOT, D2D1_DASH_STYLE_SOLID,
     D2D1_FACTORY_TYPE_SINGLE_THREADED, D2D1CreateFactory, ID2D1Factory,
 };
-use windows::Win32::Graphics::Gdi::ValidateRect;
 
 use crate::d2d::DashStyle;
 use crate::error::Result;
+use crate::geometry::Rect;
 use crate::hwnd::Hwnd;
 
-use super::{raw_hwnd, win32_error};
+use super::win32_error;
 
 thread_local! {
     /// Never released: dropping it during thread-local teardown at process exit
@@ -78,14 +78,14 @@ pub(crate) fn dash_style(dash: DashStyle) -> D2D1_DASH_STYLE {
     }
 }
 
-/// Marks the window's whole client area as painted. `EndDraw` does not do this
-/// (only `BeginPaint`/`EndPaint` does), and an invalid region left behind makes
-/// Windows send `WM_PAINT` forever.
-pub(crate) fn validate(hwnd: Hwnd) {
-    // SAFETY: `hwnd` is a window handle and a null rectangle means the whole
-    // client area; a stale handle makes the call fail harmlessly.
-    unsafe {
-        let _ = ValidateRect(Some(raw_hwnd(hwnd)), None);
+/// Marks `rect` (device pixels) as painted, or the whole client area when
+/// `rect` is `None`. `EndDraw` does not validate (only `BeginPaint`/`EndPaint`
+/// does), and an invalid region left behind makes Windows send `WM_PAINT`
+/// forever.
+pub(crate) fn validate(hwnd: Hwnd, rect: Option<Rect>) {
+    match rect {
+        Some(rect) => super::window::validate_rect(hwnd, rect),
+        None => super::window::validate(hwnd),
     }
 }
 

@@ -47,9 +47,12 @@ impl<'a> D2dCanvas<'a> {
         RectF::new(0.0, 0.0, width, height)
     }
 
-    /// Fills the whole surface with `color`.
+    /// Fills the whole surface with `color`, or — inside a clip, as during a
+    /// rect-scoped frame — only the clipped part. Unlike `Clear`, this honours
+    /// the current clip, so a partial repaint does not wipe untouched pixels.
     pub fn clear(&mut self, color: Color) {
-        self.with(|target| target.clear(color));
+        let bounds = self.bounds();
+        self.with(|target| target.fill_rect(bounds, color));
     }
 
     /// Fills `rect`.
@@ -128,7 +131,7 @@ impl<'a> D2dCanvas<'a> {
             .with(Target::end_draw)
             .unwrap_or(Ok(EndDraw::Presented));
         self.surface.drawing.set(false);
-        sys::d2d::validate(self.surface.hwnd());
+        sys::d2d::validate(self.surface.hwnd(), self.surface.frame());
         if outcome? == EndDraw::TargetLost {
             self.surface.recreate_later();
         }

@@ -248,6 +248,15 @@ impl<E> WidgetCx<E> {
         sys::window::invalidate(self.hwnd);
     }
 
+    /// Schedules a repaint of `rect` only — the widget's client coordinates, in
+    /// device pixels. The framework clips the paint to it (GDI via `rcPaint`,
+    /// Direct2D via the update region), so a widget that changed one row or one
+    /// selection repaints just that. Windows unions successive calls, so the
+    /// next paint reports their bounding rectangle.
+    pub fn invalidate_rect(&self, rect: Rect) {
+        sys::window::invalidate_rect(self.hwnd, rect);
+    }
+
     /// Shows `text` while the pointer rests inside `rect` — a region in the
     /// widget's client coordinates (device pixels). The widget's top-level
     /// window shares one lazily created tooltip; on a dark theme it is

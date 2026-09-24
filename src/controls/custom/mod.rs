@@ -278,6 +278,16 @@ impl<W: CustomWidget, M: 'static> Custom<W, M> {
         self.window.invalidate();
     }
 
+    /// Schedules a repaint of `rect` only — the widget's client coordinates, in
+    /// device pixels. Unlike [`invalidate`](Custom::invalidate) the paint is
+    /// clipped to this rectangle (both the GDI and Direct2D paths honour the
+    /// update region), so a widget that changed one row or one selection
+    /// repaints just that. Windows unions successive calls, so the next paint
+    /// reports their bounding rectangle.
+    pub fn invalidate_rect(&self, rect: Rect) {
+        sys::window::invalidate_rect(self.control.hwnd(), rect);
+    }
+
     /// The widget's rectangle in screen coordinates.
     pub fn window_rect(&self) -> Rect {
         self.window.window_rect()
