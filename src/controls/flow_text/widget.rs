@@ -213,7 +213,7 @@ impl<M: 'static> CustomWidget for FlowTextWidget<M> {
         let theme = self.theme();
         let point = |x: i32, y: i32| (pixels_to_dips(x, dpi), pixels_to_dips(y, dpi));
         match input {
-            Input::MouseMove { x, y } => {
+            Input::MouseMove { x, y, .. } => {
                 let (x, y) = point(x, y);
                 let link = self.link_at(x, y, width, &theme);
                 cx.cursor(if link.is_some() {
@@ -230,6 +230,7 @@ impl<M: 'static> CustomWidget for FlowTextWidget<M> {
                 x,
                 y,
                 button: MouseButton::Left,
+                ..
             } => {
                 let (x, y) = point(x, y);
                 self.pressed.set(self.link_at(x, y, width, &theme));
@@ -238,6 +239,7 @@ impl<M: 'static> CustomWidget for FlowTextWidget<M> {
                 x,
                 y,
                 button: MouseButton::Left,
+                ..
             } => {
                 let (x, y) = point(x, y);
                 let released = self.link_at(x, y, width, &theme);

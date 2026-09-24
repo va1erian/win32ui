@@ -260,7 +260,7 @@ impl<M: 'static> CustomWidget for ToolbarWidget<M> {
 
     fn input(&self, input: Input, cx: &mut WidgetCx<usize>) {
         match input {
-            Input::MouseMove { x, y } => {
+            Input::MouseMove { x, y, .. } => {
                 let hover = self.hit_test(x, y);
                 if hover != self.hover.get() {
                     self.hover.set(hover);
@@ -271,6 +271,7 @@ impl<M: 'static> CustomWidget for ToolbarWidget<M> {
                 x,
                 y,
                 button: MouseButton::Left,
+                ..
             } => {
                 self.pressed.set(self.hit_test(x, y));
                 cx.invalidate();
@@ -279,6 +280,7 @@ impl<M: 'static> CustomWidget for ToolbarWidget<M> {
                 x,
                 y,
                 button: MouseButton::Left,
+                ..
             } => {
                 let pressed = self.pressed.take();
                 let hit = self.hit_test(x, y);

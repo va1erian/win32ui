@@ -106,7 +106,7 @@ impl CustomWidget for Divider {
 
     fn input(&self, input: Input, cx: &mut WidgetCx<SplitEvent>) {
         match input {
-            Input::MouseMove { x, y } => {
+            Input::MouseMove { x, y, .. } => {
                 if !self.hovered.get() {
                     self.hovered.set(true);
                     cx.invalidate();
@@ -122,6 +122,7 @@ impl CustomWidget for Divider {
                 x,
                 y,
                 button: MouseButton::Left,
+                ..
             } => {
                 self.dragging.set(true);
                 self.grab.set(self.coordinate(x, y));

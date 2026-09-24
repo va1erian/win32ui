@@ -147,6 +147,8 @@ pub enum Message {
         y: i32,
         /// Which button.
         button: MouseButton,
+        /// Which modifiers were held.
+        modifiers: Modifiers,
     },
     /// A mouse button was released.
     MouseUp {
@@ -156,6 +158,8 @@ pub enum Message {
         y: i32,
         /// Which button.
         button: MouseButton,
+        /// Which modifiers were held.
+        modifiers: Modifiers,
     },
     /// The cursor moved over the window.
     MouseMove {
@@ -163,6 +167,8 @@ pub enum Message {
         x: i32,
         /// Cursor y in client coordinates.
         y: i32,
+        /// Which modifiers were held.
+        modifiers: Modifiers,
     },
     /// A mouse button was double-clicked. The window class must be registered
     /// with `CS_DBLCLKS`, which [`WindowClass`](crate::WindowClass) does.
@@ -173,6 +179,8 @@ pub enum Message {
         y: i32,
         /// Which button.
         button: MouseButton,
+        /// Which modifiers were held.
+        modifiers: Modifiers,
     },
     /// `WM_MOUSEWHEEL` / `WM_MOUSEHWHEEL`: the wheel was rolled.
     MouseWheel {

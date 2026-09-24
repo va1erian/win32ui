@@ -58,7 +58,7 @@ impl<A: App> AppHandler<A> {
         let hwnd = window.hwnd();
         let item_hit = |x: i32, y: i32| self.core.title_menu_hit(Point::new(x, y));
         match message {
-            Message::MouseMove { x, y } => {
+            Message::MouseMove { x, y, .. } => {
                 let _ = window.track_mouse_leave();
                 self.core.title_menu_set_hover(item_hit(*x, *y));
                 sys::window::invalidate(hwnd);
@@ -74,6 +74,7 @@ impl<A: App> AppHandler<A> {
                 x,
                 y,
                 button: MouseButton::Left,
+                ..
             } => {
                 self.core.title_menu_set_pressed(item_hit(*x, *y));
                 sys::window::invalidate(hwnd);
@@ -83,6 +84,7 @@ impl<A: App> AppHandler<A> {
                 x,
                 y,
                 button: MouseButton::Left,
+                ..
             } => {
                 let hit = item_hit(*x, *y);
                 self.core.title_menu_set_pressed(None);
@@ -116,7 +118,7 @@ impl<A: App> AppHandler<A> {
         }
         let hwnd = window.hwnd();
         match message {
-            Message::MouseMove { x, y } => {
+            Message::MouseMove { x, y, .. } => {
                 if self.core.top_bar_pointer_move(Point::new(*x, *y)) {
                     let _ = window.track_mouse_leave();
                     Some(0)
@@ -128,6 +130,7 @@ impl<A: App> AppHandler<A> {
                 x,
                 y,
                 button: MouseButton::Left,
+                ..
             } => {
                 if self.core.top_bar_pointer_down(Point::new(*x, *y)) {
                     // A slider drag keeps tracking outside the band through the
@@ -144,6 +147,7 @@ impl<A: App> AppHandler<A> {
                 x,
                 y,
                 button: MouseButton::Left,
+                ..
             } => {
                 if self.core.top_bar_pointer_up(Point::new(*x, *y)) {
                     if !self.core.top_bar_slider_dragging() {

@@ -82,18 +82,33 @@ mod input {
                     format!("KeyUp {key:?} mods={modifiers:?}")
                 }
                 Message::Char(character) => format!("Char {character:?}"),
-                Message::MouseMove { x, y } => {
+                Message::MouseMove { x, y, modifiers } => {
                     // Re-arm every move: `WM_MOUSELEAVE` is one-shot.
                     let _ = window.track_mouse_leave();
-                    format!("MouseMove ({x}, {y})")
+                    format!("MouseMove ({x}, {y}) mods={modifiers:?}")
                 }
                 Message::MouseLeave => "MouseLeave".to_string(),
-                Message::MouseDown { button, x, y } => {
-                    format!("MouseDown {button:?} ({x}, {y})")
+                Message::MouseDown {
+                    button,
+                    x,
+                    y,
+                    modifiers,
+                } => {
+                    format!("MouseDown {button:?} ({x}, {y}) mods={modifiers:?}")
                 }
-                Message::MouseUp { button, x, y } => format!("MouseUp {button:?} ({x}, {y})"),
-                Message::MouseDoubleClick { button, x, y } => {
-                    format!("MouseDoubleClick {button:?} ({x}, {y})")
+                Message::MouseUp {
+                    button,
+                    x,
+                    y,
+                    modifiers,
+                } => format!("MouseUp {button:?} ({x}, {y}) mods={modifiers:?}"),
+                Message::MouseDoubleClick {
+                    button,
+                    x,
+                    y,
+                    modifiers,
+                } => {
+                    format!("MouseDoubleClick {button:?} ({x}, {y}) mods={modifiers:?}")
                 }
                 Message::MouseWheel {
                     delta,

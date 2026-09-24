@@ -45,13 +45,57 @@ fn every_button_decodes_on_down_and_up() {
     for (down, up, button) in cases {
         assert!(matches!(
             decode_input(down, 0, pack(4, 5), Modifiers::NONE),
-            Some(Message::MouseDown { x: 4, y: 5, button: b }) if b == button
+            Some(Message::MouseDown { x: 4, y: 5, button: b, .. }) if b == button
         ));
         assert!(matches!(
             decode_input(up, 0, pack(4, 5), Modifiers::NONE),
             Some(Message::MouseUp { button: b, .. }) if b == button
         ));
     }
+}
+
+#[test]
+fn mouse_down_carries_ctrl_and_shift_from_wparam() {
+    let wparam = MK_CONTROL.0 as usize | MK_SHIFT.0 as usize;
+    let message = decode_input(WM_LBUTTONDOWN, wparam, pack(4, 5), Modifiers::NONE).unwrap();
+    assert!(matches!(
+        message,
+        Message::MouseDown { modifiers: m, .. } if m.ctrl && m.shift
+    ));
+}
+
+#[test]
+fn mouse_move_keeps_alt_and_win_from_key_state_but_ctrl_shift_from_wparam() {
+    let keys = Modifiers {
+        alt: true,
+        win: true,
+        ..Modifiers::NONE
+    };
+    let message = decode_input(WM_MOUSEMOVE, MK_CONTROL.0 as usize, pack(1, 2), keys).unwrap();
+    assert!(matches!(
+        message,
+        Message::MouseMove {
+            modifiers: Modifiers {
+                ctrl: true,
+                shift: false,
+                alt: true,
+                win: true,
+            },
+            ..
+        }
+    ));
+}
+
+#[test]
+fn mouse_up_without_modifier_flags_decodes_no_modifiers() {
+    let message = decode_input(WM_LBUTTONUP, 0, pack(4, 5), Modifiers::NONE).unwrap();
+    assert!(matches!(
+        message,
+        Message::MouseUp {
+            modifiers: Modifiers::NONE,
+            ..
+        }
+    ));
 }
 
 #[test]
@@ -82,7 +126,8 @@ fn double_click_decodes() {
         Some(Message::MouseDoubleClick {
             x: 7,
             y: 8,
-            button: MouseButton::Left
+            button: MouseButton::Left,
+            ..
         })
     ));
 }

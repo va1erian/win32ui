@@ -272,7 +272,7 @@ impl<T: 'static> CustomWidget for GridWidget<T> {
     fn input(&self, input: Input, cx: &mut WidgetCx<GridEvent>) {
         let width = cx.bounds().width();
         match input {
-            Input::MouseMove { x, y } => {
+            Input::MouseMove { x, y, .. } => {
                 let next = self.index_at(x, y, width);
                 if self.hovered.replace(next) != next {
                     cx.invalidate();
@@ -287,6 +287,7 @@ impl<T: 'static> CustomWidget for GridWidget<T> {
                 x,
                 y,
                 button: MouseButton::Left,
+                ..
             } => {
                 cx.focus();
                 if let Some(index) = self.index_at(x, y, width) {
@@ -299,6 +300,7 @@ impl<T: 'static> CustomWidget for GridWidget<T> {
                 x,
                 y,
                 button: MouseButton::Left,
+                ..
             } => {
                 if let Some(index) = self.index_at(x, y, width) {
                     cx.emit(GridEvent::Activate(index));

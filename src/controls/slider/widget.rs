@@ -202,6 +202,7 @@ impl CustomWidget for SliderWidget {
                 x,
                 y,
                 button: MouseButton::Left,
+                ..
             } => {
                 let (axis, pos) = self.locate(cx, x, y);
                 self.state.borrow_mut().press(&axis, pos);
@@ -210,7 +211,7 @@ impl CustomWidget for SliderWidget {
                 cx.focus();
                 self.refresh(cx);
             }
-            Input::MouseMove { x, y } => {
+            Input::MouseMove { x, y, .. } => {
                 let (axis, pos) = self.locate(cx, x, y);
                 if self.state.borrow_mut().pointer_moved(&axis, pos) {
                     self.refresh(cx);
