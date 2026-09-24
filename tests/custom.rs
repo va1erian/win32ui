@@ -224,3 +224,138 @@ fn direct2d_widget_paints_its_fill() {
         "the Direct2D widget did not paint its fill"
     );
 }
+
+const SCROLL_BAND: Color = Color::rgb(0x00, 0xC0, 0x00);
+const DOCUMENT_DIP: f32 = 5000.0;
+const BAND_DIP: f32 = 12.0;
+
+/// A scrollable Direct2D widget whose document has a marker band along its
+/// top edge, so a stale translation is visible as the band leaving the viewport.
+struct ScrollD2dWidget;
+
+impl CustomWidget for ScrollD2dWidget {
+    type Event = ();
+
+    fn paint(&self, _canvas: &Canvas, _bounds: Rect, _theme: &Theme) {}
+
+    fn renderer(&self) -> Renderer {
+        Renderer::Direct2D
+    }
+
+    fn paint_d2d(&self, canvas: &mut D2dCanvas<'_>, bounds: RectF, theme: &Theme) {
+        canvas.clear(theme.background);
+        let document = RectF::new(0.0, 0.0, bounds.width(), DOCUMENT_DIP);
+        canvas.fill_rect(document, D2D_FILL);
+        canvas.fill_rect(RectF::new(0.0, 0.0, bounds.width(), BAND_DIP), SCROLL_BAND);
+    }
+}
+
+#[derive(Clone, Copy)]
+enum ScrollMsg {
+    Tick,
+}
+
+struct ScrollD2dApp {
+    widget: Custom<ScrollD2dWidget, ScrollMsg>,
+    scrolled: Rc<RefCell<Option<RgbaImage>>>,
+    top: Rc<RefCell<Option<RgbaImage>>>,
+    step: Cell<u8>,
+}
+
+impl App for ScrollD2dApp {
+    type Msg = ScrollMsg;
+
+    fn update(&mut self, _msg: ScrollMsg, ui: &mut Ui<ScrollMsg>) {
+        match self.step.get() {
+            0 => {
+                self.widget.scroll_to(dip(100.0));
+                self.widget.invalidate();
+                self.step.set(1);
+            }
+            1 => {
+                *self.scrolled.borrow_mut() = ui.capture().ok();
+                self.widget.scroll_to(dip(0.0));
+                self.widget.invalidate();
+                self.step.set(2);
+            }
+            _ => {
+                *self.top.borrow_mut() = ui.capture().ok();
+                ui.quit();
+            }
+        }
+    }
+}
+
+/// How many pixels of `image` are exactly `color`.
+fn count_color(image: &RgbaImage, color: Color) -> usize {
+    image
+        .pixels
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .filter(|p| p[0] == color.r && p[1] == color.g && p[2] == color.b)
+        .count()
+}
+
+/// The scroll host reuses one Direct2D render target across frames, so it must
+/// reset the canvas translation every paint. Painting at offset 100 and then
+/// back at offset 0 must show the document's top band again; a stale
+/// translation leaves the viewport blank at the top.
+#[test]
+fn direct2d_scroll_host_resets_translation_at_offset_zero() {
+    let scrolled = Rc::new(RefCell::new(None));
+    let top = Rc::new(RefCell::new(None));
+    let timed_out = Rc::new(Cell::new(false));
+
+    let scrolled_for_make = Rc::clone(&scrolled);
+    let top_for_make = Rc::clone(&top);
+    let timed_out_for_make = Rc::clone(&timed_out);
+    let Some(_run) = run_app_with_watchdog("win32ui.custom.d2d.scroll", move |ui| {
+        let widget = Custom::new(ui, ScrollD2dWidget)
+            .expect("d2d scroll widget")
+            .with_vscroll();
+        widget.set_content_height(dip(DOCUMENT_DIP));
+        ui.set_layout(column![widget.fill(1)]);
+
+        let tick = ui.set_timer(200).ok();
+        let watchdog = ui.set_timer(5000).ok();
+        ui.on_timer(move |id| {
+            if Some(id) == watchdog {
+                timed_out_for_make.set(true);
+                win32ui::quit(1);
+            }
+            (Some(id) == tick).then_some(ScrollMsg::Tick)
+        });
+        ui.emit(ScrollMsg::Tick);
+
+        ScrollD2dApp {
+            widget,
+            scrolled: scrolled_for_make,
+            top: top_for_make,
+            step: Cell::new(0),
+        }
+    }) else {
+        return;
+    };
+
+    assert!(!timed_out.get(), "the watchdog fired before the capture");
+    let scrolled = scrolled
+        .borrow_mut()
+        .take()
+        .expect("the offset-100 frame was never captured");
+    let top = top
+        .borrow_mut()
+        .take()
+        .expect("the offset-0 frame was never captured");
+
+    assert_eq!(
+        count_color(&scrolled, SCROLL_BAND),
+        0,
+        "the document's top band should be scrolled out of view at offset 100"
+    );
+    assert!(
+        count_color(&top, SCROLL_BAND) > 100,
+        "after returning to offset 0 the top band must be visible again; \
+         a stale Direct2D translation left the viewport blank"
+    );
+}
