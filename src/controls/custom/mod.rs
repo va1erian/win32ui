@@ -15,8 +15,8 @@ mod scroll;
 mod widget;
 
 pub(crate) use d2d::RendererState;
-pub(crate) use scroll::{CustomScroll, WHEEL_NOTCH_DIP};
-pub use widget::{Input, Renderer, WidgetCx};
+pub(crate) use scroll::{CustomScroll, WHEEL_NOTCH_DIP, is_scroll_key};
+pub use widget::{Input, KeyResult, Renderer, WidgetCx};
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -28,6 +28,7 @@ use crate::d2d::{D2dCanvas, RectF};
 use crate::error::Result;
 use crate::gdi::Canvas;
 use crate::geometry::{Rect, Size};
+use crate::message::{Key, Modifiers};
 use crate::sys;
 use crate::theme::{Theme, Themed};
 use crate::units::Dip;
@@ -67,6 +68,20 @@ pub trait CustomWidget: 'static {
     /// [`CustomWidget::input`] instead of moving the focus.
     fn wants_arrow_keys(&self) -> bool {
         false
+    }
+
+    /// Handles a navigation key (`Up`, `Down`, `PageUp`, `PageDown`, `Home`,
+    /// `End`) before the built-in scroll host consumes it.
+    ///
+    /// A widget hosted with [`Custom::with_vscroll`] normally never sees these
+    /// keys: the host scrolls and stops, so a list could not move its focused
+    /// row with them. Override this, move the row and return
+    /// [`KeyResult::Handled`] — the host then leaves scrolling to the widget,
+    /// which brings the row into view from the app with
+    /// [`Custom::scroll_into_view`]. The default ([`KeyResult::Ignored`])
+    /// leaves the host's standard scrolling exactly as it was.
+    fn key(&self, _key: Key, _modifiers: Modifiers, _cx: &mut WidgetCx<Self::Event>) -> KeyResult {
+        KeyResult::Ignored
     }
 
     /// Handles one input event. The default ignores everything.

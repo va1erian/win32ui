@@ -21,6 +21,14 @@ use crate::units::{Dip, Px};
 /// How far one wheel notch scrolls, in design units.
 pub(crate) const WHEEL_NOTCH_DIP: f32 = 48.0;
 
+/// Whether `key` is a navigation key the scroll host acts on.
+pub(crate) fn is_scroll_key(key: Key) -> bool {
+    matches!(
+        key,
+        Key::UP | Key::DOWN | Key::PAGE_UP | Key::PAGE_DOWN | Key::HOME | Key::END
+    )
+}
+
 /// Maps the current scroll offset (in design units) to an optional message.
 type ScrollMapper<M> = Box<dyn Fn(Dip) -> Option<M>>;
 

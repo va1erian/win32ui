@@ -15,13 +15,13 @@ use std::rc::Rc;
 
 use crate::app::Ui;
 use crate::controls::custom::{
-    CustomScroll, CustomWidget, Input, Renderer, RendererState, WidgetCx,
+    CustomScroll, CustomWidget, Input, KeyResult, Renderer, RendererState, WidgetCx, is_scroll_key,
 };
 use crate::d2d::{D2dSurface, pixels_to_dips};
 use crate::gdi::Paint;
 use crate::geometry::Rect;
 use crate::hwnd::Hwnd;
-use crate::message::{LResult, Message, TimerId};
+use crate::message::{Key, LResult, Message, Modifiers, TimerId};
 use crate::window::{Window, WindowHandler};
 
 /// Maps a widget event to an optional app message.
@@ -109,15 +109,38 @@ impl<W: CustomWidget, M: 'static> CustomHandler<W, M> {
     /// Hands `input` to the widget with a fresh context, then starts or stops
     /// the animation timer to match what the widget asked for.
     fn dispatch(&self, window: &Window, input: Input) {
-        let mut cx = WidgetCx::new(
+        let mut cx = self.make_cx(window);
+        self.shared.widget.borrow().input(input, &mut cx);
+        self.sync_timer(window);
+    }
+
+    /// Gives the widget first refusal on a navigation key, then lets the scroll
+    /// host act. Returns `true` when the key is fully handled: the widget
+    /// claimed it ([`KeyResult::Handled`]) or the host scrolled. A widget
+    /// without a scroll host always returns `false`, so the key falls through
+    /// to [`CustomWidget::input`] as before.
+    fn dispatch_navigation(&self, window: &Window, key: Key, modifiers: Modifiers) -> bool {
+        if !is_scroll_key(key) {
+            return false;
+        }
+        let Some(scroll) = self.shared.scroll.borrow().as_ref().cloned() else {
+            return false;
+        };
+        let mut cx = self.make_cx(window);
+        let result = self.shared.widget.borrow().key(key, modifiers, &mut cx);
+        self.sync_timer(window);
+        result == KeyResult::Handled || scroll.key(key)
+    }
+
+    /// A fresh context for one `paint`/`input`/`key` call.
+    fn make_cx(&self, window: &Window) -> WidgetCx<W::Event> {
+        WidgetCx::new(
             window.hwnd(),
             Rc::clone(&self.bounds),
             Rc::clone(&self.emit),
             self.shared.ui.dpi(),
             Rc::clone(&self.animate),
-        );
-        self.shared.widget.borrow().input(input, &mut cx);
-        self.sync_timer(window);
+        )
     }
 
     fn sync_timer(&self, window: &Window) {
@@ -181,9 +204,8 @@ impl<W: CustomWidget, M: 'static> WindowHandler for CustomHandler<W, M> {
                 Some(0)
             }
             message => {
-                if let Message::KeyDown { key, .. } = &message
-                    && let Some(scroll) = self.shared.scroll.borrow().as_ref()
-                    && scroll.key(*key)
+                if let Message::KeyDown { key, modifiers, .. } = &message
+                    && self.dispatch_navigation(window, *key, *modifiers)
                 {
                     return Some(0);
                 }
