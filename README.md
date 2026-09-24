@@ -123,6 +123,7 @@ already retained), and closures that capture shared mutable app state.
 | Mica/Mica Alt/Acrylic backdrop and themed caption (`Backdrop`, `TitleBar`), GDI fallback | exists (#53 phase 1) |
 | Extended title bar (`WM_NCCALCSIZE`, `DwmDefWindowProc` hit-test, `caption_inset`, `set_caption_interactive`, top-strip frame extension) | exists (#53 phase 2, fixed by #76) |
 | Strip menu: `WindowSpec::menu_in_strip` draws the menu in the acrylic strip (stacked or inline), alpha-correct Direct2D/DirectWrite, native popups | exists (#88) |
+| `MaterialStatusBar`: status bar painted on a bottom acrylic band; extended-frame maximize/de-maximize/minimize fixes | exists (#99) |
 | DirectWrite text, gradients, bitmaps, rounded clips, colour emoji | #22 follow-up |
 | `GridView<T>`: virtualized tile grid (a `CustomWidget` hosted in a `ScrollView`), typed `GridModel`, single selection, wrap-around keyboard navigation, live tile-size range | exists (#47) |
 
@@ -299,6 +300,21 @@ Controls theme themselves; the app never handles `NM_CUSTOMDRAW`,
   keyboard input. When the material cannot be shown (unsupported Windows,
   transparency off, high contrast, DirectWrite unavailable) the native menu bar
   is used unchanged, and the default spec is untouched.
+- **Material status bar.** `MaterialStatusBar::new(ui)` draws the status bar on
+  a bottom material band instead of in a child window (a child `HWND` cannot
+  blend with the parent's DWM material). The frame is extended at the bottom
+  too, the band is painted with the same alpha-correct Direct2D path as the
+  strip, and the app reserves the height with
+  `Ui::material_status_bar_height()` as a bottom layout margin. `set_parts` /
+  `set_text` mirror `StatusBar`; when the material cannot be shown the band is
+  filled opaque from `StatusBarTheme`, matching the child bar. Requires an
+  extended title bar (the constructor returns an error otherwise, so the app can
+  fall back to `StatusBar`).
+- **Maximize/restore.** A borderless extended window's `WM_NCCALCSIZE` gets the
+  *old* window rectangle on maximize, and `DwmDefWindowProc` stops
+  hit-testing the caption buttons while maximized; both are handled in
+  `sys/nc` (a mismatch check that re-frames against the final rectangle, and a
+  hit-test fallback from `DWMWA_CAPTION_BUTTON_BOUNDS`).
 
 ## Menus
 

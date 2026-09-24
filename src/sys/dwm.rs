@@ -129,19 +129,21 @@ pub(crate) fn apply_backdrop(hwnd: Hwnd, backdrop: Backdrop, dark: bool) -> bool
     true
 }
 
-/// Extends the frame into the top `top` pixels of `hwnd`'s client area, so DWM
-/// draws the caption buttons there and the backdrop material shows through that
-/// strip. The rest of the client stays an ordinary opaque surface.
+/// Extends the frame into the top `top` and bottom `bottom` pixels of `hwnd`'s
+/// client area, so DWM draws the caption buttons in the top strip and the
+/// backdrop material shows through both. The rest of the client stays an
+/// ordinary opaque surface.
 ///
-/// `top` is the caption height including the top frame, in device pixels.
+/// `top` is the caption height including the top frame, `bottom` the height of
+/// the bottom material band (a material status bar), both in device pixels.
 /// Returns whether DWM accepted the margins; a failure leaves the client opaque
 /// (and the caption buttons undrawn), which is the pre-#76 behaviour.
-pub(crate) fn extend_frame(hwnd: Hwnd, top: i32) -> bool {
+pub(crate) fn extend_frame(hwnd: Hwnd, top: i32, bottom: i32) -> bool {
     let margins = MARGINS {
         cxLeftWidth: 0,
         cxRightWidth: 0,
         cyTopHeight: top,
-        cyBottomHeight: 0,
+        cyBottomHeight: bottom,
     };
     // SAFETY: `hwnd` is a live top-level window and `margins` is a correctly
     // sized struct read by DWM for the duration of the call.

@@ -12,7 +12,7 @@ enum DialogChoice {
 }
 
 /// Handles the demo's task-dialog message. Returns whether `msg` was it.
-pub(super) fn update(msg: &Msg, ui: &mut Ui<Msg>, status: &StatusBar<Msg>) -> bool {
+pub(super) fn update(msg: &Msg, ui: &mut Ui<Msg>, status: &dyn super::StatusWriter) -> bool {
     match msg {
         Msg::Clear => match TaskDialog::new("Delete 3 messages?")
             .content("They will be moved to Trash.")

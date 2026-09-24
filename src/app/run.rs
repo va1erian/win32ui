@@ -139,7 +139,7 @@ impl<A: App> WindowHandler for AppHandler<A> {
     fn message(&self, window: &Window, message: Message) -> Option<LResult> {
         // The strip menu (acrylic title bar) paints the window's transparent
         // Direct2D surface and reads its own mouse/keyboard input.
-        if matches!(&message, Message::Paint) && self.core.try_paint_strip() {
+        if matches!(&message, Message::Paint) && self.core.try_paint_material() {
             return Some(0);
         }
         if let Some(result) = self.title_menu_input(window, &message) {
@@ -204,9 +204,28 @@ impl<A: App> WindowHandler for AppHandler<A> {
                 // extended strip is re-applied so the frame survives a resize.
                 self.core.resize_strip(width, height);
                 sys::nc::apply_extended_frame(window.hwnd());
+                // A maximize/de-maximize can move the window without a fresh
+                // `WM_NCCALCSIZE`, leaving the client at the wrong size; force
+                // one now that the window rectangle is final.
+                if sys::nc::client_mismatch(window.hwnd()) {
+                    sys::nc::reframe(window.hwnd());
+                }
                 sys::nc::refresh_caption_inset(window.hwnd());
                 self.core.relayout();
+                // A resize/restore re-creates the DWM frame and can drop the
+                // material surface's contents; repaint the whole window so the
+                // strip and status bar come back without needing a click.
+                if self.core.has_material_surface() {
+                    sys::window::redraw_children(window.hwnd());
+                }
                 Some(0)
+            }
+            // Becoming active (e.g. restoring from minimized) can leave the
+            // material surface and its children blank until the next input;
+            // invalidate the whole window and every child for a repaint.
+            Message::Activate { active: true, .. } if self.core.has_material_surface() => {
+                sys::window::redraw_children(window.hwnd());
+                None
             }
             Message::DpiChanged { dpi, suggested } => {
                 if !suggested.is_empty() {
@@ -216,6 +235,7 @@ impl<A: App> WindowHandler for AppHandler<A> {
                 // The caption strip height and the caption buttons move with the
                 // DPI, so both are re-read for the new scale.
                 self.core.refresh_menu_strip();
+                self.core.refresh_material_status_bar();
                 sys::nc::apply_extended_frame(window.hwnd());
                 sys::nc::refresh_caption_inset(window.hwnd());
                 Some(0)

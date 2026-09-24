@@ -204,7 +204,14 @@ impl D2dSurface {
 
     /// Discards the render target after a device loss and asks for a repaint.
     pub(super) fn recreate_later(&self) {
-        *self.target.borrow_mut() = None;
+        self.discard_target();
         sys::window::invalidate(self.hwnd);
+    }
+
+    /// Drops the render target so the next frame rebuilds it at the current
+    /// size. Called on a resize: a target left at the old size would present
+    /// nothing after a maximize/minimize/restore.
+    pub(crate) fn discard_target(&self) {
+        *self.target.borrow_mut() = None;
     }
 }

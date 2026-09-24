@@ -101,7 +101,7 @@ impl Flow {
     }
 
     /// Handles the tab's messages. Returns whether `msg` was one.
-    pub(super) fn update(&mut self, msg: &Msg, status: &StatusBar<Msg>) -> bool {
+    pub(super) fn update(&mut self, msg: &Msg, status: &dyn super::StatusWriter) -> bool {
         let Msg::Flow(msg) = msg else {
             return false;
         };

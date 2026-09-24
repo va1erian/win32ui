@@ -88,7 +88,12 @@ impl Options {
     }
 
     /// Handles the options panel's messages. Returns whether `msg` was one.
-    pub(super) fn update(&mut self, msg: &Msg, ui: &mut Ui<Msg>, status: &StatusBar<Msg>) -> bool {
+    pub(super) fn update(
+        &mut self,
+        msg: &Msg,
+        ui: &mut Ui<Msg>,
+        status: &dyn super::StatusWriter,
+    ) -> bool {
         match msg {
             Msg::Send => status.set_text(0, "Send clicked"),
             Msg::RemoteImages(on) => status.set_text(

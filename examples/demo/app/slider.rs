@@ -108,7 +108,7 @@ impl Sliders {
     }
 
     /// Handles the tab's messages. Returns whether `msg` was one.
-    pub(super) fn update(&mut self, msg: &Msg, status: &StatusBar<Msg>) -> bool {
+    pub(super) fn update(&mut self, msg: &Msg, status: &dyn super::StatusWriter) -> bool {
         let Msg::Slider(msg) = msg else {
             return false;
         };

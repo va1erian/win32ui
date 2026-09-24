@@ -66,8 +66,8 @@ mod sys;
 
 pub use accel::{Shortcut, ShortcutParseError};
 pub use app::{
-    App, IntoLayoutItem, Layout, LayoutExt, LayoutItem, MenuStripPlacement, Proxy, Split, Tabs, Ui,
-    WindowHandle, WindowSpec, run_app,
+    App, IntoLayoutItem, Layout, LayoutExt, LayoutItem, MaterialStatusBar, MenuStripPlacement,
+    Proxy, Split, Tabs, Ui, WindowHandle, WindowSpec, run_app,
 };
 pub use capture::RgbaImage;
 pub use color::Color;

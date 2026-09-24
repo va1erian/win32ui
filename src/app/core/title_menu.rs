@@ -48,6 +48,12 @@ impl<M: 'static> Core<M> {
         self.title_menu.borrow().is_some()
     }
 
+    /// Whether the window paints a material surface (the strip menu and/or the
+    /// bottom status bar) and so must repaint its transparent Direct2D layer.
+    pub(crate) fn has_material_surface(&self) -> bool {
+        self.has_title_menu() || self.has_material_status_bar()
+    }
+
     /// Recomputes the strip menu's row height and item rectangles for the
     /// window's current DPI and re-applies the extended frame.
     pub(crate) fn refresh_menu_strip(&self) {
@@ -95,9 +101,9 @@ impl<M: 'static> Core<M> {
 
     /// Paints the strip menu onto the window's transparent Direct2D surface.
     /// Returns whether a strip menu is active (and the surface could draw).
-    pub(crate) fn try_paint_strip(&self) -> bool {
+    pub(crate) fn try_paint_material(&self) -> bool {
         let hwnd = self.hwnd.get();
-        if hwnd.is_null() || !self.has_title_menu() {
+        if hwnd.is_null() || !self.has_material_surface() {
             return false;
         }
         let mut slot = self.strip_surface.borrow_mut();
@@ -112,40 +118,55 @@ impl<M: 'static> Core<M> {
         let Ok(mut canvas) = surface.begin_draw() else {
             return false;
         };
-        self.paint_strip(&mut canvas);
+        self.paint_material(&mut canvas);
         let _ = canvas.end_draw();
         true
     }
 
-    /// Resizes the strip surface (call on `WM_SIZE`).
+    /// Resizes the material surface (call on `WM_SIZE`). The render target is
+    /// dropped so the next frame rebuilds it at the new size, which keeps the
+    /// surface correct across maximize/minimize/restore.
     pub(crate) fn resize_strip(&self, width: i32, height: i32) {
         if let Some(surface) = self.strip_surface.borrow().as_ref() {
             surface.resize(width, height);
+            surface.discard_target();
         }
     }
 
-    /// Draws the whole client: an opaque theme surface below the strip, then
-    /// the menu row over the transparent strip (so DWM's material shows).
-    fn paint_strip(&self, canvas: &mut D2dCanvas) {
+    /// Draws the whole client: the top strip and the bottom status band are
+    /// transparent (so DWM's material shows and their content is drawn over
+    /// it), and the content between them is filled with the opaque theme
+    /// background. Direct2D's `EndDraw` presents the whole surface, so every
+    /// pixel (including the content behind the child controls) must be painted.
+    fn paint_material(&self, canvas: &mut D2dCanvas) {
         let hwnd = self.hwnd.get();
         let dpi = sys::dpi::window_dpi(hwnd);
         let theme = self.theme.get();
         let client = sys::window::client_rect(hwnd);
         let scale = dpi as f32 / 96.0;
-        let (width, height) = (
-            client.width() as f32 / scale,
-            client.height() as f32 / scale,
-        );
+        let width = client.width() as f32 / scale;
         let strip = crate::window::nc::strip_height(hwnd);
+        let band = crate::window::nc::status_bar(hwnd);
         canvas.clear_rgba(Rgba::TRANSPARENT);
-        canvas.fill_rect_rgba(
-            RectF::new(0.0, strip as f32 / scale, width, height),
-            Rgba::from(theme.background),
-        );
-        let menu = self.title_menu.borrow();
-        if let Some(menu) = menu.as_ref() {
-            menu.paint(canvas, dpi, &theme);
+        let content_bottom = (client.height() - band).max(strip);
+        if content_bottom > strip {
+            canvas.fill_rect_rgba(
+                RectF::new(
+                    0.0,
+                    strip as f32 / scale,
+                    width,
+                    content_bottom as f32 / scale,
+                ),
+                Rgba::from(theme.background),
+            );
         }
+        {
+            let menu = self.title_menu.borrow();
+            if let Some(menu) = menu.as_ref() {
+                menu.paint(canvas, dpi, &theme);
+            }
+        }
+        self.paint_material_status_bar(canvas, dpi, &theme);
     }
 
     /// Opens the `index`-th strip menu item: raises a plain item's message, or

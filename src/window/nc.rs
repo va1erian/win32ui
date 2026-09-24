@@ -24,6 +24,9 @@ struct Entry {
     /// The strip's self-drawn menu row height, in device pixels, when the strip
     /// menu is active; zero otherwise.
     menu_row: i32,
+    /// The height of the bottom material band (a material status bar), in
+    /// device pixels; zero when there is none.
+    status_bar: i32,
     /// The strip menu's item rectangles in client coordinates.
     menu_items: Vec<Rect>,
 }
@@ -95,6 +98,23 @@ pub(crate) fn set_menu_strip(window: Hwnd, height: i32, items: Vec<Rect>) {
         entry.menu_row = height;
         entry.menu_items = items;
     });
+}
+
+/// Records the bottom material band's height (device pixels) for `window`.
+pub(crate) fn set_status_bar(window: Hwnd, height: i32) {
+    WINDOWS.with(|map| {
+        map.borrow_mut().entry(window.raw()).or_default().status_bar = height;
+    });
+}
+
+/// The bottom material band's height (device pixels) for `window`, or 0 when
+/// there is none.
+pub(crate) fn status_bar(window: Hwnd) -> i32 {
+    WINDOWS.with(|map| {
+        map.borrow()
+            .get(&window.raw())
+            .map_or(0, |entry| entry.status_bar)
+    })
 }
 
 /// The strip menu's row height (device pixels) for `window`, or 0 when the

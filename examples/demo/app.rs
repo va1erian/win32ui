@@ -95,7 +95,16 @@ pub(crate) fn main() {
 
             let toolbar = toolbar::build(ui, theme);
             let library = Library::build(ui);
-            let status = StatusBar::new(ui).expect("status");
+            // `WIN32UI_DEMO_STATUS_MATERIAL=1` draws the status bar on the
+            // backdrop material (bottom band) instead of in a child window.
+            let status = if std::env::var_os("WIN32UI_DEMO_STATUS_MATERIAL").is_some() {
+                match MaterialStatusBar::new(ui) {
+                    Ok(bar) => DemoStatus::Material(bar),
+                    Err(_) => DemoStatus::Child(StatusBar::new(ui).expect("status")),
+                }
+            } else {
+                DemoStatus::Child(StatusBar::new(ui).expect("status"))
+            };
             status.set_parts(&[-1]);
             status.set_text(
                 0,
@@ -172,18 +181,39 @@ pub(crate) fn main() {
             // and DPI change, so the app never handles `WM_SIZE`.
             // An extended title bar reserves its strip and menu bar; zero otherwise.
             let title_bar = ui.title_bar_height();
-            ui.set_layout(
-                column![
+            let views_row = row![views, options.page().width(dip(220.0))].fill(1);
+            let layout = match &status {
+                DemoStatus::Child(child) => column![
                     toolbar,
                     library.sort_row().height(dip(30.0)),
                     progress.height(dip(8.0)),
                     swatch.height(dip(24.0)),
-                    row![views, options.page().width(dip(220.0))].fill(1),
-                    status,
+                    views_row,
+                    child.layout_item(),
                 ]
                 .spacing(dip(4.0))
                 .margins(Insets::new(dip(0.0), title_bar, dip(0.0), dip(0.0))),
-            );
+                DemoStatus::Material(_) => {
+                    // The material status bar is not a child: reserve its band
+                    // with a bottom margin instead of placing a widget.
+                    let bottom = ui.material_status_bar_height();
+                    column![
+                        toolbar,
+                        library.sort_row().height(dip(30.0)),
+                        progress.height(dip(8.0)),
+                        swatch.height(dip(24.0)),
+                        views_row,
+                    ]
+                    .spacing(dip(4.0))
+                    .margins(Insets::new(
+                        dip(0.0),
+                        title_bar,
+                        dip(0.0),
+                        bottom,
+                    ))
+                }
+            };
+            ui.set_layout(layout);
 
             let app = App {
                 toolbar,
@@ -235,7 +265,18 @@ pub(crate) fn main() {
             } else {
                 None
             };
-            if auto_close.is_some() || combo_open.is_some() || context_open.is_some() {
+            // `WIN32UI_DEMO_MAXIMIZE=1` maximizes the window after a moment, to
+            // exercise the material surface's resize path.
+            let maximize = if std::env::var_os("WIN32UI_DEMO_MAXIMIZE").is_some() {
+                ui.set_timer(1200).ok()
+            } else {
+                None
+            };
+            if auto_close.is_some()
+                || combo_open.is_some()
+                || context_open.is_some()
+                || maximize.is_some()
+            {
                 ui.on_timer(move |id| {
                     if Some(id) == auto_close {
                         Some(Msg::AutoClose)
@@ -243,6 +284,8 @@ pub(crate) fn main() {
                         Some(Msg::OpenCombo)
                     } else if Some(id) == context_open {
                         Some(Msg::ShowListMenu)
+                    } else if Some(id) == maximize {
+                        Some(Msg::Maximize)
                     } else {
                         None
                     }
@@ -316,17 +359,53 @@ enum Msg {
     Quit,
     AutoClose,
     Foreground,
+    Maximize,
     TabsPage(usize),
     Slider(slider::SliderMsg),
     Flow(flow_text::FlowMsg),
     Grid(grid::GridMsg),
 }
 
+/// The demo's status bar: a child `StatusBar`, or a `MaterialStatusBar` drawn
+/// on the backdrop when `WIN32UI_DEMO_STATUS_MATERIAL` is set.
+enum DemoStatus {
+    Child(StatusBar<Msg>),
+    Material(MaterialStatusBar<Msg>),
+}
+
+/// The status-text sink the feature modules write to, so they do not care
+/// whether the bar is the child `StatusBar` or the material one.
+trait StatusWriter {
+    fn set_text(&self, part: usize, text: &str);
+}
+
+impl StatusWriter for DemoStatus {
+    fn set_text(&self, part: usize, text: &str) {
+        DemoStatus::set_text(self, part, text);
+    }
+}
+
+impl DemoStatus {
+    fn set_text(&self, part: usize, text: &str) {
+        match self {
+            DemoStatus::Child(child) => child.set_text(part, text),
+            DemoStatus::Material(bar) => bar.set_text(part, text),
+        }
+    }
+
+    fn set_parts(&self, edges: &[i32]) {
+        match self {
+            DemoStatus::Child(child) => child.set_parts(edges),
+            DemoStatus::Material(bar) => bar.set_parts(edges),
+        }
+    }
+}
+
 struct App {
     toolbar: Toolbar<Msg>,
     library: Library,
     mail: MailTab,
-    status: StatusBar<Msg>,
+    status: DemoStatus,
     progress: ProgressBar,
     swatch: Custom<Swatch, Msg>,
     /// Owns the document widget's window; it paints and scrolls through its
@@ -429,6 +508,19 @@ impl win32ui::App for App {
             }
             Msg::Quit => ui.quit(),
             Msg::Foreground => ui.set_foreground(),
+            Msg::Maximize => {
+                let hwnd =
+                    windows::Win32::Foundation::HWND(ui.hwnd().raw() as *mut core::ffi::c_void);
+                // SAFETY: `hwnd` is the live demo window; `SW_MAXIMIZE` is a
+                // documented show command.
+                unsafe {
+                    let _ = windows::Win32::UI::WindowsAndMessaging::ShowWindow(
+                        hwnd,
+                        windows::Win32::UI::WindowsAndMessaging::SW_MAXIMIZE,
+                    );
+                }
+            }
+
             Msg::TabsPage(page) => self.set_status(&format!("Tab page {page}")),
             Msg::AutoClose => {
                 screenshot::capture_if_requested(ui);
