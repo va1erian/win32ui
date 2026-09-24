@@ -14,9 +14,11 @@
 //! theme tokens on `WM_MEASUREITEM`/`WM_DRAWITEM`); on the light theme the
 //! native Win32 menu is used unchanged.
 
+mod checked;
 mod data;
 mod draw;
 
+use std::cell::Cell;
 use std::rc::Rc;
 
 use crate::accel::Shortcut;
@@ -135,11 +137,28 @@ impl<M: 'static> Menu<M> {
             data: next_data(),
             label: label.into(),
             shortcut: shortcut.into(),
-            checked,
+            checked: Cell::new(checked),
+            key: None,
             radio,
             enabled,
             action: Rc::new(action),
         }));
+    }
+
+    /// Names the item just added so [`Menu::set_checked`] (or
+    /// [`Ui::set_menu_checked`](crate::Ui::set_menu_checked)) can find it later.
+    pub fn keyed(mut self, key: &'static str) -> Menu<M> {
+        if let Some(Entry::Item(item)) = self.entries_mut().last_mut() {
+            item.key = Some(key);
+        }
+        self
+    }
+
+    /// Sets the tick of the item named `key` on an installed menu, without a
+    /// rebuild. Returns whether such an item exists. Callers must redraw a
+    /// strip menu themselves; use [`Ui::set_menu_checked`](crate::Ui::set_menu_checked).
+    pub(crate) fn set_checked(&self, key: &str, checked: bool) -> bool {
+        self.data.set_checked(key, checked)
     }
 
     fn entries_mut(&mut self) -> &mut Vec<Entry<M>> {
@@ -215,6 +234,20 @@ mod tests {
     use super::*;
 
     /// A menu builds both ways and reports which style it is in.
+    #[test]
+    fn set_checked_updates_a_keyed_item() {
+        let menu = Menu::new()
+            .checked_item("Wrap", None, false, || 1)
+            .keyed("wrap");
+        assert!(menu.set_checked("wrap", true));
+        assert!(!menu.set_checked("missing", true));
+        let data = menu.data.entries.iter().find_map(|e| match e {
+            Entry::Item(item) => Some(item.data),
+            _ => None,
+        });
+        assert!(menu.render(data.unwrap()).unwrap().checked);
+    }
+
     #[test]
     fn builds_native_and_owner_drawn() {
         let menu = Menu::<u8>::new()

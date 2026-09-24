@@ -25,6 +25,7 @@ use crate::sys;
 use crate::theme::Theme;
 use crate::window::{TitleBar, Window};
 
+mod accel;
 mod layout;
 mod status_bar;
 mod title_menu;
@@ -44,6 +45,8 @@ type AccelMapper<M> = Box<dyn Fn() -> Option<M>>;
 struct Accelerator<M> {
     shortcut: Shortcut,
     mapper: AccelMapper<M>,
+    /// Registered by the menu bar, so a reinstall replaces it.
+    from_menu: bool,
 }
 
 /// The shared, interior-mutable state behind a widget-layer window.
@@ -207,40 +210,6 @@ impl<M> Core<M> {
         self.on_timer.borrow().as_ref().and_then(|f| f(id))
     }
 
-    /// Registers `shortcut` to raise the message its mapper returns, and
-    /// rebuilds the window's accelerator table so the shortcut fires whichever
-    /// widget has focus.
-    pub(crate) fn add_accelerator(&self, shortcut: Shortcut, f: impl Fn() -> Option<M> + 'static) {
-        self.accelerators.borrow_mut().push(Accelerator {
-            shortcut,
-            mapper: Box::new(f),
-        });
-        self.rebuild_accelerators();
-    }
-
-    /// Maps an accelerator command id to a message, if it belongs to one of
-    /// this window's registered shortcuts.
-    pub(crate) fn map_accelerator(&self, id: u16) -> Option<M> {
-        let index = sys::looper::accelerator_index(id)?;
-        let accelerators = self.accelerators.borrow();
-        accelerators.get(index).and_then(|accel| (accel.mapper)())
-    }
-
-    /// Rebuilds the accelerator table from the current registrations.
-    fn rebuild_accelerators(&self) {
-        let hwnd = self.hwnd.get();
-        if hwnd.is_null() {
-            return;
-        }
-        let shortcuts: Vec<Shortcut> = self
-            .accelerators
-            .borrow()
-            .iter()
-            .map(|accelerator| accelerator.shortcut)
-            .collect();
-        let _ = sys::looper::set_accelerators(hwnd, &shortcuts);
-    }
-
     /// The window's current theme.
     pub(crate) fn theme(&self) -> Theme {
         self.theme.get()
@@ -343,6 +312,17 @@ mod tests {
     use super::*;
     use crate::controls::menu::Menu;
     use crate::message::Key;
+
+    #[test]
+    fn reinstalling_the_menu_bar_replaces_its_accelerators() {
+        let core: Core<i32> = Core::new(Theme::light());
+        core.add_accelerator(Shortcut::ctrl(Key::N), || Some(1));
+        for _ in 0..3 {
+            let menu = Menu::new().item("Quit", Shortcut::ctrl(Key::Q), || 2);
+            core.set_menu_accelerators(&menu);
+        }
+        assert_eq!(core.accelerators.borrow().len(), 2);
+    }
 
     #[test]
     fn accelerators_map_their_reserved_command_ids() {

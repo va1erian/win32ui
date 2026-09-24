@@ -96,14 +96,17 @@ impl Options {
     ) -> bool {
         match msg {
             Msg::Send => status.set_text(0, "Send clicked"),
-            Msg::RemoteImages(on) => status.set_text(
-                0,
-                if *on {
-                    "Remote images on"
-                } else {
-                    "Remote images off"
-                },
-            ),
+            Msg::RemoteImages(on) => {
+                ui.set_menu_checked(super::menus::REMOTE_IMAGES, *on);
+                status.set_text(
+                    0,
+                    if *on {
+                        "Remote images on"
+                    } else {
+                        "Remote images off"
+                    },
+                )
+            }
             Msg::SetTheme(choice) => {
                 // "System" hands theming over to the OS: `follow_system_theme`
                 // applies `Theme::system()` now and again live, every time
