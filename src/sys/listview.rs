@@ -1,14 +1,15 @@
 //! Raw list-view (`SysListView32`) messages: owner-data requests, custom draw,
 //! columns, selection state and targeted updates.
 
+use windows::Win32::Foundation::POINT;
 use windows::Win32::UI::Controls::{
     LIST_VIEW_ITEM_STATE_FLAGS, LVCF_FMT, LVCF_SUBITEM, LVCF_TEXT, LVCF_WIDTH, LVCFMT_LEFT,
-    LVCFMT_RIGHT, LVCOLUMNW, LVIF_TEXT, LVIS_FOCUSED, LVIS_SELECTED, LVITEMW, LVM_ENSUREVISIBLE,
-    LVM_GETBKCOLOR, LVM_GETCOLUMNWIDTH, LVM_GETHEADER, LVM_GETITEMRECT, LVM_GETITEMSTATE,
-    LVM_GETITEMTEXTW, LVM_GETNEXTITEM, LVM_GETSUBITEMRECT, LVM_INSERTCOLUMNW, LVM_REDRAWITEMS,
-    LVM_SETBKCOLOR, LVM_SETCOLUMNWIDTH, LVM_SETEXTENDEDLISTVIEWSTYLE, LVM_SETITEMCOUNT,
-    LVM_SETITEMSTATE, LVM_SETTEXTBKCOLOR, LVM_SETTEXTCOLOR, LVNI_FOCUSED, LVNI_SELECTED,
-    LVS_SINGLESEL, LVSICF_NOSCROLL, NMLVCUSTOMDRAW, NMLVDISPINFOW,
+    LVCFMT_RIGHT, LVCOLUMNW, LVHITTESTINFO, LVIF_TEXT, LVIS_FOCUSED, LVIS_SELECTED, LVITEMW,
+    LVM_ENSUREVISIBLE, LVM_GETBKCOLOR, LVM_GETCOLUMNWIDTH, LVM_GETHEADER, LVM_GETITEMRECT,
+    LVM_GETITEMSTATE, LVM_GETITEMTEXTW, LVM_GETNEXTITEM, LVM_GETSUBITEMRECT, LVM_INSERTCOLUMNW,
+    LVM_REDRAWITEMS, LVM_SETBKCOLOR, LVM_SETCOLUMNWIDTH, LVM_SETEXTENDEDLISTVIEWSTYLE,
+    LVM_SETITEMCOUNT, LVM_SETITEMSTATE, LVM_SETTEXTBKCOLOR, LVM_SETTEXTCOLOR, LVM_SUBITEMHITTEST,
+    LVNI_FOCUSED, LVNI_SELECTED, LVS_SINGLESEL, LVSICF_NOSCROLL, NMLVCUSTOMDRAW, NMLVDISPINFOW,
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::GetFocus;
 use windows::Win32::UI::WindowsAndMessaging::{GWL_STYLE, GetWindowLongW, SetWindowLongW};
@@ -138,6 +139,27 @@ pub(crate) fn lv_cell_rect(hwnd: Hwnd, item: i32, sub_item: i32) -> crate::geome
         return row;
     }
     lv_subitem_rect(hwnd, item, sub_item)
+}
+
+/// The `(item, sub_item)` under the client-space point `(x, y)`, using
+/// `LVM_SUBITEMHITTEST`. `None` when the point is past the last item or
+/// column (empty space below the rows).
+pub(crate) fn lv_subitem_hit_test(hwnd: Hwnd, x: i32, y: i32) -> Option<(i32, i32)> {
+    let mut info = LVHITTESTINFO {
+        pt: POINT { x, y },
+        ..Default::default()
+    };
+    let item = send(
+        hwnd,
+        LVM_SUBITEMHITTEST,
+        0,
+        &mut info as *mut LVHITTESTINFO as isize,
+    ) as i32;
+    if item < 0 || info.iSubItem < 0 {
+        None
+    } else {
+        Some((item, info.iSubItem))
+    }
 }
 
 /// Reads back a cell's text, driving the owner-data request path.

@@ -164,11 +164,11 @@ impl<T> ListViewInner<T> {
             return sys::listview::CustomDrawResult::SkipDefault;
         }
 
-        let style = self
+        let data_row = self
             .model
             .as_ref()
-            .and_then(|model| model.get(item as usize))
-            .and_then(|data_row| self.row_style.as_ref().map(|f| f(data_row)));
+            .and_then(|model| model.get(item as usize));
+        let style = data_row.and_then(|data_row| self.row_style.as_ref().map(|f| f(data_row)));
 
         // Explorer keeps the normal text colour on selection and only swaps
         // the background (focused blue, unfocused grey). See
@@ -197,8 +197,15 @@ impl<T> ListViewInner<T> {
                     continue;
                 }
                 let text = self.cell(item, column as i32).unwrap_or("");
+                let cell_color = spec
+                    .color
+                    .as_ref()
+                    .and_then(|color| data_row.and_then(|row| color(row, &self.theme)))
+                    .unwrap_or(text_color);
                 let format = if spec.align_right {
                     TextFormat::left().right()
+                } else if spec.centered {
+                    TextFormat::left().center()
                 } else {
                     TextFormat::left()
                 };
@@ -206,7 +213,7 @@ impl<T> ListViewInner<T> {
                 canvas.draw_text(
                     text_rect,
                     text,
-                    text_color,
+                    cell_color,
                     format.single_line().vcenter().end_ellipsis().no_prefix(),
                 );
             }

@@ -7,12 +7,19 @@ use crate::controls::listview::ListView;
 use crate::controls::listview::model::{Column, ColumnWidth};
 use crate::controls::listview::row_style::{RowState, RowStyle};
 use crate::gdi::Canvas;
-use crate::geometry::Rect;
+use crate::geometry::{Point, Rect};
 use crate::message::{Key, Modifiers};
 use crate::sys;
 use crate::units::Dip;
 
 impl<T: 'static, M: 'static> ListView<T, M> {
+    /// Adds a pre-built [`Column`], e.g. one with centred or per-cell coloured
+    /// text (see [`Column::centered`]/[`Column::cell_color`]).
+    pub fn add_column(self, column: Column<T>) -> ListView<T, M> {
+        self.push_column(column);
+        self
+    }
+
     /// Adds a left-aligned column showing `text(row)`.
     pub fn column(
         self,
@@ -87,6 +94,21 @@ impl<T: 'static, M: 'static> ListView<T, M> {
     /// [`set_sort_indicator`](ListView::set_sort_indicator).
     pub fn on_sort(self, f: impl Fn(usize) -> Option<M> + 'static) -> ListView<T, M> {
         self.events.borrow_mut().on_sort = Some(Box::new(f));
+        self
+    }
+
+    /// Maps a left click on one cell — `(row, column, point)` — to a message.
+    /// Returning `Some` consumes the click: the list neither changes its
+    /// selection nor activates the row, which is what makes a per-row toggle
+    /// (a star, say) safe to click without disturbing the selection.
+    ///
+    /// A double-click on such a cell is consumed the same way, so it cannot
+    /// fall through to [`on_activate`](ListView::on_activate).
+    pub fn on_cell_click(
+        self,
+        f: impl Fn(usize, usize, Point) -> Option<M> + 'static,
+    ) -> ListView<T, M> {
+        self.events.borrow_mut().on_cell_click = Some(Box::new(f));
         self
     }
 

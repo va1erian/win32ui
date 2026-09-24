@@ -3,7 +3,10 @@
 //! The list view's data model: the [`ListModel`] trait, [`Column`] specs with
 //! typed accessors, and the [`SortDirection`] of the header arrow.
 
+use crate::color::Color;
 use crate::units::Dip;
+
+use super::ListViewTheme;
 
 /// Supplies a [`ListView`](super::ListView) with rows.
 ///
@@ -95,6 +98,9 @@ impl From<Fill> for ColumnWidth {
     }
 }
 
+/// A per-cell text colour override: `(row, theme) -> Option<Color>`.
+pub(crate) type CellColorFn<T> = Box<dyn Fn(&T, &ListViewTheme) -> Option<Color>>;
+
 /// A report-mode column over rows of type `T`.
 ///
 /// The accessor borrows the cell's text from the row, so the owner-data path
@@ -108,10 +114,17 @@ pub struct Column<T> {
     pub width: ColumnWidth,
     /// Whether the column's cells are right-aligned.
     pub align_right: bool,
+    /// Whether the column's cells are horizontally centred (a narrow glyph or
+    /// toggle column, say). Ignored when [`align_right`](Self::align_right) is
+    /// set.
+    pub centered: bool,
     /// Whether the user may resize the column by dragging the header divider.
     /// `true` (the native default); dragging is vetoed otherwise.
     pub resizable: bool,
     pub(crate) text: Box<dyn for<'a> Fn(&'a T) -> &'a str>,
+    /// Per-cell text colour override, e.g. to tint a starred glyph with the
+    /// theme accent. `None` keeps the row's text colour.
+    pub(crate) color: Option<CellColorFn<T>>,
 }
 
 impl<T> Column<T> {
@@ -125,8 +138,10 @@ impl<T> Column<T> {
             title: title.into(),
             width: width.into(),
             align_right: false,
+            centered: false,
             resizable: true,
             text: Box::new(text),
+            color: None,
         }
     }
 
@@ -140,9 +155,30 @@ impl<T> Column<T> {
             title: title.into(),
             width: width.into(),
             align_right: true,
+            centered: false,
             resizable: true,
             text: Box::new(text),
+            color: None,
         }
+    }
+
+    /// Horizontally centres this column's cells, e.g. a narrow glyph column.
+    pub fn centered(mut self) -> Column<T> {
+        self.centered = true;
+        self
+    }
+
+    /// Overrides a cell's text colour from `color(row, theme)` — the theme is
+    /// the list's derived [`ListViewTheme`], so a cell can use the accent or
+    /// secondary text token without the app tracking the palette itself.
+    /// `None` (from the closure, or when this is never called) keeps the row's
+    /// normal text colour.
+    pub fn cell_color(
+        mut self,
+        color: impl Fn(&T, &ListViewTheme) -> Option<Color> + 'static,
+    ) -> Column<T> {
+        self.color = Some(Box::new(color));
+        self
     }
 
     /// Whether the user may resize this column by dragging its header
@@ -194,5 +230,32 @@ mod tests {
         assert_eq!(text, "x");
         assert!(column.resizable);
         assert!(!column.resizable(false).resizable);
+    }
+
+    #[test]
+    fn column_builders_center_and_colour_cells() {
+        let column = Column::new("Star", Dip::new(20.0), |row: &Row| row.name.as_str())
+            .centered()
+            .resizable(false)
+            .cell_color(|row, theme| {
+                Some(if row.name.is_empty() {
+                    theme.accent
+                } else {
+                    theme.text_secondary
+                })
+            });
+        assert!(column.centered);
+        assert!(!column.resizable);
+
+        let theme = ListViewTheme::from_theme(&crate::theme::Theme::dark());
+        let empty = Row {
+            name: String::new(),
+        };
+        let filled = Row {
+            name: "x".to_string(),
+        };
+        let color = column.color.as_ref().unwrap();
+        assert_eq!(color(&empty, &theme), Some(theme.accent));
+        assert_eq!(color(&filled, &theme), Some(theme.text_secondary));
     }
 }
