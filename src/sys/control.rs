@@ -79,11 +79,3 @@ pub(crate) fn write_wide(destination: *mut u16, capacity: i32, value: &str) {
 pub(crate) fn set_control_font(hwnd: Hwnd, font: HFONT) {
     send(hwnd, WM_SETFONT, font.0 as usize, 1);
 }
-
-/// Applies the system UI font to a control at the given DPI and asks it to repaint.
-/// This is called for every control at creation and after theme changes that reset the font.
-pub(crate) fn apply_ui_font(hwnd: Hwnd, dpi: u32) -> Result<()> {
-    let font = crate::gdi::Font::system_ui(dpi)?;
-    set_control_font(hwnd, font.raw());
-    Ok(())
-}
