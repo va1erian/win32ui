@@ -6,6 +6,7 @@
 //! without a window or a message loop. Window-dependent fix-ups (converting
 //! `WM_MOUSEWHEEL`'s screen coordinates to client space) happen in the caller.
 
+use windows::Win32::System::SystemServices::{MK_CONTROL, MK_SHIFT};
 use windows::Win32::UI::Controls::WM_MOUSELEAVE;
 use windows::Win32::UI::WindowsAndMessaging::{
     WA_INACTIVE, WM_ACTIVATE, WM_CAPTURECHANGED, WM_CONTEXTMENU, WM_ENDSESSION, WM_KEYDOWN,
@@ -20,9 +21,13 @@ use crate::message::{HitTest, Key, Message, Modifiers, MouseButton};
 
 /// Decodes one input message, or returns `None` if `msg` is not one.
 ///
-/// `keys` is the modifier state read before the call. For `WM_MOUSEWHEEL` /
-/// `WM_MOUSEHWHEEL`, `x`/`y` are the message's screen coordinates; the caller
-/// converts them to client coordinates.
+/// `keys` is the modifier state read before the call, via `GetKeyState`; it
+/// supplies alt/win for mouse messages, since neither is reported in their
+/// `wparam`. Ctrl/shift on a mouse message instead come from that message's
+/// own `wparam` (`MK_CONTROL`/`MK_SHIFT`), which reflects the state at the
+/// time the message was posted rather than when it is decoded. For
+/// `WM_MOUSEWHEEL` / `WM_MOUSEHWHEEL`, `x`/`y` are the message's screen
+/// coordinates; the caller converts them to client coordinates.
 pub(crate) fn decode_input(
     msg: u32,
     wparam: usize,
@@ -52,20 +57,42 @@ pub(crate) fn decode_input(
         || msg == WM_MBUTTONDOWN
         || msg == WM_XBUTTONDOWN
     {
-        return mouse_button(msg, wparam).map(|button| Message::MouseDown { x, y, button });
+        let modifiers = mouse_modifiers(wparam, keys);
+        return mouse_button(msg, wparam).map(|button| Message::MouseDown {
+            x,
+            y,
+            button,
+            modifiers,
+        });
     }
     if msg == WM_LBUTTONUP || msg == WM_RBUTTONUP || msg == WM_MBUTTONUP || msg == WM_XBUTTONUP {
-        return mouse_button(msg, wparam).map(|button| Message::MouseUp { x, y, button });
+        let modifiers = mouse_modifiers(wparam, keys);
+        return mouse_button(msg, wparam).map(|button| Message::MouseUp {
+            x,
+            y,
+            button,
+            modifiers,
+        });
     }
     if msg == WM_LBUTTONDBLCLK
         || msg == WM_RBUTTONDBLCLK
         || msg == WM_MBUTTONDBLCLK
         || msg == WM_XBUTTONDBLCLK
     {
-        return mouse_button(msg, wparam).map(|button| Message::MouseDoubleClick { x, y, button });
+        let modifiers = mouse_modifiers(wparam, keys);
+        return mouse_button(msg, wparam).map(|button| Message::MouseDoubleClick {
+            x,
+            y,
+            button,
+            modifiers,
+        });
     }
     if msg == WM_MOUSEMOVE {
-        return Some(Message::MouseMove { x, y });
+        return Some(Message::MouseMove {
+            x,
+            y,
+            modifiers: mouse_modifiers(wparam, keys),
+        });
     }
     if msg == WM_MOUSEWHEEL || msg == WM_MOUSEHWHEEL {
         return Some(Message::MouseWheel {
@@ -137,6 +164,18 @@ pub(crate) fn decode_char(code_unit: u16, pending: &mut Option<u16>) -> Option<c
     }
     *pending = None;
     Some(char::from_u32(code_unit as u32).unwrap_or(char::REPLACEMENT_CHARACTER))
+}
+
+/// The modifiers held for a mouse message: ctrl/shift from the message's own
+/// `wparam`, alt/win carried over from `keys` (`GetKeyState`, read separately
+/// since neither is reported in a mouse message's `wparam`).
+fn mouse_modifiers(wparam: usize, keys: Modifiers) -> Modifiers {
+    Modifiers {
+        ctrl: wparam & MK_CONTROL.0 as usize != 0,
+        shift: wparam & MK_SHIFT.0 as usize != 0,
+        alt: keys.alt,
+        win: keys.win,
+    }
 }
 
 /// Maps a button message to the button it names (`None` for an unknown X

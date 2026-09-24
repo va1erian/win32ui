@@ -233,7 +233,7 @@ pub(crate) fn capture_screen(rect: Rect) -> Result<Captured> {
         let _ = DeleteDC(memory_dc);
     }
 
-    if !copied.is_ok() {
+    if copied.is_err() {
         return Err(win32_error(windows::core::Error::from_thread()));
     }
 

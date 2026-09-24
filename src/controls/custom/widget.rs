@@ -47,6 +47,8 @@ pub enum Input {
         y: i32,
         /// Which button.
         button: MouseButton,
+        /// Which modifiers were held.
+        modifiers: Modifiers,
     },
     /// A mouse button was released.
     MouseUp {
@@ -56,6 +58,8 @@ pub enum Input {
         y: i32,
         /// Which button.
         button: MouseButton,
+        /// Which modifiers were held.
+        modifiers: Modifiers,
     },
     /// The cursor moved.
     MouseMove {
@@ -63,6 +67,8 @@ pub enum Input {
         x: i32,
         /// Cursor y in client coordinates.
         y: i32,
+        /// Which modifiers were held.
+        modifiers: Modifiers,
     },
     /// A mouse button was double-clicked.
     MouseDoubleClick {
@@ -72,6 +78,8 @@ pub enum Input {
         y: i32,
         /// Which button.
         button: MouseButton,
+        /// Which modifiers were held.
+        modifiers: Modifiers,
     },
     /// The wheel was rolled.
     MouseWheel {
@@ -128,10 +136,40 @@ impl Input {
     /// The subset of [`Message`] that maps to an [`Input`], or `None`.
     pub(crate) fn from_message(message: Message) -> Option<Input> {
         Some(match message {
-            Message::MouseDown { x, y, button } => Input::MouseDown { x, y, button },
-            Message::MouseUp { x, y, button } => Input::MouseUp { x, y, button },
-            Message::MouseMove { x, y } => Input::MouseMove { x, y },
-            Message::MouseDoubleClick { x, y, button } => Input::MouseDoubleClick { x, y, button },
+            Message::MouseDown {
+                x,
+                y,
+                button,
+                modifiers,
+            } => Input::MouseDown {
+                x,
+                y,
+                button,
+                modifiers,
+            },
+            Message::MouseUp {
+                x,
+                y,
+                button,
+                modifiers,
+            } => Input::MouseUp {
+                x,
+                y,
+                button,
+                modifiers,
+            },
+            Message::MouseMove { x, y, modifiers } => Input::MouseMove { x, y, modifiers },
+            Message::MouseDoubleClick {
+                x,
+                y,
+                button,
+                modifiers,
+            } => Input::MouseDoubleClick {
+                x,
+                y,
+                button,
+                modifiers,
+            },
             Message::MouseWheel {
                 delta,
                 horizontal,
