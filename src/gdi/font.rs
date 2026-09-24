@@ -51,9 +51,13 @@ impl Font {
         })
     }
 
-    /// The UI font (Segoe UI) at 9.75 pt.
+    /// The UI font derived from system metrics at the given DPI.
+    /// Uses `SystemParametersInfoForDpi(SPI_GETNONCLIENTMETRICS)` to get the
+    /// system's configured message font (typically Segoe UI 9pt), falling back
+    /// to Segoe UI 9pt if the call fails.
     pub fn system_ui(dpi: u32) -> Result<Font> {
-        Font::new("Segoe UI", 9.75, FontWeight::Regular, dpi)
+        let (face, size) = sys::gdi::system_ui_font_metrics(dpi);
+        Font::new(&face, size, FontWeight::Regular, dpi)
     }
 
     /// The nominal pixel height of the font.

@@ -10,6 +10,10 @@ use windows::Win32::Graphics::Gdi::{
     FONT_OUTPUT_PRECISION, FONT_QUALITY, GetDC, GetStockObject, GetTextExtentPoint32W, HBITMAP,
     HBRUSH, HDC, HFONT, HGDIOBJ, HPEN, NULL_PEN, PS_SOLID, ReleaseDC, SelectObject,
 };
+use windows::Win32::UI::WindowsAndMessaging::{
+    NONCLIENTMETRICSW, SPI_GETNONCLIENTMETRICS, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS,
+    SystemParametersInfoW,
+};
 use windows::core::PCWSTR;
 
 use crate::color::Color;
@@ -178,4 +182,47 @@ pub(crate) fn measure_text(font: HFONT, text: &str) -> Size {
         let _ = ReleaseDC(None, dc);
         Size::new(size.cx, size.cy)
     }
+}
+
+/// Gets the system UI font face name and height (in points),
+/// falling back to Segoe UI 9pt if the system call fails.
+/// Returns (face_name, point_size).
+pub(crate) fn system_ui_font_metrics(_dpi: u32) -> (String, f32) {
+    let mut metrics: NONCLIENTMETRICSW = unsafe { std::mem::zeroed() };
+    metrics.cbSize = std::mem::size_of::<NONCLIENTMETRICSW>() as u32;
+
+    // SAFETY: `metrics` is fully initialized and the call is safe.
+    let success = unsafe {
+        SystemParametersInfoW(
+            SPI_GETNONCLIENTMETRICS,
+            metrics.cbSize,
+            Some(&mut metrics as *mut _ as *mut c_void),
+            SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0),
+        )
+    };
+
+    if success.is_ok() {
+        // Extract the message font (used for UI text)
+        let face_len = metrics
+            .lfMessageFont
+            .lfFaceName
+            .iter()
+            .position(|&c| c == 0)
+            .unwrap_or(32);
+        let face =
+            String::from_utf16_lossy(&metrics.lfMessageFont.lfFaceName[..face_len]).to_string();
+
+        // Convert height from logical units to points
+        // The lfHeight is negative and in device units; convert to points
+        // using standard 96 DPI as the baseline
+        let height_logical = metrics.lfMessageFont.lfHeight.abs() as f32;
+        let point_size = (height_logical * 72.0) / 96.0;
+
+        if !face.is_empty() && point_size > 0.0 {
+            return (face, point_size);
+        }
+    }
+
+    // Fallback to Segoe UI 9pt
+    ("Segoe UI".to_string(), 9.0)
 }
