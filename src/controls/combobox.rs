@@ -27,7 +27,6 @@ use crate::controls::combobox_model::ComboBoxItems;
 use crate::controls::control::{AsControl, Control};
 use crate::controls::{create_child, next_id, style};
 use crate::error::Result;
-use crate::gdi::Font;
 use crate::geometry::Rect;
 use crate::message::Message;
 use crate::sys;
@@ -60,7 +59,6 @@ impl<T: 'static, M: 'static> ComboBox<T, M> {
         S: Into<String>,
         I: IntoIterator<Item = (S, T)>,
     {
-        let dpi = ui.dpi();
         let window = ui.hwnd();
         let style = style::WS_CHILD
             | style::WS_VISIBLE
@@ -78,11 +76,9 @@ impl<T: 'static, M: 'static> ComboBox<T, M> {
             Rect::default(),
         )?;
 
-        // Adopt the window theme's item font, so the drop-down height and the
-        // selected field scale with DPI. `CB_SETMINVISIBLE` then keeps the
-        // dropped list a sensible number of rows tall at any scale.
-        let font = Font::system_ui(dpi)?;
-        sys::control::set_control_font(hwnd, font.raw());
+        // `create_child` gave the combo the UI font, so the drop-down height
+        // and the selected field scale with DPI. `CB_SETMINVISIBLE` then keeps
+        // the dropped list a sensible number of rows tall at any scale.
         sys::combobox::cb_set_min_visible(hwnd, DEFAULT_VISIBLE_ITEMS);
         sys::apply_native_theme(hwnd, sys::NativeControlKind::ComboBox, ui.theme().is_dark);
 

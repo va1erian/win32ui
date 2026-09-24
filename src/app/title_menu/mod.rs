@@ -52,7 +52,7 @@ fn font() -> Option<Font> {
         let mut slot = cell.borrow_mut();
         if slot.is_none() {
             let system = TextSystem::new().ok()?;
-            let spec = FontSpec::new("Segoe UI, sans-serif", FONT_SIZE);
+            let spec = FontSpec::new("system-ui, Segoe UI, sans-serif", FONT_SIZE);
             *slot = Some(system.font(&spec).ok()?);
         }
         slot.clone()

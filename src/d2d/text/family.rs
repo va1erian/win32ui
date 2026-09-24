@@ -7,17 +7,20 @@ pub(super) fn candidates(list: &str) -> Vec<String> {
     list.split(',')
         .map(|entry| entry.trim().trim_matches(['"', '\'']).trim())
         .filter(|entry| !entry.is_empty())
-        .map(|entry| generic(entry).unwrap_or(entry).to_owned())
+        .map(generic)
         .collect()
 }
 
-/// The installed font behind a CSS generic family name, if `name` is one.
-fn generic(name: &str) -> Option<&'static str> {
+/// The installed font behind a CSS generic family name; any other name is
+/// returned unchanged. `system-ui` is the face the OS uses for its own UI, the
+/// same one the GDI controls get from `Font::system_ui`.
+fn generic(name: &str) -> String {
     match name.to_ascii_lowercase().as_str() {
-        "serif" => Some("Cambria"),
-        "sans-serif" | "system-ui" => Some("Segoe UI"),
-        "monospace" | "ui-monospace" => Some("Consolas"),
-        _ => None,
+        "serif" => "Cambria".to_owned(),
+        "sans-serif" => "Segoe UI".to_owned(),
+        "system-ui" => crate::gdi::system_ui_family(),
+        "monospace" | "ui-monospace" => "Consolas".to_owned(),
+        _ => name.to_owned(),
     }
 }
 
@@ -39,6 +42,11 @@ mod tests {
             candidates("serif, Sans-Serif, monospace"),
             ["Cambria", "Segoe UI", "Consolas"]
         );
+    }
+
+    #[test]
+    fn system_ui_is_the_gdi_ui_face() {
+        assert_eq!(candidates("system-ui"), [crate::gdi::system_ui_family()]);
     }
 
     #[test]

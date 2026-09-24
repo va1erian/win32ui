@@ -22,7 +22,7 @@ use std::ops::Range;
 use std::rc::Rc;
 
 use crate::app::Ui;
-use crate::controls::control::{AsControl, Control, ControlExt, HasText};
+use crate::controls::control::{AsControl, Control, HasText};
 use crate::controls::edit_events::{self, EditEvents};
 use crate::controls::edit_text::{from_native, to_native};
 use crate::controls::{create_child, next_id, registry, style};
@@ -103,7 +103,7 @@ impl<M: 'static> Edit<M> {
 
         // Size the natural height from the UI font, so a layout that does not
         // size the widget still gets a sensible height at any DPI.
-        let font = Font::system_ui(dpi)?;
+        let font = Font::shared_ui(dpi)?;
         let line = font.pixel_height().max(1);
         let padding = dip(10.0).to_px(dpi).value();
         let bounds = Rect::new(0, 0, 0, line * lines.max(1) + padding);
@@ -116,7 +116,6 @@ impl<M: 'static> Edit<M> {
             sink: ui.clone(),
             multiline,
         };
-        edit.set_font(font);
         edit.apply_theme(&ui.theme());
         edit.register_mapper();
 

@@ -79,9 +79,9 @@ pub(crate) fn apply_native_theme(hwnd: Hwnd, kind: NativeControlKind, is_dark: b
     };
     // SAFETY: `hwnd` is a live control; the theme names are static literals
     // documented for `SetWindowTheme`.
-    unsafe {
+    super::control::keep_font(hwnd, || unsafe {
         let _ = SetWindowTheme(raw_hwnd(hwnd), name, PCWSTR::null());
-    }
+    });
 }
 
 /// Applies (or clears) the DWM dark title bar for a top-level window.

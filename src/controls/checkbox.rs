@@ -6,7 +6,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::app::Ui;
-use crate::controls::control::{AsControl, Control, ControlExt, HasText};
+use crate::controls::control::{AsControl, Control, HasText};
 use crate::controls::registry;
 use crate::controls::{create_child, next_id, style};
 use crate::error::Result;
@@ -38,7 +38,7 @@ impl<M: 'static> CheckBox<M> {
     pub fn new(ui: &mut Ui<M>, text: &str) -> Result<CheckBox<M>> {
         let dpi = ui.dpi();
         let parent = ui.hwnd();
-        let font = Font::system_ui(dpi)?;
+        let font = Font::shared_ui(dpi)?;
         let text_width = sys::gdi::measure_text(font.raw(), text).width;
         let width = (text_width + dip(28.0).to_px(dpi).value()).max(dip(64.0).to_px(dpi).value());
         let height =
@@ -47,6 +47,8 @@ impl<M: 'static> CheckBox<M> {
         let style =
             style::WS_CHILD | style::WS_VISIBLE | style::WS_TABSTOP | sys::button::checkbox_style();
         let hwnd = create_child("CheckBox", "BUTTON", parent, style, 0, next_id(), bounds)?;
+        sys::apply_native_theme(hwnd, sys::NativeControlKind::Button, ui.theme().is_dark);
+
         let events = Rc::new(RefCell::new(CheckBoxEvents { on_toggle: None }));
         let sink = ui.clone();
         let events_for_mapper = Rc::clone(&events);
@@ -75,9 +77,6 @@ impl<M: 'static> CheckBox<M> {
             control: Control::own(hwnd, bounds),
             events,
         };
-        // Store the font in the control so it stays alive
-        check.set_font(font);
-        sys::apply_native_theme(hwnd, sys::NativeControlKind::Button, ui.theme().is_dark);
         check.set_text(text);
         crate::theme::register_themed(
             parent,

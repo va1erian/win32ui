@@ -22,7 +22,7 @@ use crate::window::CursorShape;
 use super::{Run, RunStyle};
 
 /// The default family list, resolved entry by entry like any other font.
-pub(super) const DEFAULT_FAMILY: &str = "Segoe UI, Arial, sans-serif";
+pub(super) const DEFAULT_FAMILY: &str = "system-ui, Segoe UI, Arial, sans-serif";
 /// The default em size, in design units.
 pub(super) const DEFAULT_SIZE: f32 = 14.0;
 /// A placeholder natural width for the initial bounds, in design units.
