@@ -58,6 +58,15 @@ impl<M: 'static> Ui<M> {
     /// The handle widgets created through this `Ui` parent to: the top-level
     /// window, or the container this handle was scoped to with
     /// [`Ui::with_parent`].
+    ///
+    /// A scoped handle is for building a container's children only. Widgets
+    /// that must own the *top-level* window — [`MaterialTopBar`],
+    /// [`MaterialStatusBar`] and [`TaskDialog`] — have to be created from the
+    /// window's own `Ui`, not a container-scoped one.
+    ///
+    /// [`MaterialTopBar`]: crate::MaterialTopBar
+    /// [`MaterialStatusBar`]: crate::MaterialStatusBar
+    /// [`TaskDialog`]: crate::TaskDialog
     pub fn hwnd(&self) -> Hwnd {
         self.parent.unwrap_or_else(|| self.core.hwnd())
     }

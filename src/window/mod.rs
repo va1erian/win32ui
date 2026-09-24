@@ -103,6 +103,12 @@ impl WindowStyle {
         WindowStyle(self.0 | wam::WS_CLIPCHILDREN.0)
     }
 
+    /// Clip siblings (`WS_CLIPSIBLINGS`), so this child does not paint over its
+    /// siblings.
+    pub const fn clip_siblings(self) -> WindowStyle {
+        WindowStyle(self.0 | wam::WS_CLIPSIBLINGS.0)
+    }
+
     /// Include in the tab order (`WS_TABSTOP`).
     pub const fn tab_stop(self) -> WindowStyle {
         WindowStyle(self.0 | wam::WS_TABSTOP.0)

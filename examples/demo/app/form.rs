@@ -24,15 +24,17 @@ pub(super) enum FormMsg {
 
 /// The tab's widgets. The fields are held here so their windows stay alive.
 pub(super) struct Form {
+    // `view` is placed by `page`; the rest exist only to keep their child
+    // windows alive (their events are delivered through the mappings).
     view: ScrollView,
-    panel: Panel,
-    header: Label,
-    name_caption: Label,
-    name: Edit<Msg>,
-    subscribe: CheckBox<Msg>,
-    accent_caption: Label,
-    accent: ColorPicker<Msg>,
-    save: Button<Msg>,
+    _panel: Panel,
+    _header: Label,
+    _name_caption: Label,
+    _name: Edit<Msg>,
+    _subscribe: CheckBox<Msg>,
+    _accent_caption: Label,
+    _accent: ColorPicker<Msg>,
+    _save: Button<Msg>,
 }
 
 impl Form {
@@ -82,14 +84,14 @@ impl Form {
 
         Form {
             view,
-            panel,
-            header,
-            name_caption,
-            name,
-            subscribe,
-            accent_caption,
-            accent,
-            save,
+            _panel: panel,
+            _header: header,
+            _name_caption: name_caption,
+            _name: name,
+            _subscribe: subscribe,
+            _accent_caption: accent_caption,
+            _accent: accent,
+            _save: save,
         }
     }
 
@@ -118,17 +120,6 @@ impl Form {
             ),
             FormMsg::Save => status.set_text(0, "Form saved"),
         }
-        // Keep the fields used (they are widgets held for their windows).
-        let _ = (
-            &self.panel,
-            &self.header,
-            &self.name_caption,
-            &self.name,
-            &self.subscribe,
-            &self.accent_caption,
-            &self.accent,
-            &self.save,
-        );
         true
     }
 }

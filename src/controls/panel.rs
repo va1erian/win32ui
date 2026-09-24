@@ -28,7 +28,6 @@ use std::rc::Rc;
 use crate::Layout;
 use crate::app::Ui;
 use crate::controls::control::{AsControl, Control};
-use crate::controls::style;
 use crate::error::Result;
 use crate::geometry::Rect;
 use crate::hwnd::Hwnd;
@@ -110,7 +109,7 @@ impl Panel {
                 .child()
                 .visible()
                 .clip_children()
-                .with(style::WS_CLIPSIBLINGS),
+                .clip_siblings(),
             WindowExStyle::new().control_parent(),
             Rect::default(),
             "panel",
@@ -141,7 +140,7 @@ impl Panel {
     }
 
     /// Installs the panel's layout subtree and lays it out immediately. The
-    /// tree is re-run whenever the panel is resized (for example by scrolling).
+    /// tree is re-run whenever the panel's window is resized.
     ///
     /// Only widgets and nested [`Layout`]s belong in a panel's tree; a
     /// [`Tabs`](crate::Tabs) or [`Split`](crate::Split) node must be hosted by
