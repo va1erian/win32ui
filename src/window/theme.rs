@@ -5,6 +5,7 @@
 use std::rc::Rc;
 
 use crate::sys;
+use crate::theme::ApplyTheme;
 use crate::theme::Theme;
 use crate::window::Window;
 
@@ -43,7 +44,7 @@ impl Window {
     /// reports that the system theme changed. Off by default.
     pub fn follow_system_theme(&self, follow: bool) {
         let hwnd = self.hwnd();
-        let apply: Option<Rc<dyn Fn(&Theme)>> = follow
+        let apply: Option<ApplyTheme> = follow
             .then(|| Rc::new(move |theme: &Theme| Window::from_raw(hwnd).set_theme(*theme)) as _);
         crate::theme::set_window_follow_system(hwnd, apply);
     }

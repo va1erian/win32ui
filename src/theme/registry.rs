@@ -18,7 +18,7 @@ use crate::hwnd::Hwnd;
 use super::tokens::Theme;
 
 /// A type-erased re-theme callback stored per child.
-type ApplyTheme = Rc<dyn Fn(&Theme)>;
+pub(crate) type ApplyTheme = Rc<dyn Fn(&Theme)>;
 
 #[derive(Default)]
 struct WindowEntry {
