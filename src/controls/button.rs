@@ -6,7 +6,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::app::Ui;
-use crate::controls::control::{AsControl, Control, HasText};
+use crate::controls::control::{AsControl, Control, ControlExt, HasText};
 use crate::controls::registry;
 use crate::controls::{create_child, next_id, style};
 use crate::error::Result;
@@ -61,9 +61,6 @@ impl<M: 'static> Button<M> {
             id,
             bounds,
         )?;
-        sys::control::set_control_font(hwnd, font.raw());
-        sys::apply_native_theme(hwnd, sys::NativeControlKind::Button, ui.theme().is_dark);
-
         let events = Rc::new(RefCell::new(ButtonEvents { on_click: None }));
         let sink = ui.clone();
         let events_for_mapper = Rc::clone(&events);
@@ -93,12 +90,14 @@ impl<M: 'static> Button<M> {
             parent,
             events,
         };
+        // Store the font in the control so it stays alive and re-apply after theme changes
+        button.set_font(font);
+        sys::apply_native_theme(hwnd, sys::NativeControlKind::Button, ui.theme().is_dark);
         button.set_text(text);
         crate::theme::register_themed(
             parent,
             hwnd,
             Rc::new(move |applied| {
-                let _ = sys::control::apply_ui_font(hwnd, dpi);
                 sys::apply_native_theme(hwnd, sys::NativeControlKind::Button, applied.is_dark);
                 sys::window::invalidate(hwnd);
             }),
