@@ -120,6 +120,11 @@ enum Msg {
     Refresh,
     ToggleTheme,
     Clear,
+    Reply,
+    Forward,
+    Archive,
+    Star(bool),
+    Compose,
     SplitMoved(Dip),
     TreeSelect(u32),
     TreeFold(u32, bool),
@@ -257,6 +262,11 @@ impl win32ui::App for App {
                 self.set_status("Scanning… (indeterminate)");
             }
             Msg::Shuffle => self.set_status("Shuffle requested"),
+            Msg::Reply => self.set_status("Reply"),
+            Msg::Forward => self.set_status("Forward"),
+            Msg::Archive => self.set_status("Archived"),
+            Msg::Star(checked) => self.set_status(if checked { "Starred" } else { "Unstarred" }),
+            Msg::Compose => self.set_status("Compose"),
             Msg::Refresh => {
                 self.toolbar.invalidate();
                 self.progress.set_marquee(false);

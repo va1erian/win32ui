@@ -70,7 +70,7 @@ pub mod prelude {
     pub use super::slider::Slider;
     pub use super::statusbar::{StatusBar, StatusBarTheme};
     pub use super::taskdialog::{TaskDialog, TaskDialogIcon};
-    pub use super::toolbar::{Toolbar, ToolbarItem, ToolbarTheme};
+    pub use super::toolbar::{LabelMode, Toolbar, ToolbarItem, ToolbarItemId, ToolbarTheme};
     pub use super::toolbar_icon::ToolbarIcon;
     pub use super::treeview::{ImageList, Node, NodeStyle, TreeModel, TreeView, TreeViewEvent};
 }

@@ -116,7 +116,7 @@ pub use controls::radio::{RadioGroup, RadioOption};
 pub use controls::scrollview::ScrollView;
 pub use controls::statusbar::{StatusBar, StatusBarTheme};
 pub use controls::taskdialog::{TaskDialog, TaskDialogIcon};
-pub use controls::toolbar::{Toolbar, ToolbarItem, ToolbarTheme};
+pub use controls::toolbar::{LabelMode, Toolbar, ToolbarItem, ToolbarItemId, ToolbarTheme};
 pub use controls::treeview::{ImageList, Node, NodeStyle, TreeModel, TreeView, TreeViewEvent};
 
 pub use looper::{quit, run, run_modal};

@@ -349,4 +349,12 @@ impl Target {
         // SAFETY: the matrix is valid for the call.
         unsafe { self.render.SetTransform(&Matrix3x2::translation(x, y)) }
     }
+
+    /// Replaces the transform with a uniform `scale` about the origin followed
+    /// by a translation to `(x, y)`.
+    pub(crate) fn set_scale_translate(&mut self, scale: f32, x: f32, y: f32) {
+        let matrix = Matrix3x2::scale(scale, scale) * Matrix3x2::translation(x, y);
+        // SAFETY: the matrix is valid for the call.
+        unsafe { self.render.SetTransform(&matrix) }
+    }
 }
