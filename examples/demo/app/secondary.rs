@@ -18,7 +18,10 @@ use super::settings::SettingsPage;
 /// app's `Msg`.
 pub(crate) enum PrefsMsg {
     Increment,
-    Close,
+    /// The window is closing; hide it instead of destroying its state.
+    Hide,
+    /// Show the hidden window again, keeping its widgets and state.
+    Show,
 }
 
 /// The "Preferences" tool window: a counter, demonstrated through a label and a
@@ -42,7 +45,7 @@ impl PrefsApp {
             ui,
             vec![
                 ToolbarItem::new("Count +1").on_click(|| Some(PrefsMsg::Increment)),
-                ToolbarItem::new("Close").on_click(|| Some(PrefsMsg::Close)),
+                ToolbarItem::new("Close").on_click(|| Some(PrefsMsg::Hide)),
             ],
         )
         .expect("prefs toolbar");
@@ -54,6 +57,11 @@ impl PrefsApp {
         scroll.scroll_to(dip(40.0).to_px(ui.dpi()));
 
         ui.set_layout(column![toolbar, label.height(dip(28.0)), scroll.fill(1)].spacing(dip(8.0)));
+        // A secondary window the app keeps alive: the close request is
+        // intercepted and hides it (the parent shows it again with
+        // `WindowHandle::show`), so its state — the counter, the scroll
+        // position — survives. This is the pattern a visualization window uses.
+        ui.on_close(|| Some(PrefsMsg::Hide));
         PrefsApp {
             count: 0,
             label,
@@ -73,7 +81,8 @@ impl App for PrefsApp {
                 self.count += 1;
                 self.label.set_text(&format!("Counter: {}", self.count));
             }
-            PrefsMsg::Close => ui.close(),
+            PrefsMsg::Hide => ui.hide(),
+            PrefsMsg::Show => ui.show(),
         }
     }
 }

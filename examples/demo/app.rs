@@ -325,14 +325,20 @@ impl win32ui::App for App {
                 self.set_status(&format!("Document scrolled to {:.0} dip", offset.value()));
             }
             Msg::OpenPrefs => {
-                if self.prefs.is_none() {
-                    match secondary::open_prefs(ui) {
-                        Ok(handle) => {
-                            self.set_status("Preferences open");
-                            self.prefs = Some(handle);
-                        }
-                        Err(error) => self.set_status(&format!("Preferences failed: {error}")),
+                // The Preferences window hides on close instead of closing, so
+                // reopening it just shows the same window — counter and scroll
+                // position intact.
+                if let Some(prefs) = self.prefs.as_ref().filter(|prefs| prefs.is_alive()) {
+                    let _ = prefs.send(PrefsMsg::Show);
+                    self.set_status("Preferences shown again");
+                    return;
+                }
+                match secondary::open_prefs(ui) {
+                    Ok(handle) => {
+                        self.set_status("Preferences open");
+                        self.prefs = Some(handle);
                     }
+                    Err(error) => self.set_status(&format!("Preferences failed: {error}")),
                 }
             }
             Msg::OpenConfirm => {

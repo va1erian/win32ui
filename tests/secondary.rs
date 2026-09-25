@@ -11,6 +11,8 @@ use std::rc::Rc;
 
 use common::run_app_with_watchdog;
 use win32ui::column;
+use win32ui::gdi::Canvas;
+use win32ui::glow;
 use win32ui::prelude::*;
 
 /// A child app that records delivery of `Ping` and closes itself.
@@ -371,3 +373,321 @@ fn closing_the_parent_destroys_the_child() {
         assert!(!hwnd.is_alive(), "the child survived the parent closing");
     }
 }
+
+/// A child app that hides itself when its close request is intercepted.
+enum HideMsg {
+    Hide,
+}
+
+struct HideApp;
+
+impl App for HideApp {
+    type Msg = HideMsg;
+
+    fn update(&mut self, msg: HideMsg, ui: &mut Ui<HideMsg>) {
+        match msg {
+            HideMsg::Hide => ui.hide(),
+        }
+    }
+}
+
+enum HideParentMsg {
+    Start,
+    Closed,
+    Shown,
+}
+
+struct HideParentApp {
+    child: Option<WindowHandle<HideMsg>>,
+    alive_after_close: Rc<Cell<bool>>,
+    hidden_after_close: Rc<Cell<bool>>,
+    visible_after_show: Rc<Cell<bool>>,
+}
+
+impl App for HideParentApp {
+    type Msg = HideParentMsg;
+
+    fn update(&mut self, msg: HideParentMsg, ui: &mut Ui<HideParentMsg>) {
+        match msg {
+            HideParentMsg::Start => {
+                let handle = ui
+                    .open_window(
+                        WindowSpec::new("Visualizer").size(dip(260.0), dip(140.0)),
+                        |ui| {
+                            // Closing the window hides it instead of destroying it.
+                            ui.on_close(|| Some(HideMsg::Hide));
+                            HideApp
+                        },
+                    )
+                    .expect("child window");
+                // `on_close` intercepts `WM_CLOSE`, which is what the title
+                // bar's X posts; `WindowHandle::close` would destroy directly.
+                // SAFETY: `handle` wraps the live child; posting only enqueues.
+                unsafe {
+                    let _ = windows::Win32::UI::WindowsAndMessaging::PostMessageW(
+                        Some(windows::Win32::Foundation::HWND(
+                            handle.hwnd().raw() as *mut core::ffi::c_void
+                        )),
+                        WM_CLOSE,
+                        windows::Win32::Foundation::WPARAM(0),
+                        windows::Win32::Foundation::LPARAM(0),
+                    );
+                }
+                self.child = Some(handle);
+                let timer = ui.set_timer(150).ok();
+                ui.on_timer(move |id| (Some(id) == timer).then_some(HideParentMsg::Closed));
+            }
+            HideParentMsg::Closed => {
+                let child = self.child.as_ref().expect("child");
+                self.alive_after_close.set(child.is_alive());
+                self.hidden_after_close
+                    .set(child.is_alive() && !child.is_visible());
+                child.show();
+                let timer = ui.set_timer(100).ok();
+                ui.on_timer(move |id| (Some(id) == timer).then_some(HideParentMsg::Shown));
+            }
+            HideParentMsg::Shown => {
+                self.visible_after_show
+                    .set(self.child.as_ref().is_some_and(|child| child.is_visible()));
+                ui.quit();
+            }
+        }
+    }
+}
+
+/// A secondary window's close request can be intercepted: the app hides it,
+/// keeping its state, and the opener shows it again.
+#[test]
+fn child_close_is_intercepted_and_hides_instead_of_destroying() {
+    let alive_after_close = Rc::new(Cell::new(false));
+    let hidden_after_close = Rc::new(Cell::new(false));
+    let visible_after_show = Rc::new(Cell::new(false));
+    let alive_for_make = Rc::clone(&alive_after_close);
+    let hidden_for_make = Rc::clone(&hidden_after_close);
+    let visible_for_make = Rc::clone(&visible_after_show);
+
+    let Some(run) = run_app_with_watchdog("win32ui.app.child.hide", move |ui| {
+        ui.emit(HideParentMsg::Start);
+        HideParentApp {
+            child: None,
+            alive_after_close: alive_for_make,
+            hidden_after_close: hidden_for_make,
+            visible_after_show: visible_for_make,
+        }
+    }) else {
+        return;
+    };
+
+    assert!(!run.timed_out, "the watchdog fired before the app quit");
+    assert!(
+        alive_after_close.get(),
+        "the intercepted close destroyed the child"
+    );
+    assert!(
+        hidden_after_close.get(),
+        "the child was not hidden after the intercepted close"
+    );
+    assert!(
+        visible_after_show.get(),
+        "the child did not become visible again after WindowHandle::show"
+    );
+}
+
+enum PlaceMsg {
+    Start,
+}
+
+struct PlaceApp {
+    rect_after_set: Rc<Cell<Rect>>,
+    rect_after_reset: Rc<Cell<Rect>>,
+}
+
+impl App for PlaceApp {
+    type Msg = PlaceMsg;
+
+    fn update(&mut self, msg: PlaceMsg, ui: &mut Ui<PlaceMsg>) {
+        match msg {
+            PlaceMsg::Start => {
+                let handle = ui
+                    .open_window(
+                        WindowSpec::new("Child").size(dip(260.0), dip(120.0)),
+                        |_ui| NoopApp,
+                    )
+                    .expect("child window");
+                let target = Rect::new(300, 250, 700, 500);
+                let mut placement = handle.placement();
+                placement.normal = target;
+                handle.set_placement(&placement).expect("set placement");
+                self.rect_after_set.set(handle.window_rect());
+
+                // Restore the original placement and read it back too.
+                let mut moved = handle.placement();
+                moved.normal = Rect::new(120, 90, 400, 260);
+                handle.set_placement(&moved).expect("move again");
+                self.rect_after_reset.set(handle.window_rect());
+                ui.quit();
+            }
+        }
+    }
+}
+
+/// A `WindowHandle` exposes the child's placement, so the app can save and
+/// restore its position and size.
+#[test]
+fn child_placement_is_readable_and_settable() {
+    let rect_after_set = Rc::new(Cell::new(Rect::default()));
+    let rect_after_reset = Rc::new(Cell::new(Rect::default()));
+    let set_for_make = Rc::clone(&rect_after_set);
+    let reset_for_make = Rc::clone(&rect_after_reset);
+
+    let Some(run) = run_app_with_watchdog("win32ui.app.child.placement", move |ui| {
+        ui.emit(PlaceMsg::Start);
+        PlaceApp {
+            rect_after_set: set_for_make,
+            rect_after_reset: reset_for_make,
+        }
+    }) else {
+        return;
+    };
+
+    assert!(!run.timed_out, "the watchdog fired before the app quit");
+    assert_eq!(
+        rect_after_set.get(),
+        Rect::new(300, 250, 700, 500),
+        "the child did not move to the requested placement"
+    );
+    assert_eq!(
+        rect_after_reset.get(),
+        Rect::new(120, 90, 400, 260),
+        "the child's second placement was not applied"
+    );
+}
+
+/// A `Renderer::Gl` custom widget hosted in a secondary window.
+struct GlWidget {
+    paints: Rc<Cell<u32>>,
+}
+
+impl CustomWidget for GlWidget {
+    type Event = ();
+
+    fn paint(&self, _canvas: &Canvas, _bounds: Rect, _theme: &Theme) {}
+
+    fn renderer(&self) -> Renderer {
+        Renderer::Gl
+    }
+
+    fn paint_gl(&self, _gl: &glow::Context, _bounds: Rect, _theme: &Theme) {
+        self.paints.set(self.paints.get() + 1);
+    }
+}
+
+enum GlChildMsg {
+    Done,
+}
+
+struct GlChildApp {
+    #[allow(dead_code)]
+    widget: Custom<GlWidget, GlChildMsg>,
+}
+
+impl App for GlChildApp {
+    type Msg = GlChildMsg;
+
+    fn update(&mut self, msg: GlChildMsg, ui: &mut Ui<GlChildMsg>) {
+        match msg {
+            GlChildMsg::Done => ui.close(),
+        }
+    }
+}
+
+enum GlParentMsg {
+    Start,
+    Check,
+}
+
+struct GlParentApp {
+    paints: Rc<Cell<u32>>,
+    #[allow(dead_code)]
+    child: Option<WindowHandle<GlChildMsg>>,
+}
+
+impl App for GlParentApp {
+    type Msg = GlParentMsg;
+
+    fn update(&mut self, msg: GlParentMsg, ui: &mut Ui<GlParentMsg>) {
+        match msg {
+            GlParentMsg::Start => {
+                let paints = Rc::clone(&self.paints);
+                let handle = ui
+                    .open_window(
+                        WindowSpec::new("GL child").size(dip(300.0), dip(200.0)),
+                        move |ui| {
+                            let widget = Custom::new(ui, GlWidget { paints }).expect("gl widget");
+                            ui.set_layout(column![widget.fill(1)]);
+                            let timer = ui.set_timer(250).ok();
+                            ui.on_timer(move |id| (Some(id) == timer).then_some(GlChildMsg::Done));
+                            GlChildApp { widget }
+                        },
+                    )
+                    .expect("child window");
+                self.child = Some(handle);
+                let timer = ui.set_timer(600).ok();
+                ui.on_timer(move |id| (Some(id) == timer).then_some(GlParentMsg::Check));
+            }
+            GlParentMsg::Check => ui.quit(),
+        }
+    }
+}
+
+/// A secondary window can host a single `Renderer::Gl` custom widget, which is
+/// painted through its own context. Skips when the session has no GL driver.
+#[test]
+fn child_hosts_a_renderer_gl_custom_widget() {
+    if !gl_available() {
+        return;
+    }
+    let paints = Rc::new(Cell::new(0u32));
+    let paints_for_make = Rc::clone(&paints);
+    let Some(run) = run_app_with_watchdog("win32ui.app.child.gl", move |ui| {
+        ui.emit(GlParentMsg::Start);
+        GlParentApp {
+            paints: paints_for_make,
+            child: None,
+        }
+    }) else {
+        return;
+    };
+
+    assert!(!run.timed_out, "the watchdog fired before the app quit");
+    assert!(
+        paints.get() > 0,
+        "the secondary window's GL widget never painted"
+    );
+}
+
+/// Whether this session can create an OpenGL context (a hidden throwaway
+/// window, so a GL pixel format is not set on another window's DC).
+fn gl_available() -> bool {
+    let Ok(class) = WindowClass::register("win32ui.secondary.gl.probe", Theme::light().background)
+    else {
+        return false;
+    };
+    let Ok(window) = Window::create(
+        class,
+        None,
+        WindowStyle::overlapped(),
+        WindowExStyle::new(),
+        Rect::new(0, 0, 16, 16),
+        "win32ui.secondary.gl.probe",
+        common::NullHandler,
+    ) else {
+        return false;
+    };
+    let available = win32ui::gl::GlSurface::new(window.hwnd()).is_ok();
+    window.destroy();
+    available
+}
+
+/// `WM_CLOSE`, mirrored from `Winuser.h`.
+const WM_CLOSE: u32 = 0x0010;
