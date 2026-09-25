@@ -68,6 +68,7 @@ pub(crate) fn dpi_settled_message() -> u32 {
         unsafe { RegisterWindowMessageW(DPI_SETTLED_MESSAGE_NAME) }
     })
 }
+
 thread_local! {
     /// High half of a `WM_CHAR` surrogate pair, waiting for its low half.
     static PENDING_HIGH_SURROGATE: Cell<Option<u16>> = const { Cell::new(None) };
