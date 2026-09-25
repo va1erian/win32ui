@@ -15,8 +15,8 @@ use windows::Win32::Foundation::{COLORREF, ERROR_SUCCESS};
 use windows::Win32::Graphics::Dwm::{
     DWM_WINDOW_CORNER_PREFERENCE, DWMSBT_MAINWINDOW, DWMSBT_TABBEDWINDOW, DWMSBT_TRANSIENTWINDOW,
     DWMWA_BORDER_COLOR, DWMWA_CAPTION_COLOR, DWMWA_COLOR_NONE, DWMWA_SYSTEMBACKDROP_TYPE,
-    DWMWA_TEXT_COLOR, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND, DWMWINDOWATTRIBUTE,
-    DwmExtendFrameIntoClientArea, DwmSetWindowAttribute,
+    DWMWA_TEXT_COLOR, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND, DWMWCP_ROUND,
+    DWMWINDOWATTRIBUTE, DwmExtendFrameIntoClientArea, DwmSetWindowAttribute,
 };
 use windows::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW};
 use windows::Win32::UI::Accessibility::{HCF_HIGHCONTRASTON, HIGHCONTRASTW};
@@ -185,6 +185,22 @@ fn set_color(hwnd: Hwnd, attribute: DWMWINDOWATTRIBUTE, colorref: u32) -> bool {
         )
     }
     .is_ok()
+}
+
+/// Turns off DWM's rounded corners for `hwnd` (Windows 11+), so a borderless
+/// fullscreen or popup window is truly square. Best-effort on older Windows.
+pub(crate) fn disable_rounding(hwnd: Hwnd) {
+    let corner = DWMWCP_DONOTROUND;
+    // SAFETY: `hwnd` is live; `corner` is a correctly-sized attribute value
+    // that outlives the call and is only read by DWM.
+    unsafe {
+        let _ = DwmSetWindowAttribute(
+            raw_hwnd(hwnd),
+            DWMWA_WINDOW_CORNER_PREFERENCE,
+            &corner as *const DWM_WINDOW_CORNER_PREFERENCE as *const c_void,
+            size_of::<DWM_WINDOW_CORNER_PREFERENCE>() as u32,
+        );
+    }
 }
 
 /// Paints the standard caption from `theme` (Windows 11 only), returning

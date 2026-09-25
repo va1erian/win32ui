@@ -149,6 +149,17 @@ pub(super) fn build(ui: &mut Ui<Msg>) -> App {
     };
     ui.set_layout(layout);
 
+    // `WIN32UI_DEMO_FULLSCREEN=1` makes the demo borderless fullscreen on the
+    // primary monitor and auto-hides the idle cursor. An app toggles this at
+    // runtime with `Ui::enter_fullscreen`/`leave_fullscreen`; here an env var
+    // keeps the headline demo non-interactive for screenshots.
+    if std::env::var_os("WIN32UI_DEMO_FULLSCREEN").is_some() {
+        if let Some(primary) = monitors().into_iter().find(|monitor| monitor.primary) {
+            let _ = ui.enter_fullscreen(&primary);
+        }
+        let _ = ui.hide_cursor_when_idle(2000);
+    }
+
     let app = App {
         toolbar,
         library,

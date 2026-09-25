@@ -123,6 +123,12 @@ pub(crate) unsafe extern "system" fn window_proc(
         super::window_ext::apply_track_limits(hwnd_from(hwnd), lparam.0);
     }
 
+    // Auto-hiding the cursor owns `WM_MOUSEMOVE`/`WM_SETCURSOR`/one `WM_TIMER`;
+    // it returns `None` for everything else (and for a move the app still sees).
+    if let Some(result) = super::cursor_idle::handled(hwnd_from(hwnd), msg, wparam.0) {
+        return LRESULT(result);
+    }
+
     // The extended title bar owns these two: it removes the standard caption
     // and routes the strip's hit-testing through DWM. Both return `None` for a
     // standard window, so the default path below is unchanged.
@@ -196,6 +202,8 @@ pub(crate) unsafe extern "system" fn window_proc(
         // `HWND` never keeps a thread-local bitmap alive.
         super::gdi::release_back_buffer(hwnd_from(hwnd));
         super::window_ext::forget_track_limits(hwnd_from(hwnd));
+        super::cursor_idle::forget(hwnd_from(hwnd));
+        super::fullscreen::forget(hwnd_from(hwnd));
         super::menu_seam::forget(hwnd_from(hwnd));
         super::looper::forget_keyboard(hwnd_from(hwnd));
         crate::theme::forget_window_theme(hwnd_from(hwnd));

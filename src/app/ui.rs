@@ -16,6 +16,7 @@ use crate::sys;
 use crate::theme::Theme;
 use crate::units::{Dip, Px, dip};
 use crate::window::Icon;
+use crate::window::MonitorInfo;
 use crate::window::Placement;
 
 use super::core::Core;
@@ -106,6 +107,31 @@ impl<M: 'static> Ui<M> {
     /// window is first shown.
     pub fn set_placement(&self, placement: &Placement) -> Result<()> {
         sys::window_ext::set_placement(self.core.hwnd(), placement)
+    }
+
+    /// Makes the window borderless fullscreen on `monitor`'s full rectangle,
+    /// topmost and without a caption or DWM frame. The previous style and
+    /// placement are restored by [`Ui::leave_fullscreen`]. See
+    /// [`Window::enter_fullscreen`](crate::Window::enter_fullscreen).
+    pub fn enter_fullscreen(&self, monitor: &MonitorInfo) -> Result<()> {
+        sys::fullscreen::enter(self.core.hwnd(), monitor.rect)
+    }
+
+    /// Leaves fullscreen and restores the window's saved style and placement.
+    pub fn leave_fullscreen(&self) -> Result<()> {
+        sys::fullscreen::leave(self.core.hwnd())
+    }
+
+    /// Whether the window is currently fullscreen.
+    pub fn is_fullscreen(&self) -> bool {
+        sys::fullscreen::is_fullscreen(self.core.hwnd())
+    }
+
+    /// Hides the mouse cursor after `millis` without movement and shows it
+    /// again on the next move; `0` disables it. See
+    /// [`Window::hide_cursor_when_idle`](crate::Window::hide_cursor_when_idle).
+    pub fn hide_cursor_when_idle(&self, millis: u32) -> Result<()> {
+        sys::cursor_idle::arm(self.core.hwnd(), millis)
     }
 
     /// Sets the window title.

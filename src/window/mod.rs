@@ -4,6 +4,8 @@
 //! and the [`WindowHandler`] trait that receives typed [`Message`]s.
 
 mod backdrop;
+mod cursor;
+mod fullscreen;
 mod icon;
 mod modal;
 mod monitor;
