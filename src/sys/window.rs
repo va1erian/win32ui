@@ -5,8 +5,8 @@ use core::ffi::c_void;
 
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
-    GetUpdateRect, HBRUSH, InvalidateRect, RDW_ALLCHILDREN, RDW_ERASE, RDW_INVALIDATE,
-    RDW_UPDATENOW, RedrawWindow, UpdateWindow, ValidateRect,
+    GetClipBox, GetDC, GetUpdateRect, HBRUSH, InvalidateRect, RDW_ALLCHILDREN, RDW_ERASE,
+    RDW_INVALIDATE, RDW_UPDATENOW, RedrawWindow, ReleaseDC, UpdateWindow, ValidateRect,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent};
@@ -240,6 +240,44 @@ pub(crate) fn client_rect(hwnd: Hwnd) -> Rect {
     } else {
         Rect::default()
     }
+}
+
+/// The visible part of `hwnd`'s client area, in client pixels: the client
+/// rectangle clipped by every ancestor's visible region.
+///
+/// A scrolled child taller than its viewport reports only the band currently on
+/// screen — exactly what `BeginPaint` gives the GDI path as `rcPaint`. The
+/// Direct2D path reads it so a virtualized widget does not paint (or request
+/// cover art for) the whole off-screen document on the frame the render target
+/// is first created.
+pub(crate) fn visible_client_rect(hwnd: Hwnd) -> Rect {
+    // A window DC is clipped to the window's visible region, so its clip box is
+    // the visible client area. `GetClientRect` is the fallback if it fails.
+    // SAFETY: `hwnd` is a live window; the DC is released below.
+    let dc = unsafe { GetDC(Some(raw_hwnd(hwnd))) };
+    if dc.0.is_null() {
+        return client_rect(hwnd);
+    }
+    let mut raw = RECT::default();
+    // SAFETY: `dc` is live and `raw` is a valid out-pointer.
+    let kind = unsafe { GetClipBox(dc, &mut raw) };
+    // SAFETY: `dc` came from `GetDC` above.
+    unsafe { ReleaseDC(Some(raw_hwnd(hwnd)), dc) };
+    if kind.0 == 0 {
+        return client_rect(hwnd);
+    }
+    Rect::new(raw.left, raw.top, raw.right, raw.bottom)
+}
+
+/// The intersection of `a` and `b`, or an empty rectangle when they do not
+/// overlap.
+pub(crate) fn intersect(a: Rect, b: Rect) -> Rect {
+    Rect::new(
+        a.left.max(b.left),
+        a.top.max(b.top),
+        a.right.min(b.right),
+        a.bottom.min(b.bottom),
+    )
 }
 
 /// Invalidates `hwnd` and all its children for a repaint.

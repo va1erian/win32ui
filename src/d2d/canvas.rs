@@ -54,10 +54,26 @@ impl<'a> D2dCanvas<'a> {
     /// draws only what is visible (a virtualized list) reads it to skip the
     /// rest; convert with [`scale`](D2dCanvas::scale) to the canvas's
     /// device-independent coordinates.
+    ///
+    /// The rectangle is reported in the canvas's current drawing coordinates:
+    /// a translation applied with [`set_translation`](D2dCanvas::set_translation)
+    /// (as a scrolling widget draws through) is undone, so a widget in a
+    /// scroll host gets the dirty band in its document coordinates.
     pub fn paint_rect(&self) -> Rect {
-        self.surface
+        let frame = self
+            .surface
             .frame()
-            .unwrap_or_else(|| sys::window::client_rect(self.surface.hwnd()))
+            .unwrap_or_else(|| sys::window::visible_client_rect(self.surface.hwnd()));
+        let (tx, ty) = self.surface.translation();
+        let scale = self.scale();
+        let dx = (tx * scale).round() as i32;
+        let dy = (ty * scale).round() as i32;
+        Rect::new(
+            frame.left - dx,
+            frame.top - dy,
+            frame.right - dx,
+            frame.bottom - dy,
+        )
     }
 
     /// The scale from device-independent to device pixels (1.0 at 96 DPI).
@@ -139,8 +155,10 @@ impl<'a> D2dCanvas<'a> {
     }
 
     /// Offsets everything drawn afterwards by `(x, y)` (replacing any earlier
-    /// offset), for example to scroll content.
+    /// offset), for example to scroll content. [`paint_rect`](D2dCanvas::paint_rect)
+    /// reports the dirty rectangle with this offset undone.
     pub fn set_translation(&mut self, x: f32, y: f32) {
+        self.surface.set_translation(x, y);
         self.with(|target| target.set_translation(x, y));
     }
 
