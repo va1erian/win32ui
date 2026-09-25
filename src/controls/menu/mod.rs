@@ -14,6 +14,7 @@
 //! theme tokens on `WM_MEASUREITEM`/`WM_DRAWITEM`); on the light theme the
 //! native Win32 menu is used unchanged.
 
+mod access;
 mod checked;
 mod data;
 mod draw;

@@ -12,6 +12,7 @@
 use std::cell::Cell;
 
 use crate::accel::Shortcut;
+use crate::accessibility::{AccessCx, Action, Node};
 use crate::app::Ui;
 use crate::color::Color;
 use crate::controls::control::{AsControl, Control};
@@ -27,7 +28,7 @@ use crate::units::dip;
 
 /// One toolbar button.
 pub struct ToolbarItem<M> {
-    label: String,
+    pub(super) label: String,
     icon: Option<ToolbarIcon>,
     tooltip: Option<String>,
     shortcut: Option<Shortcut>,
@@ -73,7 +74,7 @@ impl<M> ToolbarItem<M> {
     }
 
     /// The tooltip this button should show: its text, its shortcut, or both.
-    fn tooltip_text(&self) -> Option<String> {
+    pub(super) fn tooltip_text(&self) -> Option<String> {
         match (&self.tooltip, self.shortcut) {
             (Some(text), Some(shortcut)) => Some(format!("{text} ({shortcut})")),
             (Some(text), None) => Some(text.clone()),
@@ -116,8 +117,8 @@ impl ToolbarTheme {
 }
 
 /// The mutable state behind a [`Toolbar`], shared with the child window.
-struct ToolbarWidget<M> {
-    items: Vec<ToolbarItem<M>>,
+pub(super) struct ToolbarWidget<M> {
+    pub(super) items: Vec<ToolbarItem<M>>,
     font: Font,
     dpi: u32,
     widths: Vec<i32>,
@@ -159,7 +160,7 @@ impl<M> ToolbarWidget<M> {
     }
 
     /// The button rectangles for the current client width.
-    fn rects(&self) -> Vec<Rect> {
+    pub(super) fn rects(&self) -> Vec<Rect> {
         let mut rects = Vec::with_capacity(self.items.len());
         let mut x = 0;
         for width in &self.widths {
@@ -301,6 +302,25 @@ impl<M: 'static> CustomWidget for ToolbarWidget<M> {
 
     fn preferred_size(&self, _dpi: u32) -> Option<Size> {
         Some(Size::new(self.widths.iter().sum(), self.height))
+    }
+
+    fn accessibility(&self, _cx: &AccessCx) -> Option<Node> {
+        Some(super::toolbar_access::node(self))
+    }
+
+    fn accessibility_action(
+        &self,
+        path: &[usize],
+        action: Action,
+        cx: &mut WidgetCx<usize>,
+    ) -> bool {
+        match (path, action) {
+            ([index], Action::Invoke) if *index < self.items.len() => {
+                cx.emit(*index);
+                true
+            }
+            _ => false,
+        }
     }
 }
 

@@ -15,6 +15,7 @@
 //! `WM_DRAWITEM`, including hover, selected and focus states. The same subclass
 //! tracks the hot tab and handles `Ctrl+Tab` between pages.
 
+mod access;
 mod host;
 mod paint;
 mod runtime;
@@ -310,6 +311,12 @@ pub(crate) fn build_tabs<M: 'static>(ui: &Ui<M>, node: &TabsNode) {
         _host: host,
     }));
     shared.hwnd.set(hwnd);
+    sys::uia::attach_source(
+        hwnd,
+        Rc::new(access::TabsAccess {
+            shared: Rc::downgrade(&shared),
+        }),
+    );
 
     // A runtime selection/visibility change repages and relayouts through this
     // closure, which is monomorphised for the app's `Msg` here.

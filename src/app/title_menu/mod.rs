@@ -92,7 +92,8 @@ pub(crate) enum OpenAction<M> {
 /// the stored rectangles ([`TitleBarMenu::paint`]), so hit-testing and drawing
 /// always agree.
 pub(crate) struct TitleBarMenu<M> {
-    menu: Menu<M>,
+    /// The menu this strip draws.
+    pub(crate) menu: Menu<M>,
     items: Vec<Item>,
     /// The line height of the menu font, in device-independent pixels.
     line_height_dip: f32,

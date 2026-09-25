@@ -157,6 +157,20 @@ pub trait ControlExt: AsControl {
         crate::controls::tooltip::set_control_tooltip(self.control().hwnd, text);
     }
 
+    /// Sets the name assistive technology announces for the widget (and shows
+    /// to UI Automation clients), for widgets without visible text of their
+    /// own, such as a slider or an icon-only button. Applies to widgets that
+    /// describe themselves to accessibility (see [`crate::accessibility`]).
+    fn set_accessible_name(&self, name: &str) {
+        crate::accessibility::registry::set_name(self.control().hwnd, name);
+    }
+
+    /// Sets a stable automation id UI Automation clients (tests, agents) can
+    /// find the widget by.
+    fn set_accessible_id(&self, id: &str) {
+        crate::accessibility::registry::set_id(self.control().hwnd, id);
+    }
+
     /// The tooltip set with [`ControlExt::set_tooltip`], if any.
     fn tooltip(&self) -> Option<String> {
         self.control().tooltip.borrow().clone()

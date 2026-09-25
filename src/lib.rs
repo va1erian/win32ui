@@ -45,6 +45,7 @@
 #![cfg(windows)]
 
 mod accel;
+pub mod accessibility;
 mod app;
 pub mod capture;
 mod color;

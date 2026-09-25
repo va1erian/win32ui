@@ -13,6 +13,8 @@ use std::rc::Rc;
 
 use win32ui::prelude::*;
 
+pub mod uia;
+
 /// Milliseconds after which the watchdog gives up on a handler.
 const WATCHDOG_MS: u32 = 5000;
 /// How a watched run ended.

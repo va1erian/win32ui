@@ -195,6 +195,17 @@ impl<T: 'static, M: 'static> RadioGroup<T, M> {
             selected: Cell::new(None),
             on_select: RefCell::new(None),
         });
+        for (index, hwnd) in shared.hwnds.iter().enumerate() {
+            let weak = Rc::downgrade(&shared);
+            sys::uia::attach_native_state(
+                *hwnd,
+                crate::accessibility::Role::RadioButton,
+                Rc::new(move || {
+                    weak.upgrade()
+                        .is_some_and(|shared| shared.selected.get() == Some(index))
+                }),
+            );
+        }
         // One mapper per button handles both its click (`WM_COMMAND`) and
         // its paint (`WM_DRAWITEM`).
         for (index, button) in buttons.iter().enumerate() {

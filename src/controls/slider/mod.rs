@@ -20,6 +20,7 @@
 //! let volume = Slider::new(ui, 0.0..=1.0)?.vertical().on_change(|v| Some(Msg::Volume(v)));
 //! ```
 
+mod access;
 mod anim;
 mod paint;
 mod state;

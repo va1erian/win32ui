@@ -21,8 +21,10 @@ pub use widget::{Input, KeyResult, Renderer, WidgetCx};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
+use crate::accessibility::{AccessCx, Action, Node};
 use crate::app::Ui;
 use crate::controls::control::{AsControl, Control};
+use crate::controls::custom_access::CustomAccess;
 use crate::controls::custom_inner::{CustomHandler, CustomShared};
 use crate::d2d::{D2dCanvas, RectF};
 use crate::error::Result;
@@ -99,6 +101,28 @@ pub trait CustomWidget: 'static {
     /// Handles one input event. The default ignores everything.
     fn input(&self, _input: Input, _cx: &mut WidgetCx<Self::Event>) {}
 
+    /// Describes the widget to assistive technology and UI Automation clients
+    /// as a tree of [`Node`]s (`None`, the default, leaves the widget opaque).
+    ///
+    /// Called on demand, so build the tree from the widget's current state; it
+    /// is a snapshot, never kept. Bounds are in the widget's client pixels.
+    fn accessibility(&self, _cx: &AccessCx) -> Option<Node> {
+        None
+    }
+
+    /// Performs a client's `action` on the node at `path` (an index chain from
+    /// the root of the tree [`CustomWidget::accessibility`] returned). Raise
+    /// events through `cx` exactly as [`CustomWidget::input`] does. Returns
+    /// whether the action was handled.
+    fn accessibility_action(
+        &self,
+        _path: &[usize],
+        _action: Action,
+        _cx: &mut WidgetCx<Self::Event>,
+    ) -> bool {
+        false
+    }
+
     /// The widget's natural size in device pixels, if it has one. [`Custom`]
     /// uses this for its initial bounds, so a layout that keeps a widget's
     /// natural size picks it up.
@@ -144,12 +168,16 @@ impl<W: CustomWidget, M: 'static> Custom<W, M> {
             let shared = Rc::clone(&shared);
             Rc::new(move |event| shared.emit(event))
         };
+        let animate = Rc::new(Cell::new(false));
+        let access_emit = Rc::clone(&emit);
+        let access_bounds = Rc::clone(&client_bounds);
+        let access_animate = Rc::clone(&animate);
         let handler = CustomHandler {
             shared: Rc::clone(&shared),
             bounds: Rc::clone(&client_bounds),
             emit,
             renderer: RefCell::new(RendererState::Untried),
-            animate: Rc::new(Cell::new(false)),
+            animate,
             tracking_mouse: Cell::new(false),
         };
 
@@ -164,6 +192,16 @@ impl<W: CustomWidget, M: 'static> Custom<W, M> {
             handler,
         )?;
         let control = Control::borrowed(window.hwnd(), bounds);
+        crate::accessibility::registry::register(
+            window.hwnd(),
+            Rc::new(CustomAccess {
+                shared: Rc::downgrade(&shared),
+                hwnd: window.hwnd(),
+                bounds: access_bounds,
+                emit: access_emit,
+                animate: access_animate,
+            }),
+        );
 
         {
             let weak = Rc::downgrade(&shared);

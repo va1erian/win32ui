@@ -7,6 +7,7 @@
 //! parts itself. It is a [`CustomWidget`](crate::CustomWidget), so it shares
 //! the crate's single owner-draw pattern with the toolbar and user widgets.
 
+use crate::accessibility::{AccessCx, Node, Role};
 use crate::app::Ui;
 use crate::color::Color;
 use crate::controls::control::{AsControl, Control};
@@ -103,6 +104,21 @@ impl CustomWidget for StatusBarWidget {
 
     fn preferred_size(&self, _dpi: u32) -> Option<Size> {
         Some(Size::new(0, self.height))
+    }
+
+    fn accessibility(&self, _cx: &AccessCx) -> Option<Node> {
+        let parts = (0..self.parts.len()).map(|index| {
+            let text = self.texts.get(index).cloned().unwrap_or_default();
+            let part = Node::new(Role::Text, text);
+            // The last part usually runs to the right edge, whose position is
+            // the client width; only bounded parts get their own rectangle.
+            let left = if index == 0 { 0 } else { self.parts[index - 1] };
+            match self.parts[index] {
+                right if right > left => part.bounds(Rect::new(left, 0, right, self.height)),
+                _ => part,
+            }
+        });
+        Some(Node::new(Role::StatusBar, "").children(parts))
     }
 }
 

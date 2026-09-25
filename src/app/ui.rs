@@ -167,12 +167,25 @@ impl<M: 'static> Ui<M> {
         &self,
         state: Rc<super::core::MaterialStatusBarState>,
     ) {
+        crate::accessibility::registry::add_section(
+            self.core.hwnd(),
+            "status-bar",
+            Rc::new(super::status_bar::StatusBarAccess::new(Rc::clone(&state))),
+        );
         self.core.set_material_status_bar(state);
         sys::window::invalidate(self.core.hwnd());
     }
 
     /// Installs a material top bar's shared state and reserves its band.
     pub(crate) fn install_material_top_bar(&self, state: Rc<super::top_bar::TopBarState>) {
+        crate::accessibility::registry::add_section(
+            self.core.hwnd(),
+            "top-bar",
+            Rc::new(super::top_bar::TopBarAccess::new(
+                Rc::clone(&state),
+                Rc::downgrade(&self.core),
+            )),
+        );
         self.core.set_material_top_bar(state);
     }
 
@@ -325,6 +338,11 @@ impl<M: 'static> Ui<M> {
         {
             self.core.install_menu_bar(menu.clone());
             self.core.install_title_menu(title_menu);
+            crate::accessibility::registry::add_section(
+                hwnd,
+                "menu-bar",
+                Rc::new(super::core::TitleMenuAccess::new(Rc::downgrade(&self.core))),
+            );
             self.core.set_menu_accelerators(&menu);
             sys::window::invalidate(hwnd);
             self.core.relayout();

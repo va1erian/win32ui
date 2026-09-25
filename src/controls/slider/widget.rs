@@ -6,6 +6,7 @@
 use std::cell::{Cell, RefCell};
 use std::time::Instant;
 
+use crate::accessibility::{AccessCx, Action, Node};
 use crate::controls::custom::{CustomWidget, Input, Renderer, WidgetCx};
 use crate::d2d::{D2dCanvas, RectF, pixels_to_dips};
 use crate::gdi::Canvas;
@@ -191,6 +192,29 @@ impl CustomWidget for SliderWidget {
         } else {
             Size::new(long, short)
         })
+    }
+
+    fn accessibility(&self, _cx: &AccessCx) -> Option<Node> {
+        Some(super::access::node(&self.state.borrow()))
+    }
+
+    fn accessibility_action(
+        &self,
+        path: &[usize],
+        action: Action,
+        cx: &mut WidgetCx<SliderEvent>,
+    ) -> bool {
+        match (path, action) {
+            ([], Action::SetRange(value)) if self.state.borrow().enabled => {
+                self.step(cx, Step::To(value), 1.0);
+                true
+            }
+            ([], Action::Focus) => {
+                cx.focus();
+                true
+            }
+            _ => false,
+        }
     }
 
     fn input(&self, input: Input, cx: &mut WidgetCx<SliderEvent>) {

@@ -14,8 +14,8 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{
     CREATESTRUCTW, DefWindowProcW, GWLP_USERDATA, GetWindowLongPtrW, SetWindowLongPtrW,
-    WM_ERASEBKGND, WM_GETMINMAXINFO, WM_NCCALCSIZE, WM_NCCREATE, WM_NCDESTROY, WM_NCHITTEST,
-    WM_NOTIFY,
+    WM_ERASEBKGND, WM_GETMINMAXINFO, WM_GETOBJECT, WM_NCCALCSIZE, WM_NCCREATE, WM_NCDESTROY,
+    WM_NCHITTEST, WM_NOTIFY,
 };
 
 use crate::message::{Command, Message};
@@ -109,6 +109,14 @@ pub(crate) unsafe extern "system" fn window_proc(
     // SAFETY: reads back the pointer stored above (null for foreign windows).
     let raw = unsafe { GetWindowLongPtrW(hwnd, GWLP_USERDATA) } as *mut Box<dyn WindowHandler>;
 
+    // A window that describes itself to assistive technology answers the UI
+    // Automation root request; everything else falls through unchanged.
+    if msg == WM_GETOBJECT
+        && let Some(result) = super::uia::get_object(hwnd_from(hwnd), wparam.0, lparam.0)
+    {
+        return LRESULT(result);
+    }
+
     if msg == WM_GETMINMAXINFO {
         // Apply the window's configured tracking limits before the handler, so
         // it can read them with `Window::min_max_info`.
@@ -193,6 +201,7 @@ pub(crate) unsafe extern "system" fn window_proc(
         crate::theme::forget_window_theme(hwnd_from(hwnd));
         crate::controls::tooltip::forget_window(hwnd_from(hwnd));
         crate::window::nc::forget_window(hwnd_from(hwnd));
+        crate::accessibility::registry::forget(hwnd_from(hwnd));
     }
 
     if msg == WM_NCDESTROY && !raw.is_null() {

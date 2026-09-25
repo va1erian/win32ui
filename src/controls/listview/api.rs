@@ -83,31 +83,13 @@ impl<T: 'static, M: 'static> ListView<T, M> {
     /// are muted — so calling this from an `on_select` handler for the same
     /// rows cannot loop. A no-op when the selection already matches.
     pub fn set_selection(&self, rows: &[usize]) {
-        let view = self.control.hwnd();
-        let len = self.model_len();
-        let mut next: Vec<usize> = rows.iter().copied().filter(|&row| row < len).collect();
-        next.sort_unstable();
-        next.dedup();
-        if next == sys::listview::lv_selected_all(view) {
-            self.inner.borrow_mut().last_selection = next;
-            return;
-        }
-        self.inner.borrow_mut().selection_muted = true;
-        sys::listview::lv_set_selection(view, &next);
-        {
-            let mut inner = self.inner.borrow_mut();
-            inner.selection_muted = false;
-            inner.last_selection = next.clone();
-        }
-        if let Some(msg) = self
-            .events
-            .borrow()
-            .on_select
-            .as_ref()
-            .and_then(|f| f(&next))
-        {
-            self.sink.emit(msg);
-        }
+        apply_selection(
+            self.control.hwnd(),
+            &self.inner,
+            &self.events,
+            &self.sink,
+            rows,
+        );
     }
 
     /// Selects and focuses `row`, deselecting everything else.
@@ -175,5 +157,40 @@ impl<T: 'static, M: 'static> ListView<T, M> {
     /// for tests and for accessibility.
     pub fn cell_text(&self, item: usize, column: usize) -> String {
         sys::listview::lv_item_text(self.control.hwnd(), item as i32, column as i32)
+    }
+}
+
+/// Makes `rows` the selection of the list view `view`, emitting exactly one
+/// selection message when it changed (see [`ListView::set_selection`]). Shared
+/// with the accessibility source, which selects rows on a client's behalf.
+pub(crate) fn apply_selection<T, M: 'static>(
+    view: crate::hwnd::Hwnd,
+    inner: &std::rc::Rc<std::cell::RefCell<crate::controls::listview::draw::ListViewInner<T>>>,
+    events: &std::rc::Rc<std::cell::RefCell<crate::controls::listview::events::ListViewEvents<M>>>,
+    sink: &crate::app::Ui<M>,
+    rows: &[usize],
+) {
+    let len = inner
+        .borrow()
+        .model
+        .as_ref()
+        .map(|model| model.len())
+        .unwrap_or(0);
+    let mut next: Vec<usize> = rows.iter().copied().filter(|&row| row < len).collect();
+    next.sort_unstable();
+    next.dedup();
+    if next == sys::listview::lv_selected_all(view) {
+        inner.borrow_mut().last_selection = next;
+        return;
+    }
+    inner.borrow_mut().selection_muted = true;
+    sys::listview::lv_set_selection(view, &next);
+    {
+        let mut inner = inner.borrow_mut();
+        inner.selection_muted = false;
+        inner.last_selection = next.clone();
+    }
+    if let Some(msg) = events.borrow().on_select.as_ref().and_then(|f| f(&next)) {
+        sink.emit(msg);
     }
 }

@@ -65,6 +65,8 @@ pub(super) enum Step {
     Wheel(f64),
     Min,
     Max,
+    /// Move straight to a value (an assistive-technology client set it).
+    To(f64),
 }
 
 /// An active drag: how far from the thumb's centre the pointer grabbed it.
@@ -120,6 +122,18 @@ impl SliderState {
             pending_change: None,
             pending_hover: None,
         }
+    }
+
+    pub(super) fn is_focused(&self) -> bool {
+        self.focused
+    }
+
+    pub(crate) fn min(&self) -> f64 {
+        self.min
+    }
+
+    pub(crate) fn max(&self) -> f64 {
+        self.max
     }
 
     pub(super) fn value(&self) -> f64 {
@@ -216,6 +230,7 @@ impl SliderState {
             Step::Small(size) | Step::Large(size) | Step::Wheel(size) => self.value + sign * size,
             Step::Min => self.min,
             Step::Max => self.max,
+            Step::To(value) => value,
         };
         self.move_to(target)
     }
@@ -280,7 +295,6 @@ impl SliderState {
     }
 
     /// The current value.
-    #[cfg(test)]
     pub(crate) fn current(&self) -> f64 {
         self.value()
     }

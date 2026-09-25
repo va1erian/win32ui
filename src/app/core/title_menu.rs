@@ -309,3 +309,61 @@ fn key_char(key: Key) -> Option<char> {
         _ => None,
     }
 }
+
+/// The accessibility source of the strip menu: a menu bar whose items (and
+/// their submenus) are described from the [`Menu`], the top-level ones placed
+/// where the strip draws them. Choosing a leaf raises its message directly.
+pub(crate) struct TitleMenuAccess<M> {
+    core: std::rc::Weak<Core<M>>,
+}
+
+impl<M> TitleMenuAccess<M> {
+    pub(crate) fn new(core: std::rc::Weak<Core<M>>) -> TitleMenuAccess<M> {
+        TitleMenuAccess { core }
+    }
+}
+
+impl<M: 'static> crate::accessibility::registry::Source for TitleMenuAccess<M> {
+    fn snapshot(&self) -> Option<crate::accessibility::Node> {
+        use crate::accessibility::{Node, Role};
+        let core = self.core.upgrade()?;
+        let strip = core.title_menu.try_borrow().ok()?;
+        let strip = strip.as_ref()?;
+        let rects = strip.layout_rects();
+        let items = strip
+            .menu
+            .access_nodes()
+            .into_iter()
+            .enumerate()
+            .map(|(index, item)| match rects.get(index) {
+                Some(rect) => item.bounds(*rect),
+                None => item,
+            });
+        Some(Node::new(Role::MenuBar, "Menu bar").children(items))
+    }
+
+    fn perform(&self, path: &[usize], action: crate::accessibility::Action) -> bool {
+        use crate::accessibility::Action;
+        if !matches!(action, Action::Invoke | Action::Toggle | Action::Select) {
+            return false;
+        }
+        let Some(core) = self.core.upgrade() else {
+            return false;
+        };
+        let chosen = {
+            let Ok(strip) = core.title_menu.try_borrow() else {
+                return false;
+            };
+            strip
+                .as_ref()
+                .and_then(|strip| strip.menu.access_action(path))
+        };
+        match chosen {
+            Some(action) => {
+                core.enqueue(action());
+                true
+            }
+            None => false,
+        }
+    }
+}

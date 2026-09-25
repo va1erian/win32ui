@@ -23,6 +23,7 @@
 //! the direct child at the slot paints opaquely (GDI's zero alpha would let DWM
 //! drop it over the material); a control nested in another child is not.
 
+mod access;
 mod input;
 mod layout;
 mod native;
@@ -37,6 +38,7 @@ use crate::controls::AsControl;
 use crate::error::{Error, Result};
 use crate::units::Dip;
 
+pub(crate) use access::TopBarAccess;
 pub(crate) use state::TopBarState;
 
 /// The Segoe Fluent Icons / Segoe MDL2 Assets glyphs the bundled controls use.
