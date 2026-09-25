@@ -16,6 +16,8 @@ use super::Msg;
 const SEEK: TopBarId = TopBarId::new(5);
 const ELAPSED: TopBarId = TopBarId::new(6);
 const SEARCH: TopBarId = TopBarId::new(8);
+/// The compact clear button next to the search box.
+const CLEAR: TopBarId = TopBarId::new(9);
 
 /// The demo transport bar and its app-owned search box.
 pub(super) struct TopBar {
@@ -58,6 +60,12 @@ pub(super) fn build(ui: &mut Ui<Msg>) -> Option<TopBar> {
             .height(dip(20.0))
             .child(&search)
             .tooltip("Search"),
+        // A compact icon button, as tall as the edit: a custom height shrinks
+        // both the pill and the glyph (emusic's clear-search button, #244).
+        TopBarItem::icon_button(CLEAR, '\u{E894}')
+            .width(dip(20.0))
+            .height(dip(20.0))
+            .tooltip("Clear"),
     ]);
 
     let bar = bar.on_event(|event| Some(Msg::TopBar(event)));

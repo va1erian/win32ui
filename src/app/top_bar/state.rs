@@ -9,6 +9,7 @@
 //! mapping lives in `Core`.
 
 use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::controls::slider::SliderState;
@@ -97,28 +98,47 @@ fn font() -> Option<Font> {
     })
 }
 
-/// The shared icon font, resolved once per UI thread.
-fn icon_font() -> Option<Font> {
+/// The shared icon fonts, one per glyph size, resolved lazily on the UI thread.
+///
+/// An icon/toggle button normally uses [`ICON_SIZE`], but a custom button height
+/// scales its glyph down (see [`TopBarItem::height`](crate::TopBarItem::height)),
+/// so more than one size can appear. Resolving is not on a paint path (it
+/// happens when the item list is set).
+fn icon_font(size_dip: f32) -> Option<Font> {
     thread_local! {
-        static FONT: RefCell<Option<Font>> = const { RefCell::new(None) };
+        static FONTS: RefCell<HashMap<u32, Font>> = RefCell::new(HashMap::new());
     }
-    FONT.with(|cell| {
-        let mut slot = cell.borrow_mut();
-        if slot.is_none() {
-            let system = TextSystem::new().ok()?;
-            let spec = FontSpec::new(
-                "Segoe Fluent Icons, Segoe MDL2 Assets, sans-serif",
-                ICON_SIZE,
-            );
-            *slot = Some(system.font(&spec).ok()?);
+    // Key on half-dip steps, so a custom size does not create a font per item.
+    let key = (size_dip * 2.0).round() as u32;
+    FONTS.with(|cell| {
+        let mut fonts = cell.borrow_mut();
+        if let Some(font) = fonts.get(&key) {
+            return Some(font.clone());
         }
-        slot.clone()
+        let system = TextSystem::new().ok()?;
+        let spec = FontSpec::new(
+            "Segoe Fluent Icons, Segoe MDL2 Assets, sans-serif",
+            key as f32 / 2.0,
+        );
+        let font = system.font(&spec).ok()?;
+        fonts.insert(key, font.clone());
+        Some(font)
     })
 }
 
-/// One glyph, laid out on one line, or `None` when DirectWrite is unavailable.
-fn glyph_layout(glyph: char) -> Option<Layout> {
-    icon_font().and_then(|font| font.layout(&glyph.to_string(), f32::INFINITY).ok())
+/// The glyph size for a button of `height_dip`, or the default when unset.
+///
+/// A custom height scales the glyph proportionally, so a smaller button keeps
+/// the glyph's margin. The glyph never grows past [`ICON_SIZE`], so a larger
+/// button does not get an oversized icon.
+fn icon_size(height_dip: Option<f32>) -> f32 {
+    height_dip.map_or(ICON_SIZE, |height| ICON_SIZE.min(height * 0.625))
+}
+
+/// One glyph at `size_dip`, laid out on one line, or `None` when DirectWrite is
+/// unavailable.
+fn glyph_layout(glyph: char, size_dip: f32) -> Option<Layout> {
+    icon_font(size_dip).and_then(|font| font.layout(&glyph.to_string(), f32::INFINITY).ok())
 }
 
 /// Flattens a public item into its resolved form.
@@ -135,9 +155,23 @@ fn resolve(item: TopBarItem) -> Item {
         child,
     } = item;
     let fill = matches!(&spec, TopBarSpec::Spacer { fill: true });
+    let height_dip = height.map(|height| height.value());
+    let glyph_size = icon_size(height_dip);
     let (kind, glyph, text, slider, default_width) = match spec {
-        TopBarSpec::Icon(glyph) => (Kind::Icon, glyph_layout(glyph), None, None, BUTTON_DIP),
-        TopBarSpec::Toggle(glyph) => (Kind::Toggle, glyph_layout(glyph), None, None, BUTTON_DIP),
+        TopBarSpec::Icon(glyph) => (
+            Kind::Icon,
+            glyph_layout(glyph, glyph_size),
+            None,
+            None,
+            BUTTON_DIP,
+        ),
+        TopBarSpec::Toggle(glyph) => (
+            Kind::Toggle,
+            glyph_layout(glyph, glyph_size),
+            None,
+            None,
+            BUTTON_DIP,
+        ),
         TopBarSpec::Slider { value, min, max } => {
             let mut state = SliderState::new(min, max);
             state.set_value_quiet(value);
@@ -171,7 +205,7 @@ fn resolve(item: TopBarItem) -> Item {
         text,
         slider,
         width_dip,
-        height_dip: height.map(|height| height.value()),
+        height_dip,
         child,
     }
 }
@@ -181,7 +215,7 @@ impl TopBarState {
     /// unavailable, in which case the caller falls back to a child row.
     pub(crate) fn new() -> Option<Rc<TopBarState>> {
         font()?;
-        icon_font()?;
+        icon_font(ICON_SIZE)?;
         Some(Rc::new(TopBarState {
             height_dip: Cell::new(DEFAULT_HEIGHT_DIP),
             items: RefCell::new(Vec::new()),
@@ -230,13 +264,17 @@ impl TopBarState {
             SIDE_PAD_DIP * scale,
             width_px as f32 - SIDE_PAD_DIP * scale,
         );
-        let control = (BUTTON_DIP * scale).min((height_px as f32 - 4.0).max(0.0));
         let rects = items
             .iter()
             .zip(placed)
             .map(|(item, (left, width))| {
                 let (top, bottom) = match item.kind {
                     Kind::Icon | Kind::Toggle => {
+                        // A button's height defaults to its square design size;
+                        // a custom height makes it compact (still capped to the
+                        // band, with the same inset as the default).
+                        let wanted = item.height_dip.unwrap_or(BUTTON_DIP);
+                        let control = (wanted * scale).min((height_px as f32 - 4.0).max(0.0));
                         let t = top_px as f32 + (height_px as f32 - control) / 2.0;
                         (t, t + control)
                     }
@@ -397,6 +435,42 @@ mod tests {
     /// Builds a state, or `None` when DirectWrite is unavailable (skip).
     fn state() -> Option<Rc<TopBarState>> {
         TopBarState::new()
+    }
+
+    #[test]
+    fn a_custom_size_makes_a_compact_icon_button() {
+        let Some(state) = state() else {
+            return;
+        };
+        state.set_items(vec![
+            TopBarItem::icon_button(1u32, Fluent::PLAY)
+                .width(dip(20.0))
+                .height(dip(20.0)),
+        ]);
+        state.relayout(200, 0, 40, 96);
+        let rect = state.rects.borrow()[0];
+        assert_eq!(rect.width(), 20, "the width is the custom span");
+        assert_eq!(rect.height(), 20, "the height is the custom pill height");
+        assert_eq!(
+            (rect.top + rect.bottom) / 2,
+            20,
+            "the compact button stays centred"
+        );
+    }
+
+    #[test]
+    fn a_custom_height_scales_the_glyph_down() {
+        assert_eq!(icon_size(None), ICON_SIZE, "the default is unchanged");
+        assert_eq!(
+            icon_size(Some(20.0)),
+            12.5,
+            "a compact button gets a smaller glyph"
+        );
+        assert_eq!(
+            icon_size(Some(48.0)),
+            ICON_SIZE,
+            "a larger button does not grow the glyph past the default"
+        );
     }
 
     #[test]
