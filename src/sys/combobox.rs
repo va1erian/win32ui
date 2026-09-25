@@ -5,8 +5,8 @@
 //! `SendMessageW` like the other `sys` control helpers.
 
 use windows::Win32::UI::WindowsAndMessaging::{
-    CB_ADDSTRING, CB_GETCURSEL, CB_GETITEMHEIGHT, CB_GETLBTEXT, CB_GETLBTEXTLEN, CB_RESETCONTENT,
-    CB_SETCURSEL, CB_SHOWDROPDOWN, SendMessageW,
+    CB_ADDSTRING, CB_GETCOUNT, CB_GETCURSEL, CB_GETITEMHEIGHT, CB_GETLBTEXT, CB_GETLBTEXTLEN,
+    CB_RESETCONTENT, CB_SETCURSEL, CB_SHOWDROPDOWN, SendMessageW,
 };
 
 use crate::hwnd::Hwnd;
@@ -101,4 +101,34 @@ pub(crate) fn cb_item_text(hwnd: Hwnd, index: usize) -> String {
     }
     let length = (copied as usize).min(buffer.len());
     String::from_utf16_lossy(&buffer[..length])
+}
+
+/// The number of items in the list.
+pub(crate) fn cb_count(hwnd: Hwnd) -> usize {
+    send(hwnd, CB_GETCOUNT, 0, 0).max(0) as usize
+}
+
+/// Tells the combo's parent the selection changed, exactly as the control does
+/// when the user picks an item (`WM_COMMAND` with `CBN_SELCHANGE`), so a
+/// selection made on behalf of an assistive-technology client reaches the app.
+pub(crate) fn notify_sel_change(hwnd: Hwnd) {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        CBN_SELCHANGE, GetDlgCtrlID, GetParent, WM_COMMAND,
+    };
+    let raw = raw_hwnd(hwnd);
+    // SAFETY: only reads the control's id and parent.
+    let (id, parent) = unsafe { (GetDlgCtrlID(raw), GetParent(raw)) };
+    let Ok(parent) = parent else {
+        return;
+    };
+    let wparam = ((CBN_SELCHANGE as usize) << 16) | (id as usize & 0xFFFF);
+    // SAFETY: a plain notification message; `lparam` is the control's handle.
+    unsafe {
+        SendMessageW(
+            parent,
+            WM_COMMAND,
+            Some(windows::Win32::Foundation::WPARAM(wparam)),
+            Some(windows::Win32::Foundation::LPARAM(raw.0 as isize)),
+        );
+    }
 }

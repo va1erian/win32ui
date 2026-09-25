@@ -197,7 +197,7 @@ impl<M: 'static> Core<M> {
     }
 
     /// Enqueues a bar event's message and repaints the band.
-    fn emit_top_bar(&self, event: Option<TopBarEvent>) {
+    pub(crate) fn emit_top_bar(&self, event: Option<TopBarEvent>) {
         if let Some(event) = event
             && let Some(msg) = self.map_top_bar_event(event)
         {

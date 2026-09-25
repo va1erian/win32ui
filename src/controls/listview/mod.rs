@@ -69,6 +69,7 @@ use crate::hwnd::Hwnd;
 use crate::sys;
 use crate::theme::{Theme, Themed};
 
+mod access;
 mod api;
 mod builders;
 mod draw;
@@ -194,6 +195,15 @@ impl<T: 'static, M: 'static> ListView<T, M> {
 
         let events = Rc::new(RefCell::new(ListViewEvents::new()));
         install_mapper(Rc::clone(&inner), Rc::clone(&events), hwnd, ui.clone());
+        sys::uia::attach_source(
+            hwnd,
+            Rc::new(access::ListAccess {
+                hwnd,
+                inner: Rc::clone(&inner),
+                events: Rc::clone(&events),
+                sink: ui.clone(),
+            }),
+        );
         // Consume a left click that lands on a cell the app handles (e.g. a
         // star toggle) before the control selects or activates the row.
         let click_subclass = sys::listview_click::ClickSubclass::install(

@@ -95,6 +95,12 @@ pub(crate) fn focus(hwnd: Hwnd) {
     }
 }
 
+/// Whether `hwnd` holds the keyboard focus.
+pub(crate) fn has_focus(hwnd: Hwnd) -> bool {
+    // SAFETY: `GetFocus` takes no arguments and only reads state.
+    unsafe { windows::Win32::UI::Input::KeyboardAndMouse::GetFocus() == raw_hwnd(hwnd) }
+}
+
 /// Captures the mouse for a window.
 pub(crate) fn set_capture(hwnd: Hwnd) {
     // SAFETY: `SetCapture` only changes the capture window.

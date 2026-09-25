@@ -74,3 +74,30 @@ impl<M: 'static> MaterialStatusBar<M> {
         sys::window::invalidate(self.ui.hwnd());
     }
 }
+
+/// The accessibility source of a [`MaterialStatusBar`]: a status bar whose
+/// children are the parts' texts.
+pub(crate) struct StatusBarAccess {
+    state: Rc<MaterialStatusBarState>,
+}
+
+impl StatusBarAccess {
+    pub(crate) fn new(state: Rc<MaterialStatusBarState>) -> StatusBarAccess {
+        StatusBarAccess { state }
+    }
+}
+
+impl crate::accessibility::registry::Source for StatusBarAccess {
+    fn snapshot(&self) -> Option<crate::accessibility::Node> {
+        use crate::accessibility::{Node, Role};
+        let parts = self.state.parts.try_borrow().ok()?;
+        let texts = self.state.texts.try_borrow().ok()?;
+        let children = (0..parts.len())
+            .map(|index| Node::new(Role::Text, texts.get(index).cloned().unwrap_or_default()));
+        Some(Node::new(Role::StatusBar, "Status bar").children(children))
+    }
+
+    fn perform(&self, _path: &[usize], _action: crate::accessibility::Action) -> bool {
+        false
+    }
+}

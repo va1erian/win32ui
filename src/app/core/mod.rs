@@ -32,6 +32,7 @@ mod title_menu;
 mod top_bar;
 
 pub(crate) use status_bar::MaterialStatusBarState;
+pub(crate) use title_menu::TitleMenuAccess;
 
 /// Maps a close request to an optional app message.
 type CloseMapper<M> = Box<dyn Fn() -> Option<M>>;

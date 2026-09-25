@@ -12,6 +12,7 @@ pub(crate) mod combobox_events;
 pub(crate) mod combobox_model;
 pub mod control;
 pub mod custom;
+pub(crate) mod custom_access;
 pub(crate) mod custom_inner;
 pub mod edit;
 pub(crate) mod edit_events;
@@ -32,6 +33,7 @@ pub mod slider;
 pub mod statusbar;
 pub mod taskdialog;
 pub mod toolbar;
+pub(crate) mod toolbar_access;
 pub(crate) mod toolbar_icon;
 pub(crate) mod tooltip;
 pub mod treeview;
@@ -94,6 +96,22 @@ pub(crate) fn create_child(
         .map(sys::hwnd_from)
         .map_err(|_| Error::CreateControl(name))?;
     sys::control::apply_ui_font(hwnd, sys::dpi::window_dpi(hwnd));
+    // Windows' own accessibility proxy cannot describe an owner-drawn button,
+    // and varies with themes for the rest, so these controls answer UI
+    // Automation themselves, from live window state.
+    let role = match name {
+        "Button" => Some(crate::accessibility::Role::Button),
+        "Radio" => Some(crate::accessibility::Role::RadioButton),
+        "GroupBox" => Some(crate::accessibility::Role::Group),
+        "CheckBox" => Some(crate::accessibility::Role::CheckBox),
+        "Label" => Some(crate::accessibility::Role::Text),
+        "Edit" => Some(crate::accessibility::Role::Edit),
+        "ComboBox" => Some(crate::accessibility::Role::ComboBox),
+        _ => None,
+    };
+    if let Some(role) = role {
+        sys::uia::attach_native(hwnd, role);
+    }
     Ok(hwnd)
 }
 

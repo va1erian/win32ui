@@ -200,6 +200,9 @@ impl<M: 'static> Edit<M> {
     /// Shows `text` as a placeholder while the edit is empty.
     pub fn set_cue(&self, text: &str) {
         sys_edit::set_cue(self.control.hwnd(), text, true);
+        // The placeholder is also the edit's accessible name until the app
+        // names it.
+        crate::accessibility::registry::set_fallback_name(self.control.hwnd(), text);
     }
 
     /// Sets read-only mode.

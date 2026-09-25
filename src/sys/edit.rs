@@ -68,6 +68,29 @@ pub(crate) fn set_text(hwnd: Hwnd, text: &str) {
     send(hwnd, WM_SETTEXT, 0, wide.as_ptr() as isize);
 }
 
+/// The cue banner set with [`set_cue`], or empty (`EM_GETCUEBANNER`,
+/// `CommCtrl.h`: `ECM_FIRST + 2`).
+pub(crate) fn cue(hwnd: Hwnd) -> String {
+    const EM_GETCUEBANNER: u32 = 0x1500 + 2;
+    let mut buffer = vec![0u16; 256];
+    // SAFETY: `buffer` holds 256 writable u16s; `EM_GETCUEBANNER` takes the
+    // buffer in `wparam` and its length in characters in `lparam`.
+    let ok = send(
+        hwnd,
+        EM_GETCUEBANNER,
+        buffer.as_mut_ptr() as usize,
+        buffer.len() as isize,
+    );
+    if ok == 0 {
+        return String::new();
+    }
+    let end = buffer
+        .iter()
+        .position(|unit| *unit == 0)
+        .unwrap_or(buffer.len());
+    String::from_utf16_lossy(&buffer[..end])
+}
+
 /// Shows `text` as grey placeholder text while the edit is empty.
 pub(crate) fn set_cue(hwnd: Hwnd, text: &str, show_when_focused: bool) {
     let wide: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();

@@ -7,6 +7,7 @@
 //! small custom child window that paints its track and fill from semantic
 //! theme tokens — the same approach as the owner-drawn status bar and toolbar.
 
+mod access;
 mod draw;
 mod state;
 
@@ -164,6 +165,12 @@ impl ProgressBar {
             handler,
         )?;
         let control = Control::borrowed(window.hwnd(), bounds);
+        crate::accessibility::registry::register(
+            window.hwnd(),
+            Rc::new(access::ProgressAccess {
+                state: Rc::downgrade(&shared),
+            }),
+        );
         let bar = ProgressBar {
             window,
             control,
