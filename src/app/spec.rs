@@ -51,6 +51,9 @@ pub struct WindowSpec {
     title_bar: TitleBar,
     menu_in_strip: bool,
     menu_strip_placement: MenuStripPlacement,
+    resizable: bool,
+    minimizable: Option<bool>,
+    maximizable: bool,
 }
 
 impl WindowSpec {
@@ -66,6 +69,9 @@ impl WindowSpec {
             title_bar: TitleBar::Standard,
             menu_in_strip: false,
             menu_strip_placement: MenuStripPlacement::default(),
+            resizable: true,
+            minimizable: None,
+            maximizable: true,
         }
     }
 
@@ -119,6 +125,29 @@ impl WindowSpec {
         self
     }
 
+    /// Whether the window has a resizable frame (`WS_THICKFRAME`). Defaults to
+    /// `true`; a fixed-size dialog sized exactly to its content can turn this
+    /// off.
+    pub fn resizable(mut self, resizable: bool) -> WindowSpec {
+        self.resizable = resizable;
+        self
+    }
+
+    /// Whether the window has a minimize box. Defaults to `true` for
+    /// [`run_app`](super::run_app) and [`Ui::open_window`](super::Ui::open_window),
+    /// and to `false` for [`Ui::open_modal`](super::Ui::open_modal) unless set
+    /// explicitly here.
+    pub fn minimizable(mut self, minimizable: bool) -> WindowSpec {
+        self.minimizable = Some(minimizable);
+        self
+    }
+
+    /// Whether the window has a maximize box. Defaults to `true`.
+    pub fn maximizable(mut self, maximizable: bool) -> WindowSpec {
+        self.maximizable = maximizable;
+        self
+    }
+
     /// Whether the menu should be drawn in the title strip.
     pub(crate) fn menu_in_strip_kind(&self) -> bool {
         self.menu_in_strip
@@ -137,6 +166,22 @@ impl WindowSpec {
     /// The requested title-bar style.
     pub(crate) fn title_bar_kind(&self) -> TitleBar {
         self.title_bar
+    }
+
+    /// Whether the window should have a resizable frame.
+    pub(crate) fn resizable_kind(&self) -> bool {
+        self.resizable
+    }
+
+    /// Whether the window should have a maximize box.
+    pub(crate) fn maximizable_kind(&self) -> bool {
+        self.maximizable
+    }
+
+    /// Whether the window should have a minimize box: the explicit setting if
+    /// one was given, otherwise `default`.
+    pub(crate) fn minimizable_or(&self, default: bool) -> bool {
+        self.minimizable.unwrap_or(default)
     }
 
     /// The effective theme: the explicit one if set, otherwise `fallback` (the

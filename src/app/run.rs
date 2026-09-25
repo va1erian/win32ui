@@ -27,7 +27,7 @@ where
     crate::init();
 
     let theme = spec.parts().3;
-    let built = build(spec, theme, None, false, make)?;
+    let built = build(spec, theme, None, false, true, make)?;
     built.window.show_painted();
     let _code = crate::looper::run();
     built.window.destroy();
