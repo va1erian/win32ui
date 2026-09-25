@@ -17,7 +17,8 @@ use win32ui::prelude::*;
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::Graphics::Gdi::UpdateWindow;
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetScrollInfo, SB_LINEDOWN, SB_VERT, SCROLLINFO, SIF_RANGE, SendMessageW, WM_VSCROLL,
+    GetScrollInfo, SB_LINEDOWN, SB_PAGEDOWN, SB_VERT, SCROLLINFO, SIF_RANGE, SendMessageW,
+    WM_VSCROLL,
 };
 
 struct Tile(u32);
@@ -205,6 +206,88 @@ fn scrolling_30k_tiles_keeps_p95_frame_time_low() {
     assert!(
         p95 < BUDGET_MS,
         "p95 frame time {p95:.3} ms exceeds the {BUDGET_MS} ms budget (max {max:.3} ms)"
+    );
+}
+
+/// A Direct2D grid in the built-in scroll host must actually scroll: a page
+/// down changes which tile indices the painter is called for (the canvas is
+/// translated and only the new visible band is painted).
+struct ScrollPaintApp {
+    grid: GridView<Tile, Msg>,
+    last: Rc<RefCell<Vec<usize>>>,
+    first_min: Rc<Cell<Option<usize>>>,
+    second_min: Rc<Cell<Option<usize>>>,
+}
+
+impl App for ScrollPaintApp {
+    type Msg = Msg;
+
+    fn update(&mut self, _msg: Msg, ui: &mut Ui<Msg>) {
+        let viewport = HWND(self.grid.hwnd().raw() as *mut c_void);
+        self.grid.invalidate();
+        self.last.borrow_mut().clear();
+        // SAFETY: `viewport` is the live grid window.
+        unsafe {
+            let _ = UpdateWindow(viewport);
+        }
+        self.first_min.set(self.last.borrow().iter().copied().min());
+
+        self.last.borrow_mut().clear();
+        // SAFETY: a page-down scroll on the live grid, then a synchronous paint.
+        unsafe {
+            let _ = SendMessageW(
+                viewport,
+                WM_VSCROLL,
+                Some(WPARAM(SB_PAGEDOWN.0 as usize)),
+                Some(LPARAM(0)),
+            );
+            let _ = UpdateWindow(viewport);
+        }
+        self.second_min
+            .set(self.last.borrow().iter().copied().min());
+        ui.quit();
+    }
+}
+
+#[test]
+fn scrolling_paints_the_scrolled_rows() {
+    let last = Rc::new(RefCell::new(Vec::new()));
+    let first_min = Rc::new(Cell::new(None));
+    let second_min = Rc::new(Cell::new(None));
+    let last_for_make = Rc::clone(&last);
+    let first_for_make = Rc::clone(&first_min);
+    let second_for_make = Rc::clone(&second_min);
+
+    let Some(run) = run_app_with_watchdog("win32ui.grid_view.scroll", move |ui| {
+        let last_for_closure = Rc::clone(&last_for_make);
+        let grid = GridView::<Tile, Msg>::new(ui)
+            .expect("grid")
+            .tile_size(dip(20.0))
+            .content_d2d(move |tile: &Tile, canvas, rect, _state| {
+                last_for_closure.borrow_mut().push(tile.0 as usize);
+                canvas.fill_rect(rect, Color::rgb(0x40, 0x40, 0x80));
+            });
+        grid.set_model((0..5_000).map(|i| Tile(i as u32)).collect::<Vec<_>>());
+        grid.set_bounds(Rect::new(0, 0, 900, 600));
+
+        ui.emit(Msg::Start);
+        ScrollPaintApp {
+            grid,
+            last: last_for_make,
+            first_min: first_for_make,
+            second_min: second_for_make,
+        }
+    }) else {
+        return;
+    };
+
+    assert!(!run.timed_out, "the watchdog fired before the app quit");
+    let first = first_min.get().expect("the first paint never ran");
+    let second = second_min.get().expect("the scrolled paint never ran");
+    assert_eq!(first, 0, "the unscrolled grid starts at tile 0");
+    assert!(
+        second > first,
+        "a page down must paint later rows (first {first}, after {second})"
     );
 }
 
