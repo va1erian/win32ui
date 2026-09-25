@@ -62,6 +62,7 @@ pub mod controls;
 pub mod d2d;
 pub mod gdi;
 pub mod gl;
+pub mod imaging;
 pub mod looper;
 mod sys;
 
@@ -73,7 +74,7 @@ pub use app::{
 };
 pub use capture::RgbaImage;
 pub use color::Color;
-pub use error::{CaptureError, Error, Result, Win32Error};
+pub use error::{CaptureError, Error, ImagingError, Result, Win32Error};
 pub use geometry::{Point, Rect, Size};
 /// The OpenGL binding [`Renderer::Gl`] widgets draw with, re-exported so an
 /// implementor names the exact version this crate links against.
@@ -132,6 +133,7 @@ pub mod prelude {
     pub use crate::error::prelude::*;
     pub use crate::geometry::prelude::*;
     pub use crate::hwnd::prelude::*;
+    pub use crate::imaging::prelude::*;
     pub use crate::layout::prelude::*;
     pub use crate::looper::prelude::*;
     pub use crate::message::prelude::*;
