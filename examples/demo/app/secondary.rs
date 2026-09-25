@@ -174,10 +174,15 @@ pub(crate) fn open_prefs<M: 'static>(ui: &mut Ui<M>) -> Result<WindowHandle<Pref
     )
 }
 
-/// Opens the modal "Confirm" dialog and returns its result.
+/// Opens the modal "Confirm" dialog and returns its result. Sized exactly to
+/// its content, so it drops the resize frame and the maximize box (a modal
+/// already has no minimize box by default).
 pub(crate) fn open_confirm<M: 'static>(ui: &mut Ui<M>) -> Option<bool> {
     ui.open_modal(
-        WindowSpec::new("Confirm").size(dip(360.0), dip(160.0)),
+        WindowSpec::new("Confirm")
+            .size(dip(360.0), dip(160.0))
+            .resizable(false)
+            .maximizable(false),
         ConfirmApp::new,
     )
 }
@@ -205,7 +210,10 @@ pub(crate) fn run_screenshot<M: 'static>(ui: &mut Ui<M>) -> bool {
     let prefs_for_modal = prefs.clone();
     let dir_for_modal = dir.clone();
     let _result: Option<bool> = ui.open_modal(
-        WindowSpec::new("Confirm").size(dip(360.0), dip(160.0)),
+        WindowSpec::new("Confirm")
+            .size(dip(360.0), dip(160.0))
+            .resizable(false)
+            .maximizable(false),
         move |ui| ConfirmApp::new_screenshot(ui, prefs_for_modal, dir_for_modal, theme),
     );
     true

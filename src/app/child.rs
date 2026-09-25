@@ -92,13 +92,16 @@ pub(crate) struct Built<A: App> {
 ///
 /// `owner` makes the new window owned by another (destroyed with it); `None`
 /// makes it a standalone top-level window. `secondary` selects a `Core` that
-/// does not quit the loop on close. The `theme` has already resolved any
-/// inheritance from the opener.
+/// does not quit the loop on close. `minimizable_default` is used for
+/// [`WindowSpec::minimizable`] when the spec did not set it explicitly (`true`
+/// for a top-level or non-modal window, `false` for a modal). The `theme` has
+/// already resolved any inheritance from the opener.
 pub(crate) fn build<A, F>(
     spec: WindowSpec,
     theme: Theme,
     owner: Option<Hwnd>,
     secondary: bool,
+    minimizable_default: bool,
     make: F,
 ) -> Result<Built<A>>
 where
@@ -116,10 +119,20 @@ where
 
     let dpi = sys::dpi::system_dpi();
     let class = WindowClass::register("win32ui.app", theme.background)?;
+    let mut style = WindowStyle::new().caption().sys_menu();
+    if spec.resizable_kind() {
+        style = style.resizable();
+    }
+    if spec.minimizable_or(minimizable_default) {
+        style = style.minimize_box();
+    }
+    if spec.maximizable_kind() {
+        style = style.maximize_box();
+    }
     let window = Window::create(
         class,
         owner,
-        WindowStyle::overlapped().min_max().clip_children(),
+        style.clip_children(),
         WindowExStyle::new().control_parent(),
         Rect::new(0, 0, width.to_px(dpi).value(), height.to_px(dpi).value()),
         title,
@@ -170,7 +183,7 @@ impl<M: 'static> Ui<M> {
     {
         let owner = self.hwnd();
         let theme = spec.theme_or(self.theme());
-        let built = build::<B, _>(spec, theme, Some(owner), true, make)?;
+        let built = build::<B, _>(spec, theme, Some(owner), true, true, make)?;
         let hwnd = built.window.hwnd();
         built.window.show_painted();
         // Keep the class registration alive for as long as the OS window lives.
@@ -193,7 +206,7 @@ impl<M: 'static> Ui<M> {
     {
         let owner = self.hwnd();
         let theme = spec.theme_or(self.theme());
-        let built = build::<B, _>(spec, theme, Some(owner), true, make).ok()?;
+        let built = build::<B, _>(spec, theme, Some(owner), true, false, make).ok()?;
         let child = built.window.hwnd();
         built.core.set_window(built.window);
 
