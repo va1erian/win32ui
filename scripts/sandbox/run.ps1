@@ -47,6 +47,11 @@ param(
     # Minutes to wait for the sandbox before giving up.
     [int]$TimeoutMinutes = 20,
     [int]$MemoryMB = 4096,
+    # Launch each executable, wait -ScreenshotDelayMs, save a PNG of the
+    # sandbox desktop to out\<name>.png, then stop the executable if it is
+    # still running. For looking at an app rather than running tests.
+    [switch]$Screenshot,
+    [int]$ScreenshotDelayMs = 3000,
     # Leave the sandbox open after the runs, to inspect it.
     [switch]$Keep
 )
@@ -97,9 +102,32 @@ $argList = ($TestArgs | ForEach-Object { "'$($_ -replace "'", "''")'" }) -join '
 `$env:RUST_BACKTRACE = '1'
 $envLines
 `$failed = 0
+`$screenshot = `$$([bool]$Screenshot)
+Add-Type -AssemblyName System.Drawing, System.Windows.Forms
+function Save-Desktop(`$path) {
+    `$b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+    `$bmp = New-Object System.Drawing.Bitmap `$b.Width, `$b.Height
+    `$g = [System.Drawing.Graphics]::FromImage(`$bmp)
+    `$g.CopyFromScreen(`$b.Location, [System.Drawing.Point]::Empty, `$b.Size)
+    `$bmp.Save(`$path, [System.Drawing.Imaging.ImageFormat]::Png)
+    `$g.Dispose(); `$bmp.Dispose()
+}
 Get-ChildItem C:\stage\bin\*.exe | ForEach-Object {
     `$log = "C:\stage\out\`$(`$_.BaseName).log"
-    & `$_.FullName @($argList) *> `$log
+    if (`$screenshot) {
+        `$start = @{ FilePath = `$_.FullName; PassThru = `$true
+                    RedirectStandardOutput = `$log; RedirectStandardError = "`$log.err" }
+        `$a = @($argList); if (`$a.Count) { `$start.ArgumentList = `$a }
+        `$p = Start-Process @start
+        Start-Sleep -Milliseconds $ScreenshotDelayMs
+        Save-Desktop "C:\stage\out\`$(`$_.BaseName).png"
+        # Still running after the capture is the expected case for an app.
+        `$killed = -not `$p.HasExited
+        if (`$killed) { `$p | Stop-Process -Force; `$p.WaitForExit() }
+        `$global:LASTEXITCODE = if (`$killed) { 0 } else { `$p.ExitCode }
+    } else {
+        & `$_.FullName @($argList) *> `$log
+    }
     "`$(`$_.Name) exit=`$LASTEXITCODE" | Add-Content C:\stage\out\summary.txt
     if (`$LASTEXITCODE -ne 0) { `$failed++ }
 }
@@ -142,7 +170,7 @@ function Stop-Sandbox {
 }
 if (-not $Keep) { Stop-Sandbox }
 
-Get-ChildItem $out -Filter *.log | ForEach-Object {
+Get-ChildItem $out -Filter *.log* | ForEach-Object {
     Write-Host "===== $($_.BaseName) =====" -ForegroundColor Cyan
     Get-Content $_.FullName
 }
@@ -151,5 +179,6 @@ if (-not (Test-Path $done)) {
 }
 Get-Content (Join-Path $out 'summary.txt')
 $failed = [int](Get-Content $done)
+Get-ChildItem $out -Filter *.png | ForEach-Object { Write-Host "Screenshot: $($_.FullName)" }
 Write-Host "Logs: $out"
 exit $(if ($failed -gt 0) { 1 } else { 0 })

@@ -1,6 +1,6 @@
 ---
 name: sandbox-tests
-description: Run win32ui's UI/integration tests (or a win32ui client app's tests or binary) inside Windows Sandbox so they never steal focus or input from the desktop the user or other agents are using. Use whenever you need to run `cargo test`, a single test binary, or the demo on a Windows host.
+description: Run or screenshot win32ui's UI/integration tests (or a win32ui client app's tests or binary) inside Windows Sandbox so they never steal focus or input from the desktop the user or other agents are using. Use whenever you need to run `cargo test`, a single test binary or the demo on a Windows host, or to take a screenshot of an app to see how it looks.
 ---
 
 # Running UI tests in Windows Sandbox
@@ -19,6 +19,18 @@ scripts\sandbox\run.ps1 -CargoArgs '--test','slider' -TestArgs 'drag'  # libtest
 scripts\sandbox\run.ps1 -CargoArgs '--features','wgc'                # wgc capture tests
 scripts\sandbox\run.ps1 -Build -CargoArgs '--example','demo' -Env @{ WIN32UI_DEMO_AUTOCLOSE_MS = '4000' }
 ```
+
+## Screenshots
+
+```powershell
+scripts\sandbox\run.ps1 -Build -CargoArgs '--example','demo' -Screenshot            # out\demo.png
+scripts\sandbox\run.ps1 -Build -CargoArgs '--example','demo' -Screenshot -ScreenshotDelayMs 6000
+```
+
+This starts the executable, waits, captures the whole sandbox desktop and stops
+the executable. Open the PNG it prints (`Screenshot: …`) with your image-reading
+tool to look at it. Use it instead of capturing the host desktop: it can't
+raise windows or disturb anyone. If a window isn't painted yet, raise the delay.
 
 For a client app, add `-ManifestPath <app>\Cargo.toml`, or pass `-Exe <path>` for
 executables that are already built.
