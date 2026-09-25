@@ -18,7 +18,7 @@ use crate::controls::custom::{
     CustomScroll, CustomWidget, Input, KeyResult, Renderer, RendererState, WidgetCx, is_scroll_key,
 };
 use crate::d2d::{D2dSurface, pixels_to_dips};
-use crate::gdi::Paint;
+use crate::gdi::{Canvas, Paint};
 use crate::geometry::Rect;
 use crate::hwnd::Hwnd;
 use crate::message::{Key, LResult, Message, Modifiers, TimerId};
@@ -132,6 +132,15 @@ impl<W: CustomWidget, M: 'static> CustomHandler<W, M> {
         }
     }
 
+    /// Paints the widget into the device context `dc` with GDI, whatever its
+    /// [`renderer`](CustomWidget::renderer): the buffered DC of an opaque
+    /// top-bar slot is not a window surface Direct2D or OpenGL could bind.
+    fn paint_into(&self, dc: usize) {
+        let theme = self.shared.ui.theme();
+        let widget = self.shared.widget.borrow();
+        widget.paint(&Canvas::from_raw_dc(dc), self.bounds.get(), &theme);
+    }
+
     /// Hands `input` to the widget with a fresh context, then starts or stops
     /// the animation timer to match what the widget asked for.
     fn dispatch(&self, window: &Window, input: Input) {
@@ -196,6 +205,15 @@ impl<W: CustomWidget, M: 'static> WindowHandler for CustomHandler<W, M> {
             Message::Paint => {
                 self.paint(window.hwnd());
                 self.dispatch(window, Input::Frame);
+                Some(0)
+            }
+            // A `WM_PAINT` with a device context in `wparam`: the opaque top-bar
+            // subclass asking the widget to draw into its buffered DC, so a
+            // widget in a native slot is not left blank over the material.
+            Message::Other { code, wparam, .. }
+                if crate::sys::window_input::is_paint(code) && wparam != 0 =>
+            {
+                self.paint_into(wparam);
                 Some(0)
             }
             Message::Timer { id } if Some(id) == self.shared.timer.get() => {

@@ -92,6 +92,11 @@ impl Canvas {
         }
     }
 
+    /// A canvas over the raw device context `dc` (a `WM_PAINT` `wparam`).
+    pub(crate) fn from_raw_dc(dc: usize) -> Canvas {
+        Canvas::new(HDC(dc as *mut core::ffi::c_void))
+    }
+
     /// A canvas over `dc`, reporting `paint` from [`Canvas::paint_rect`].
     pub(crate) fn with_paint_rect(dc: HDC, paint: Rect) -> Canvas {
         Canvas { dc, paint }

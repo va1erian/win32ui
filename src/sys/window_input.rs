@@ -8,7 +8,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 use windows::Win32::UI::WindowsAndMessaging::{
     GCLP_HCURSOR, GetForegroundWindow, GetWindowThreadProcessId, IDC_ARROW, IDC_HAND, IDC_IBEAM,
     IDC_SIZENS, IDC_SIZEWE, IDC_WAIT, IsIconic, LoadCursorW, SW_RESTORE, SetClassLongPtrW,
-    SetCursor, SetForegroundWindow, ShowWindow, WM_GETDLGCODE,
+    SetCursor, SetForegroundWindow, ShowWindow, WM_GETDLGCODE, WM_PAINT,
 };
 
 use crate::hwnd::Hwnd;
@@ -52,6 +52,13 @@ pub(crate) fn set_foreground(hwnd: Hwnd) {
 /// The `DLGC_WANTARROWS` dialog code, from `winuser.h`: the window handles the
 /// arrow keys itself.
 pub(crate) const DLGC_WANTARROWS: isize = 1;
+
+/// Whether `code` is the `WM_PAINT` message id. A `WM_PAINT` carrying a device
+/// context in `wparam` (sent by the opaque top-bar subclass) decodes as
+/// [`Message::Other`](crate::Message::Other) rather than `Message::Paint`.
+pub(crate) fn is_paint(code: u32) -> bool {
+    code == WM_PAINT
+}
 
 /// Whether `code` is the `WM_GETDLGCODE` message id.
 pub(crate) fn is_get_dlg_code(code: u32) -> bool {

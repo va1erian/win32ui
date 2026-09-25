@@ -140,7 +140,7 @@ pub(crate) fn decode(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> Op
         Some(Message::Destroy)
     } else if msg == WM_CLOSE {
         Some(Message::Close)
-    } else if msg == WM_PAINT {
+    } else if msg == WM_PAINT && wparam.0 == 0 {
         Some(Message::Paint)
     } else if msg == WM_SIZE {
         Some(Message::Size {
