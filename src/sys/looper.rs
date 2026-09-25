@@ -10,8 +10,8 @@ use std::collections::HashMap;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::UI::WindowsAndMessaging::{
     ACCEL, CreateAcceleratorTableW, DestroyAcceleratorTable, DispatchMessageW, FALT, FCONTROL,
-    FSHIFT, FVIRTKEY, GA_ROOT, GetAncestor, GetMessageW, HACCEL, IsDialogMessageW, MSG,
-    PostQuitMessage, TranslateAcceleratorW, TranslateMessage,
+    FSHIFT, FVIRTKEY, GA_ROOT, GetAncestor, GetMessageW, GetParent, HACCEL, IsDialogMessageW, MSG,
+    PostQuitMessage, TranslateAcceleratorW, TranslateMessage, WM_MOUSEFIRST, WM_MOUSELAST,
 };
 
 use crate::accel::Shortcut;
@@ -189,12 +189,41 @@ fn translate(msg: &MSG) -> bool {
             return true;
         }
     }
-    if dialog_nav {
+    // Dialog navigation is keyboard-only. Offering it a mouse message is not
+    // just useless: on a click of a push button that lives in a nested panel
+    // (a settings page) `IsDialogMessageW` walks the panel's siblings looking
+    // for the default button relative to `hwnd`'s children, never returns to
+    // its starting control and spins forever.
+    if dialog_nav && !is_mouse_message(msg.message) {
         // SAFETY: `msg` is the message being pumped; `IsDialogMessageW` only
         // reads it and moves the focus among `hwnd`'s children.
-        return unsafe { IsDialogMessageW(raw_hwnd(hwnd), msg).as_bool() };
+        return unsafe { IsDialogMessageW(raw_hwnd(dialog_owner(hwnd, msg.hwnd)), msg).as_bool() };
     }
     false
+}
+
+/// The window `IsDialogMessageW` must treat as the dialog for a key message
+/// aimed at `target`: the target's own parent.
+///
+/// `IsDialogMessageW` walks the *direct children* of the dialog it is given.
+/// A control nested in a panel (a settings page) is not one, so with the app
+/// window as the dialog the walk never returns to its starting control and the
+/// message loop spins forever. Its parent panel is the right scope; navigation
+/// then stays within that panel. A control directly on the app window keeps the
+/// app window.
+fn dialog_owner(app: Hwnd, target: HWND) -> Hwnd {
+    // SAFETY: `GetParent` only inspects the handle; a stale one yields null.
+    let parent = unsafe { GetParent(target) }.ok().map(hwnd_from);
+    match parent {
+        Some(parent) if !parent.is_null() && parent != app => parent,
+        _ => app,
+    }
+}
+
+/// Whether `message` is a mouse message (`WM_MOUSEFIRST..=WM_MOUSELAST`,
+/// `WinUser.h`).
+fn is_mouse_message(message: u32) -> bool {
+    (WM_MOUSEFIRST..=WM_MOUSELAST).contains(&message)
 }
 
 /// The registered app window that owns `hwnd`: itself or its root ancestor (a
