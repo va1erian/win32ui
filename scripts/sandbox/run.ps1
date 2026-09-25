@@ -79,15 +79,17 @@ if ($Exe.Count -eq 0) {
     $env:CARGO_TARGET_DIR = $targetDir
     # The sandbox has no vcruntime140.dll; a static CRT makes the binaries self-contained.
     $env:RUSTFLAGS = "$env:RUSTFLAGS -C target-feature=+crt-static".Trim()
-    $cmd = if ($Build) { @('build') } else { @('test', '--no-run') }
+    # @() keeps a one-element array from collapsing to a string, which `@cmd`
+    # would then splat character by character.
+    $cmd = @(if ($Build) { 'build' } else { 'test'; '--no-run' })
     $cargoOut = & cargo @cmd --manifest-path $manifest --message-format=json-render-diagnostics @CargoArgs
     if ($LASTEXITCODE -ne 0) { throw "cargo $($cmd -join ' ') failed" }
-    $Exe = $cargoOut | ForEach-Object {
+    $Exe = @($cargoOut | ForEach-Object {
         if ($_ -notmatch '^\{') { return }
         $msg = $_ | ConvertFrom-Json
         if ($msg.reason -eq 'compiler-artifact' -and $msg.executable -and
             ($Build -or $msg.profile.test)) { $msg.executable }
-    } | Sort-Object -Unique
+    } | Sort-Object -Unique)
 }
 if ($Exe.Count -eq 0) { throw 'Nothing to run.' }
 foreach ($e in $Exe) { Copy-Item $e $bin }
