@@ -16,7 +16,7 @@ use crate::controls::listview::model::{Column, ColumnWidth, ListModel};
 use crate::controls::listview::row_style::{RowState, RowStyle};
 use crate::controls::listview::theme::ListViewTheme;
 use crate::controls::registry::{ControlEvents, ControlKind};
-use crate::gdi::{Brush, Canvas, Font, TextFormat};
+use crate::gdi::{Brush, Canvas, Font, FontWeight, TextFormat};
 use crate::geometry::Rect;
 use crate::hwnd::Hwnd;
 use crate::sys;
@@ -268,13 +268,43 @@ impl<T> sys::listview_header::SizeHandler for StretchHandler<T> {
         // column widths change, the header's custom draw needs the state, and
         // a failed borrow there makes the header fall back to its default
         // (light) drawing for the columns painted in that window.
-        let (row_height, previous) = {
+        let (row_height, previous, previous_dpi, scalable) = {
             let Ok(mut inner) = self.inner.try_borrow_mut() else {
                 return;
             };
+            let previous_dpi = inner.dpi;
             inner.dpi = dpi;
-            (inner.row_height, inner.row_image_list.take())
+            // The row text is painted with these, so they follow the DPI too.
+            if let Ok(font) = Font::system_ui(dpi) {
+                inner.font = font;
+            }
+            if let Ok(font) = Font::system_ui_weight(dpi, FontWeight::Bold) {
+                inner.bold_font = font;
+            }
+            let scalable: Vec<usize> = inner
+                .columns
+                .iter()
+                .enumerate()
+                .filter(|(_, column)| column.width != ColumnWidth::Fill)
+                .map(|(index, _)| index)
+                .collect();
+            (
+                inner.row_height,
+                inner.row_image_list.take(),
+                previous_dpi,
+                scalable,
+            )
         };
+        // Column widths are device pixels the control never rescales; scale the
+        // non-`Fill` ones (keeping any user resize) so the `Fill` columns
+        // restretch against the right remainder.
+        if previous_dpi != dpi && previous_dpi != 0 {
+            for index in scalable {
+                let width = sys::listview::lv_column_width(self.view, index);
+                let scaled = (i64::from(width) * i64::from(dpi) / i64::from(previous_dpi)) as i32;
+                sys::listview::lv_set_column_width(self.view, index, scaled);
+            }
+        }
         let list = match row_height {
             Some(height) => {
                 sys::listview::lv_set_row_height(self.view, height.to_px(dpi).value(), previous)
