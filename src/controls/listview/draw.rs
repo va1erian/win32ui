@@ -32,6 +32,14 @@ const ACCENT_BAR_WIDTH: i32 = 3;
 pub(crate) type RowStyleFn<T> = Box<dyn Fn(&T) -> RowStyle>;
 pub(crate) type RowPainterFn<T> = Box<dyn Fn(&T, &Canvas, Rect, RowState) -> bool>;
 
+/// The face and point size the rows are painted with, kept so the fonts can be
+/// rebuilt at a new DPI. `None` means the system UI font (the default).
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct RowFontSpec {
+    pub(crate) family: String,
+    pub(crate) points: f32,
+}
+
 pub(crate) struct ListViewInner<T> {
     pub(crate) model: Option<Box<dyn ListModel<Item = T>>>,
     pub(crate) theme: ListViewTheme,
@@ -40,6 +48,9 @@ pub(crate) struct ListViewInner<T> {
     /// The bold variant of `font`, used for [`RowStyle::bold`] rows. Created
     /// at construction and rebuilt on a DPI change, never per paint.
     pub(crate) bold_font: Font,
+    /// The app's row-font spec (see [`ListView::set_row_font`](
+    /// super::ListView::set_row_font)); `None` uses the system UI font.
+    pub(crate) font_spec: Option<RowFontSpec>,
     pub(crate) row_style: Option<RowStyleFn<T>>,
     pub(crate) row_painter: Option<RowPainterFn<T>>,
     /// The app's requested row height, kept so it can be reconverted to
@@ -93,6 +104,29 @@ impl<T> ListViewInner<T> {
         let row = self.model.as_ref()?.get(item as usize)?;
         let spec = self.columns.get(column as usize)?;
         Some((spec.text)(row))
+    }
+
+    /// Rebuilds the regular and bold row fonts at `dpi`, from the app's
+    /// [`RowFontSpec`] when one was set or from the system UI font otherwise.
+    /// New fonts are built before the old handles are replaced, so a paint in
+    /// flight can never touch a deleted `HFONT`.
+    pub(crate) fn rebuild_fonts(&mut self, dpi: u32) {
+        let (regular, bold) = match &self.font_spec {
+            Some(spec) => (
+                Font::new(&spec.family, spec.points, FontWeight::Regular, dpi),
+                Font::new(&spec.family, spec.points, FontWeight::Bold, dpi),
+            ),
+            None => (
+                Font::system_ui(dpi),
+                Font::system_ui_weight(dpi, FontWeight::Bold),
+            ),
+        };
+        if let Ok(regular) = regular {
+            self.font = regular;
+        }
+        if let Ok(bold) = bold {
+            self.bold_font = bold;
+        }
     }
 
     /// Stretches the `Fill` columns over whatever client width the fixed
@@ -274,13 +308,9 @@ impl<T> sys::listview_header::SizeHandler for StretchHandler<T> {
             };
             let previous_dpi = inner.dpi;
             inner.dpi = dpi;
-            // The row text is painted with these, so they follow the DPI too.
-            if let Ok(font) = Font::system_ui(dpi) {
-                inner.font = font;
-            }
-            if let Ok(font) = Font::system_ui_weight(dpi, FontWeight::Bold) {
-                inner.bold_font = font;
-            }
+            // The row text is painted with these, so they follow the DPI too,
+            // honouring an app-set row font when there is one.
+            inner.rebuild_fonts(dpi);
             let scalable: Vec<usize> = inner
                 .columns
                 .iter()

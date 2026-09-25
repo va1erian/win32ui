@@ -445,3 +445,47 @@ fn row_appearance_builders_do_not_disturb_the_view() {
         "row appearance builders broke the cell/model path"
     );
 }
+
+/// The runtime `set_row_font`/`set_row_height`/`set_zebra` setters change a
+/// live list (the app's live font-size/density/zebra path, #309) without
+/// disturbing its model or cell read-back.
+#[test]
+fn runtime_row_metrics_setters_do_not_disturb_the_view() {
+    let ok = Rc::new(Cell::new(false));
+    let created = Rc::new(Cell::new(false));
+
+    let ok_for_make = Rc::clone(&ok);
+    let created_for_make = Rc::clone(&created);
+    let Some(run) = run_app_with_watchdog("win32ui.listrowmetrics", move |ui| {
+        let list = ListView::new(ui)
+            .map(|list| list.column("Name", dip(120.0), |row: &NameRow| row.name.as_str()))
+            .ok();
+        if let Some(list) = &list {
+            list.set_model(names(&["a", "b", "c"]));
+            list.set_row_font("Segoe UI", 13.0);
+            list.set_row_height(dip(22.0));
+            list.set_zebra(true);
+            // Off again, like a settings toggle; either way the view stays live.
+            list.set_zebra(false);
+            created_for_make.set(true);
+            ui.emit(RowMsg::Start);
+        } else {
+            ui.quit();
+        }
+        RowApp {
+            list,
+            ok: ok_for_make,
+        }
+    }) else {
+        return;
+    };
+
+    assert!(!run.timed_out, "the watchdog fired before the app quit");
+    if !created.get() {
+        return;
+    }
+    assert!(
+        ok.get(),
+        "runtime row metrics setters broke the cell/model path"
+    );
+}

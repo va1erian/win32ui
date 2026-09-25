@@ -5,8 +5,10 @@
 
 use std::ops::Range;
 
+use crate::controls::listview::draw::RowFontSpec;
 use crate::controls::listview::{ColumnWidth, ListModel, ListView, SortDirection};
 use crate::sys;
+use crate::units::Dip;
 
 impl<T: 'static, M: 'static> ListView<T, M> {
     /// Replaces the data source and refreshes the view: the row count is
@@ -146,6 +148,48 @@ impl<T: 'static, M: 'static> ListView<T, M> {
     /// The number of columns.
     pub fn column_count(&self) -> usize {
         self.inner.borrow().columns.len()
+    }
+
+    /// Replaces the font rows are painted with, as `family` at `points` on the
+    /// list's current DPI, and repaints. The bold variant used for
+    /// [`RowStyle::bold`](crate::controls::listview::RowStyle::bold) rows is
+    /// derived from the same face and size.
+    ///
+    /// Kept as a spec, not a live handle: on a later `WM_DPICHANGED` the fonts
+    /// are rebuilt from it. New fonts are created before the old ones are
+    /// released, so no row can be painted with a deleted `HFONT`.
+    pub fn set_row_font(&self, family: impl Into<String>, points: f32) {
+        let mut inner = self.inner.borrow_mut();
+        inner.font_spec = Some(RowFontSpec {
+            family: family.into(),
+            points,
+        });
+        let dpi = inner.dpi;
+        inner.rebuild_fonts(dpi);
+        drop(inner);
+        sys::window::invalidate(self.control.hwnd());
+    }
+
+    /// Sets the fixed row height at runtime, converted at the list's current
+    /// DPI and kept correct across DPI changes, then repaints. See
+    /// [`row_height`](ListView::row_height) for how the control is measured.
+    pub fn set_row_height(&self, height: Dip) {
+        let view = self.control.hwnd();
+        let mut inner = self.inner.borrow_mut();
+        inner.row_height = Some(height);
+        let px = height.to_px(inner.dpi).value();
+        let previous = inner.row_image_list.take();
+        inner.row_image_list = sys::listview::lv_set_row_height(view, px, previous);
+        drop(inner);
+        sys::window::invalidate(view);
+    }
+
+    /// Turns the alternate-row zebra background on or off at runtime and
+    /// repaints. See [`zebra`](ListView::zebra) for how it composes with row
+    /// styles and painters.
+    pub fn set_zebra(&self, on: bool) {
+        self.inner.borrow_mut().theme.zebra = on;
+        sys::window::invalidate(self.control.hwnd());
     }
 
     /// The control's background colour.
