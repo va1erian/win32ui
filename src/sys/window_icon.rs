@@ -66,7 +66,17 @@ pub(crate) fn load_icon(id: u16) -> Option<(HICON, i32, i32)> {
     let width = unsafe { GetSystemMetrics(SM_CXICON) };
     let height = unsafe { GetSystemMetrics(SM_CYICON) };
     let name = PCWSTR(id as usize as *const u16);
-    let handle = unsafe { LoadImageW(Some(module.into()), name, IMAGE_ICON, width, height, LR_DEFAULTSIZE) }.ok()?;
+    let handle = unsafe {
+        LoadImageW(
+            Some(module.into()),
+            name,
+            IMAGE_ICON,
+            width,
+            height,
+            LR_DEFAULTSIZE,
+        )
+    }
+    .ok()?;
     Some((HICON(handle.0), width, height))
 }
 

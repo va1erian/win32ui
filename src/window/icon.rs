@@ -65,16 +65,6 @@ impl Drop for Icon {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_missing_icon_resource_is_an_error() {
-        assert!(Icon::from_resource(u16::MAX).is_err());
-    }
-}
-
 impl Window {
     /// Sets the window's large and small icons from `icon`.
     ///
@@ -82,5 +72,15 @@ impl Window {
     /// must outlive the window (see [`Icon`]).
     pub fn set_icon(&self, icon: &Icon) {
         sys::window_icon::set_icon(self.hwnd(), icon.raw());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_missing_icon_resource_is_an_error() {
+        assert!(Icon::from_resource(u16::MAX).is_err());
     }
 }
