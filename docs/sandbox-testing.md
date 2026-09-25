@@ -46,6 +46,23 @@ sandbox open afterwards so you can look around.
 Limitations: only one sandbox can run at a time, and it needs hardware
 virtualization. Windows Home doesn't include it (see the alternatives below).
 
+## Screenshots
+
+The sandbox has its own desktop with nothing else on it, so a plain
+full-screen capture is enough, and focus and occlusion don't matter:
+
+```powershell
+# launch the demo, wait 3 s, save target\sandbox\sandbox-stage\out\demo.png
+scripts\sandbox\run.ps1 -Build -CargoArgs '--example','demo' -Screenshot
+scripts\sandbox\run.ps1 -Exe .\myapp.exe -Screenshot -ScreenshotDelayMs 5000
+```
+
+`-Screenshot` starts each executable, waits `-ScreenshotDelayMs`, saves the
+sandbox desktop as `out\<name>.png` (GDI+ `CopyFromScreen`, so it works for any
+app), then stops the executable. Test-driven captures (`WIN32UI_*_SHOTS`,
+`Window::capture_composited`) work as usual when you point them at
+`C:\stage\out`.
+
 ## Client apps of win32ui
 
 The script works with any Cargo project. Call it from your app's repository:
