@@ -164,6 +164,7 @@ impl<T: 'static, M: 'static> ListView<T, M> {
             columns: Vec::new(),
             font,
             bold_font,
+            font_spec: None,
             row_style: None,
             row_painter: None,
             row_height: None,
