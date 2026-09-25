@@ -55,6 +55,19 @@ pub(crate) fn drain_message() -> u32 {
     })
 }
 
+/// Name of the private message posted after a DPI change so the window repaints
+/// once the system and the common controls have finished their own DPI work.
+const DPI_SETTLED_MESSAGE_NAME: PCWSTR = w!("emusic.win32ui.dpi-settled");
+
+/// The process-wide id of the registered "DPI settled" message (0 if
+/// unavailable).
+pub(crate) fn dpi_settled_message() -> u32 {
+    static ID: OnceLock<u32> = OnceLock::new();
+    *ID.get_or_init(|| {
+        // SAFETY: the string is a static, nul-terminated wide literal.
+        unsafe { RegisterWindowMessageW(DPI_SETTLED_MESSAGE_NAME) }
+    })
+}
 thread_local! {
     /// High half of a `WM_CHAR` surrogate pair, waiting for its low half.
     static PENDING_HIGH_SURROGATE: Cell<Option<u16>> = const { Cell::new(None) };

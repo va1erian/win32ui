@@ -238,6 +238,13 @@ impl<A: App> WindowHandler for AppHandler<A> {
                 self.drain();
                 Some(0)
             }
+            // Posted at the end of a DPI change: paint the whole tree once more,
+            // after the common controls have finished re-laying themselves out,
+            // so no text is left unpainted until the pointer hovers it.
+            Message::Other { code, .. } if code == sys::message::dpi_settled_message() => {
+                sys::window::paint_now(window.hwnd());
+                Some(0)
+            }
             Message::Close => {
                 match self.core.map_close() {
                     Some(msg) => self.core.enqueue(msg),
@@ -334,6 +341,12 @@ impl<A: App> WindowHandler for AppHandler<A> {
                 // light, then paint the whole tree so nothing is left blank.
                 crate::theme::retheme_children(window.hwnd(), &self.core.theme());
                 sys::window::paint_now(window.hwnd());
+                let _ = sys::window::post_message(
+                    window.hwnd(),
+                    sys::message::dpi_settled_message(),
+                    0,
+                    0,
+                );
                 Some(0)
             }
             _ => None,
