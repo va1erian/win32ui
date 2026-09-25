@@ -110,11 +110,11 @@ impl<T> sys::listview_header::HeaderPainter for HeaderDrawer<T> {
             .unwrap_or(true)
     }
 
-    fn end_track(&self) {
-        // The drag is applied; give the freed or claimed space to the `Fill`
-        // columns, if any.
-        if let Ok(inner) = self.inner.try_borrow() {
-            inner.restretch(self.view);
+    fn end_track(&self, item: i32) {
+        // The drag is applied; honour the dragged column's new width, then give
+        // the freed or claimed space to the `Fill` columns, if any.
+        if let Ok(mut inner) = self.inner.try_borrow_mut() {
+            inner.end_track(self.view, item);
         }
     }
 }

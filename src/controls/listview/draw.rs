@@ -20,7 +20,7 @@ use crate::gdi::{Brush, Canvas, Font, FontWeight, TextFormat};
 use crate::geometry::Rect;
 use crate::hwnd::Hwnd;
 use crate::sys;
-use crate::units::Dip;
+use crate::units::{Dip, Px};
 
 // `CDDS_*` stage codes, from `commctrl.h`.
 const CDDS_PREPAINT: u32 = 0x0000_0001;
@@ -129,9 +129,27 @@ impl<T> ListViewInner<T> {
         }
     }
 
+    /// Honours the width the user just dragged column `item` to: a `Fill`
+    /// column stops sharing and becomes a fixed width, so it never snaps back;
+    /// the remaining `Fill` columns then take the leftover space.
+    pub(crate) fn end_track(&mut self, view: Hwnd, item: i32) {
+        if item >= 0 {
+            let index = item as usize;
+            if let Some(column) = self.columns.get_mut(index)
+                && column.width == ColumnWidth::Fill
+            {
+                let px = sys::listview::lv_column_width(view, index).max(0);
+                column.width = ColumnWidth::Fixed(Px(px).to_dip(self.dpi));
+            }
+        }
+        self.restretch(view);
+    }
+
     /// Stretches the `Fill` columns over whatever client width the fixed
     /// columns leave behind, sharing it evenly. Fixed columns keep their
-    /// current width, so a header drag the user just finished is honoured.
+    /// current width, so a fixed column the user just resized stays put; a
+    /// `Fill` column the user resized is turned fixed first by
+    /// [`Self::end_track`].
     pub(crate) fn restretch(&self, view: Hwnd) {
         let fills = self
             .columns

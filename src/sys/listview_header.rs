@@ -45,9 +45,10 @@ pub(crate) trait HeaderPainter {
         true
     }
 
-    /// Called after the user finished a header drag (`HDN_ENDTRACK`), so
-    /// `Fill` columns can take up the space the drag freed or claimed.
-    fn end_track(&self) {}
+    /// Called after the user finished a header drag (`HDN_ENDTRACK`) for the
+    /// header item `item` the divider belonged to, so the new width is honoured
+    /// and `Fill` columns can take up the space the drag freed or claimed.
+    fn end_track(&self, _item: i32) {}
 }
 
 struct HeaderRefdata {
@@ -145,9 +146,12 @@ unsafe extern "system" fn header_proc(
                     }
                 } else if header.code == HDN_ENDTRACK {
                     // The drag is applied; fall through to the default handling
-                    // after offering the painter a chance to restretch.
+                    // after offering the painter a chance to honour the new
+                    // width and restretch the remaining `Fill` columns.
+                    let note = &*(lparam.0 as *const NMHEADERW);
+                    let item = note.iItem;
                     let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                        data.painter.end_track()
+                        data.painter.end_track(item)
                     }));
                 }
             }
