@@ -13,7 +13,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{
-    CREATESTRUCTW, DefWindowProcW, GWLP_USERDATA, GetWindowLongPtrW, SetWindowLongPtrW,
+    CREATESTRUCTW, DefWindowProcW, GWLP_USERDATA, GetWindowLongPtrW, MSG, SetWindowLongPtrW,
     WM_ERASEBKGND, WM_GETMINMAXINFO, WM_GETOBJECT, WM_NCCALCSIZE, WM_NCCREATE, WM_NCDESTROY,
     WM_NCHITTEST, WM_NOTIFY,
 };
@@ -244,6 +244,21 @@ fn deliver(
     lparam: LPARAM,
     handler: &dyn WindowHandler,
 ) -> Option<isize> {
+    // A raw-message hook (shell integrations) sees every message before it is
+    // decoded, mirroring winit's `with_msg_hook`; a hook that claims it stops
+    // further handling. The `MSG` is a stack local valid for the call, which is
+    // the same pointer contract those hooks expect.
+    let raw = MSG {
+        hwnd,
+        message: msg,
+        wParam: wparam,
+        lParam: lparam,
+        ..MSG::default()
+    };
+    if let Some(result) = handler.raw_message((&raw as *const MSG).cast()) {
+        return Some(result);
+    }
+
     // `WM_NOTIFY` is special: it may be consumed by a registered control
     // (self-contained owner-data/custom-draw plumbing), mapped to the app's
     // `Msg` by a widget-layer event mapper, or left for the window handler.
@@ -302,4 +317,45 @@ fn deliver(
     }
     let window = crate::window::Window::from_raw(hwnd_from(hwnd));
     handler.message(&window, message)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cell::Cell;
+
+    use super::*;
+
+    /// Claims every raw message so `deliver` must return before decoding it.
+    struct RawProbe {
+        seen: Cell<bool>,
+    }
+
+    impl WindowHandler for RawProbe {
+        fn raw_message(&self, _msg: *const std::ffi::c_void) -> Option<isize> {
+            self.seen.set(true);
+            Some(42)
+        }
+
+        fn message(&self, _window: &crate::window::Window, _message: Message) -> Option<isize> {
+            panic!("a claimed raw message must not be decoded");
+        }
+    }
+
+    #[test]
+    fn deliver_offers_the_raw_message_before_decoding() {
+        let probe = RawProbe {
+            seen: Cell::new(false),
+        };
+        // A null HWND is fine: a claiming hook returns before the message is
+        // decoded or the window is touched.
+        let result = deliver(
+            HWND::default(),
+            0x1234,
+            WPARAM::default(),
+            LPARAM::default(),
+            &probe,
+        );
+        assert_eq!(result, Some(42));
+        assert!(probe.seen.get(), "the raw hook ran first");
+    }
 }

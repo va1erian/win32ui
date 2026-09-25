@@ -372,6 +372,24 @@ impl<M: 'static> Ui<M> {
         self.core.set_on_display_change(f);
     }
 
+    /// Observes every raw window message before the widget layer decodes it,
+    /// for shell integrations that need messages the typed [`Message`]
+    /// vocabulary does not model (e.g. a shell's registered
+    /// `TaskbarButtonCreated`).
+    ///
+    /// `msg` points to a `MSG` that is only valid for the duration of the call;
+    /// forward it to an external hook (the same pointer contract as winit's
+    /// `EventLoopBuilderExtWindows::with_msg_hook`) and return whether that
+    /// hook claimed it. A claimed message is not decoded or passed to
+    /// [`DefWindowProcW`], so return `false` for anything the app still needs.
+    /// Only one hook can be installed.
+    ///
+    /// [`Message`]: crate::Message
+    /// [`DefWindowProcW`]: https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-defwindowprocw
+    pub fn on_raw_message(&self, f: impl Fn(*const std::ffi::c_void) -> bool + 'static) {
+        self.core.set_on_raw_message(f);
+    }
+
     /// Registers a keyboard shortcut. The closure maps an activation to a
     /// message; returning `None` ignores it. The shortcut fires whichever
     /// widget has focus. Many shortcuts can be registered; `Display` on the

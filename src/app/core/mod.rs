@@ -11,6 +11,7 @@
 use std::any::Any;
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
+use std::ffi::c_void;
 use std::rc::Rc;
 
 use crate::accel::Shortcut;
@@ -40,6 +41,8 @@ type CloseMapper<M> = Box<dyn Fn() -> Option<M>>;
 type TimerMapper<M> = Box<dyn Fn(TimerId) -> Option<M>>;
 /// Maps an accelerator activation to an optional app message.
 type AccelMapper<M> = Box<dyn Fn() -> Option<M>>;
+/// Observes a raw window message, returning whether it claimed it.
+type RawMessageHandler = Box<dyn Fn(*const c_void) -> bool>;
 
 /// A registered shortcut and the message it raises. The registration order is
 /// the command id assigned to the shortcut in the window's accelerator table.
@@ -59,6 +62,9 @@ pub(crate) struct Core<M> {
     on_timer: RefCell<Option<TimerMapper<M>>>,
     /// Maps a `WM_DISPLAYCHANGE` notification to an optional app message.
     on_display_change: RefCell<Option<CloseMapper<M>>>,
+    /// Observes every raw message before it is decoded (see
+    /// [`Ui::on_raw_message`](super::Ui::on_raw_message)).
+    on_raw_message: RefCell<Option<RawMessageHandler>>,
     accelerators: RefCell<Vec<Accelerator<M>>>,
     theme: Cell<Theme>,
     title_bar: Cell<TitleBar>,
@@ -112,6 +118,7 @@ impl<M> Core<M> {
             on_close: RefCell::new(None),
             on_timer: RefCell::new(None),
             on_display_change: RefCell::new(None),
+            on_raw_message: RefCell::new(None),
             accelerators: RefCell::new(Vec::new()),
             theme: Cell::new(theme),
             title_bar: Cell::new(TitleBar::Standard),
@@ -214,6 +221,19 @@ impl<M> Core<M> {
 
     pub(crate) fn set_on_display_change(&self, f: impl Fn() -> Option<M> + 'static) {
         self.on_display_change.replace(Some(Box::new(f)));
+    }
+
+    pub(crate) fn set_on_raw_message(&self, f: impl Fn(*const c_void) -> bool + 'static) {
+        self.on_raw_message.replace(Some(Box::new(f)));
+    }
+
+    /// Offers a raw message to the installed hook, returning whether it claimed
+    /// the message. `false` when no hook is installed.
+    pub(crate) fn map_raw_message(&self, msg: *const c_void) -> bool {
+        self.on_raw_message
+            .borrow()
+            .as_ref()
+            .is_some_and(|f| f(msg))
     }
 
     /// Maps a close request: `Some(msg)` intercepts it (the app decides),
