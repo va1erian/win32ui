@@ -538,3 +538,8 @@ Set `WIN32UI_DEMO_AUTOCLOSE_MS=4000` to have the demo quit itself (used for
 headless smoke runs). The demo's data deliberately includes CJK, astral-plane
 emoji, combining marks and RTL text; `tests/` and `src/controls/listview.rs`
 unit tests assert those round-trip through the UTF-16 owner-data path.
+
+To run the UI tests without them grabbing focus on your desktop, run them in
+Windows Sandbox with `scripts\sandbox\run.ps1` (see
+[docs/sandbox-testing.md](docs/sandbox-testing.md); it also works for apps
+built on win32ui).
