@@ -262,14 +262,32 @@ impl<T> sys::listview_header::SizeHandler for StretchHandler<T> {
     fn on_dpi_changed(&self, dpi: u32) {
         // Same `try_borrow` caution as `on_size`; a missed DPI change is
         // repaired by the next resize or theme change, never a panic.
-        if let Ok(mut inner) = self.inner.try_borrow_mut() {
+        //
+        // The state is never borrowed mutably across a native call: the list
+        // view repaints its header synchronously while the row height and the
+        // column widths change, the header's custom draw needs the state, and
+        // a failed borrow there makes the header fall back to its default
+        // (light) drawing for the columns painted in that window.
+        let (row_height, previous) = {
+            let Ok(mut inner) = self.inner.try_borrow_mut() else {
+                return;
+            };
             inner.dpi = dpi;
-            if let Some(height) = inner.row_height {
-                let px = height.to_px(dpi).value();
-                let previous = inner.row_image_list.take();
-                inner.row_image_list = sys::listview::lv_set_row_height(self.view, px, previous);
+            (inner.row_height, inner.row_image_list.take())
+        };
+        let list = match row_height {
+            Some(height) => {
+                sys::listview::lv_set_row_height(self.view, height.to_px(dpi).value(), previous)
             }
+            None => previous,
+        };
+        if let Ok(mut inner) = self.inner.try_borrow_mut() {
+            inner.row_image_list = list;
+        }
+        if let Ok(inner) = self.inner.try_borrow() {
             inner.restretch(self.view);
         }
+        // Whatever the header painted mid-change, repaint it in the app's colours.
+        sys::window::invalidate(sys::listview::lv_header(self.view));
     }
 }
