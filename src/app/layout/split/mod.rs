@@ -37,8 +37,13 @@ const ARROW_STEP_DIP: f32 = 8.0;
 /// The state a split shares with its divider window and the layout tree.
 pub(crate) struct SplitShared {
     direction: StackDirection,
-    /// The first pane's extent, in design units; `None` until first laid out.
+    /// The anchored pane's extent, in design units; `None` until first laid
+    /// out. The anchored pane is the first (left/top) pane by default, or the
+    /// second (right/bottom) one when [`Split::position_b`] was used.
     position: Cell<Option<f32>>,
+    /// Whether [`position`](Self::position) is the *second* pane's extent, so
+    /// the split is anchored from the end.
+    anchor_end: Cell<bool>,
     /// Minimum extents for the first and second pane, in design units.
     min_a: Cell<f32>,
     min_b: Cell<f32>,
@@ -52,7 +57,8 @@ pub(crate) struct SplitShared {
     /// The divider's layout bounds and visibility, shared with the tree.
     bounds: Rc<Cell<Rect>>,
     visible: Rc<Cell<bool>>,
-    /// The type-erased [`Split::on_moved`] mapper, bound by `Core`.
+    /// The type-erased [`Split::on_moved`] mapper, bound by `Core`. An `Rc` so
+    /// the same `Split` can be bound again when a layout is reinstalled.
     mapper: RefCell<Option<Box<dyn Any>>>,
 }
 
@@ -61,6 +67,7 @@ impl SplitShared {
         SplitShared {
             direction,
             position: Cell::new(None),
+            anchor_end: Cell::new(false),
             min_a: Cell::new(0.0),
             min_b: Cell::new(0.0),
             area: Cell::new(Rect::default()),
@@ -85,8 +92,19 @@ impl SplitShared {
         self.direction == StackDirection::Horizontal
     }
 
-    /// The divider's current position in device pixels, defaulting to half.
+    /// The anchored pane's raw extent in device pixels, defaulting to half.
     fn position_px(&self) -> i32 {
+        let dpi = self.dpi.get().max(96);
+        let (available, _, _) = self.limits();
+        match self.position.get() {
+            Some(value) => Dip(value).to_px(dpi).value(),
+            None => available / 2,
+        }
+    }
+
+    /// `(available, min_a, min_b)` in device pixels, from the last laid-out
+    /// area, the current DPI and the configured minimums.
+    fn limits(&self) -> (i32, i32, i32) {
         let dpi = self.dpi.get().max(96);
         let area = self.area.get();
         let total = if self.is_horizontal() {
@@ -95,19 +113,47 @@ impl SplitShared {
             area.height()
         };
         let available = (total - self.thickness.get()).max(0);
-        match self.position.get() {
-            Some(value) => Dip(value).to_px(dpi).value(),
-            None => available / 2,
+        let min_a = Dip(self.min_a.get()).to_px(dpi).value();
+        let min_b = Dip(self.min_b.get()).to_px(dpi).value();
+        (available, min_a, min_b)
+    }
+
+    /// Clamps an anchored-pane extent to the panes' minimums and the available
+    /// space.
+    fn clamp_anchored(&self, px: i32) -> i32 {
+        let (available, min_a, min_b) = self.limits();
+        if min_a + min_b <= available {
+            if self.anchor_end.get() {
+                px.clamp(min_b, available - min_a)
+            } else {
+                px.clamp(min_a, available - min_b)
+            }
+        } else {
+            available / 2
         }
     }
 
-    /// Takes the erased `on_moved` mapper, downcasting it to this app's `Msg`.
-    fn take_mapper<M: 'static>(&self) -> Option<Box<dyn Fn(Dip) -> Option<M>>> {
-        let erased = self.mapper.borrow_mut().take()?;
+    /// The first pane's extent in device pixels, from the clamped anchored
+    /// extent.
+    fn pane_a_px(&self) -> i32 {
+        let (available, _, _) = self.limits();
+        let anchored = self.clamp_anchored(self.position_px());
+        if self.anchor_end.get() {
+            (available - anchored).max(0)
+        } else {
+            anchored
+        }
+    }
+
+    /// Returns a clone of the erased `on_moved` mapper, downcast to this app's
+    /// `Msg`. Cloning (rather than taking) keeps a reused `Split` bound when a
+    /// layout is reinstalled.
+    fn moved_mapper<M: 'static>(&self) -> Option<Rc<dyn Fn(Dip) -> Option<M>>> {
+        let erased = self.mapper.borrow();
         erased
-            .downcast::<Box<dyn Fn(Dip) -> Option<M>>>()
-            .ok()
-            .map(|mapper| *mapper)
+            .as_ref()?
+            .downcast_ref::<Rc<dyn Fn(Dip) -> Option<M>>>()
+            .cloned()
     }
 }
 
@@ -154,6 +200,16 @@ impl Split {
     /// The first pane's initial extent, in design units.
     pub fn position(self, position: Dip) -> Split {
         self.shared.position.set(Some(position.value()));
+        self.shared.anchor_end.set(false);
+        self
+    }
+
+    /// The second pane's initial extent, in design units: the split is anchored
+    /// from the end, so a fixed-width right or bottom panel keeps its width as
+    /// the window grows. [`Split::on_moved`] reports this second pane's extent.
+    pub fn position_b(self, position: Dip) -> Split {
+        self.shared.position.set(Some(position.value()));
+        self.shared.anchor_end.set(true);
         self
     }
 
@@ -164,10 +220,12 @@ impl Split {
         self
     }
 
-    /// Maps a divider move to an app message: the closure returns `Some(msg)`
-    /// to raise it, or `None` to ignore the move (it is still applied).
+    /// Maps a divider move to an app message: the closure receives the anchored
+    /// pane's new extent in design units (the first pane's, or the second's
+    /// when built with [`Split::position_b`]), and returns `Some(msg)` to raise
+    /// it, or `None` to ignore the move (it is still applied).
     pub fn on_moved<M: 'static>(self, f: impl Fn(Dip) -> Option<M> + 'static) -> Split {
-        let mapper: Box<dyn Fn(Dip) -> Option<M>> = Box::new(f);
+        let mapper: Rc<dyn Fn(Dip) -> Option<M>> = Rc::new(f);
         self.shared.mapper.replace(Some(Box::new(mapper)));
         self
     }
@@ -217,6 +275,11 @@ impl SplitNode {
         self.a.is_visible() || self.b.is_visible()
     }
 
+    /// The two panes, so the window can bind a split nested inside either one.
+    pub(crate) fn panes(&self) -> [&LayoutItem; 2] {
+        [&self.a, &self.b]
+    }
+
     /// Shows or hides both panes and the divider. Used when a split is a page
     /// of a [`Tabs`](crate::Tabs) node.
     pub(crate) fn set_tree_visible(&self, visible: bool) {
@@ -247,20 +310,9 @@ impl SplitNode {
             (false, true) => self.b.compute(rect, dpi, out),
             (true, true) => {
                 let horizontal = shared.is_horizontal();
-                let total = if horizontal {
-                    rect.width()
-                } else {
-                    rect.height()
-                };
-                let available = (total - thickness).max(0);
-                let min_a = Dip(shared.min_a.get()).to_px(dpi).value();
-                let min_b = Dip(shared.min_b.get()).to_px(dpi).value();
-                let position = shared.position_px();
-                let position = if min_a + min_b <= available {
-                    position.clamp(min_a, available - min_b)
-                } else {
-                    available / 2
-                };
+                // The first pane's extent, clamped to the pane minimums; the
+                // anchored pane's extent is honoured on whichever end it is.
+                let position = shared.pane_a_px();
 
                 let (a_rect, divider_rect, b_rect) = if horizontal {
                     let a_right = rect.left + position;
@@ -301,7 +353,7 @@ pub(crate) fn build_divider<M: 'static>(ui: &Ui<M>, node: &SplitNode) -> Option<
     if shared.hwnd.get().is_alive() {
         return None;
     }
-    let mapper = shared.take_mapper::<M>();
+    let mapper = shared.moved_mapper::<M>();
     let core = ui.core_weak();
     let emit: Rc<dyn Fn(SplitEvent)> = {
         let shared = Rc::clone(&shared);

@@ -269,6 +269,44 @@ fn split_minimums_clamp_the_position() {
 }
 
 #[test]
+fn split_position_b_anchors_the_second_pane() {
+    let split = Split::row()
+        .a(widget(leaf(Rect::default()), Sizing::Fill(1)))
+        .b(widget(leaf(Rect::default()), Sizing::Fill(1)))
+        .position_b(dip(30.0));
+    let placed = split_layout(split).compute(Rect::new(0, 0, 100, 40), 96);
+    assert_eq!(
+        placed[0].rect,
+        Rect::new(0, 0, 65, 40),
+        "the first pane takes the space the anchored second pane leaves"
+    );
+    assert_eq!(placed[1].rect, Rect::new(70, 0, 100, 40), "second pane");
+    assert_eq!(
+        placed[1].rect.width(),
+        30,
+        "the second pane keeps its width"
+    );
+}
+
+#[test]
+fn split_position_b_clamps_the_second_pane() {
+    let split = Split::column()
+        .a(widget(leaf(Rect::default()), Sizing::Fill(1)))
+        .b(widget(leaf(Rect::default()), Sizing::Fill(1)))
+        .position_b(dip(5.0))
+        .min(dip(20.0), dip(30.0));
+    let placed = Layout::column()
+        .item(split)
+        .compute(Rect::new(0, 0, 40, 205), 96);
+    assert_eq!(
+        placed[0].rect.height(),
+        170,
+        "the first pane keeps min_a as the second is clamped up to min_b"
+    );
+    assert_eq!(placed[1].rect, Rect::new(0, 175, 40, 205), "second pane");
+}
+
+#[test]
 fn split_collapses_to_the_visible_pane() {
     let split = Split::row()
         .a(widget(hidden(Rect::default()), Sizing::Fill(1)))
