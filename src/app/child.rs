@@ -17,10 +17,11 @@ use std::rc::Rc;
 
 use crate::capture::RgbaImage;
 use crate::error::Result;
-use crate::geometry::Rect;
+use crate::geometry::{Point, Size};
 use crate::hwnd::Hwnd;
 use crate::sys;
 use crate::theme::Theme;
+use crate::window::centered_in_work_area;
 use crate::window::{TitleBar, Window, WindowClass, WindowExStyle, WindowStyle};
 
 use super::core::Core;
@@ -116,12 +117,18 @@ where
 
     let dpi = sys::dpi::system_dpi();
     let class = WindowClass::register("win32ui.app", theme.background)?;
+    // A new window is centred on the monitor its owner is on (a dialog), or on
+    // the primary monitor (a standalone window), rather than at the primary
+    // monitor's origin. The app can still override this with `Ui::set_placement`
+    // while `make` runs, before the window is shown.
+    let size = Size::new(width.to_px(dpi).value(), height.to_px(dpi).value());
+    let bounds = centered_in_work_area(size, owner_anchor(owner));
     let window = Window::create(
         class,
         owner,
         WindowStyle::overlapped().min_max().clip_children(),
         WindowExStyle::new().control_parent(),
-        Rect::new(0, 0, width.to_px(dpi).value(), height.to_px(dpi).value()),
+        bounds,
         title,
         handler,
     )?;
@@ -155,6 +162,14 @@ where
     *app.borrow_mut() = Some(built);
 
     Ok(Built { core, window })
+}
+
+/// The point a new window's default placement is centred on: the centre of the
+/// owner's window, so a dialog opens on the opener's monitor, or the primary
+/// monitor's origin for a standalone window (and when the owner is gone).
+fn owner_anchor(owner: Option<Hwnd>) -> Point {
+    let rect = owner.map(sys::window::window_rect).unwrap_or_default();
+    Point::new((rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2)
 }
 
 impl<M: 'static> Ui<M> {

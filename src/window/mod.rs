@@ -16,7 +16,7 @@ mod title_bar;
 pub use backdrop::Backdrop;
 pub use icon::Icon;
 pub use ops::CursorShape;
-pub use placement::{Placement, ShowState, monitor_work_areas};
+pub use placement::{Placement, ShowState, centered_in_work_area, monitor_work_areas};
 pub use title_bar::TitleBar;
 
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -389,6 +389,6 @@ impl Drop for Window {
 pub mod prelude {
     pub use super::{
         Backdrop, CursorShape, Icon, Placement, ShowState, TitleBar, Window, WindowClass,
-        WindowExStyle, WindowHandler, WindowStyle, monitor_work_areas,
+        WindowExStyle, WindowHandler, WindowStyle, centered_in_work_area, monitor_work_areas,
     };
 }

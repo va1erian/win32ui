@@ -15,6 +15,7 @@ use crate::message::TimerId;
 use crate::sys;
 use crate::theme::Theme;
 use crate::units::{Dip, Px, dip};
+use crate::window::Placement;
 
 use super::core::Core;
 use super::layout::Layout;
@@ -90,6 +91,20 @@ impl<M: 'static> Ui<M> {
     /// The outer rectangle, in screen coordinates.
     pub fn window_rect(&self) -> Rect {
         sys::window::window_rect(self.core.hwnd())
+    }
+
+    /// The window's restorable placement: its normal (neither minimized nor
+    /// maximized) bounds and show state. Persist it across runs and restore it
+    /// with [`Ui::set_placement`].
+    pub fn placement(&self) -> Placement {
+        sys::window_ext::get_placement(self.core.hwnd()).unwrap_or_default()
+    }
+
+    /// Restores a placement saved with [`Ui::placement`], overriding the default
+    /// centring [`build`](super::child) applied. Call it from `make`, before the
+    /// window is first shown.
+    pub fn set_placement(&self, placement: &Placement) -> Result<()> {
+        sys::window_ext::set_placement(self.core.hwnd(), placement)
     }
 
     /// Sets the window title.

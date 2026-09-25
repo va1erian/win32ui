@@ -9,9 +9,9 @@ mod common;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use common::run_with_watchdog;
-use win32ui::Size;
+use common::{run_app_spec_with_watchdog, run_with_watchdog};
 use win32ui::prelude::*;
+use win32ui::{App, Size, Ui, WindowSpec, dip};
 
 /// A 2x2 opaque-red icon.
 const RED_RGBA: [u8; 16] = [
@@ -296,5 +296,84 @@ fn modal_dialog_runs_and_reactivates_the_owner() {
     assert!(
         enabled_after.get(),
         "the owner was not re-enabled after the modal"
+    );
+}
+
+/// A widget-layer app that quits on its first message, so a placement probe
+/// runs one loop pass and exits.
+struct ProbeApp;
+
+impl App for ProbeApp {
+    type Msg = ();
+
+    fn update(&mut self, _msg: (), ui: &mut Ui<()>) {
+        ui.quit();
+    }
+}
+
+/// Whether `rect` shares any area with a work area.
+fn on_a_monitor(rect: Rect) -> bool {
+    monitor_work_areas().iter().any(|area| {
+        area.left < rect.right
+            && rect.left < area.right
+            && area.top < rect.bottom
+            && rect.top < area.bottom
+    })
+}
+
+#[test]
+fn widget_windows_default_to_a_centred_placement() {
+    win32ui::init();
+    let observed = Rc::new(Cell::new(None));
+    let handle = Rc::clone(&observed);
+    let Some(run) = run_app_spec_with_watchdog(
+        WindowSpec::new("win32ui.app.placement").size(dip(320.0), dip(240.0)),
+        move |ui| {
+            handle.set(Some(ui.placement()));
+            ui.emit(());
+            ProbeApp
+        },
+    ) else {
+        return;
+    };
+    assert!(!run.timed_out, "the watchdog fired");
+    let normal = observed.get().expect("make never ran").normal;
+    assert!(
+        normal.left != 0 || normal.top != 0,
+        "the window opened at the primary monitor origin: {normal:?}"
+    );
+    assert!(
+        on_a_monitor(normal),
+        "the window is not on any monitor: {normal:?}"
+    );
+}
+
+#[test]
+fn ui_set_placement_overrides_the_default() {
+    win32ui::init();
+    let observed = Rc::new(Cell::new(None));
+    let handle = Rc::clone(&observed);
+    let target = Placement {
+        normal: Rect::new(120, 140, 520, 440),
+        show: ShowState::Normal,
+    };
+    let Some(run) = run_app_spec_with_watchdog(
+        WindowSpec::new("win32ui.app.set_placement").size(dip(320.0), dip(240.0)),
+        move |ui| {
+            let _ = ui.set_placement(&target);
+            handle.set(Some(ui.placement()));
+            ui.emit(());
+            ProbeApp
+        },
+    ) else {
+        return;
+    };
+    assert!(!run.timed_out, "the watchdog fired");
+    let placement = observed.get().expect("make never ran");
+    assert_eq!(placement.show, ShowState::Normal);
+    assert_eq!(
+        placement.normal.size(),
+        target.normal.size(),
+        "the overridden normal bounds did not round-trip"
     );
 }
