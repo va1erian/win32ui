@@ -16,8 +16,8 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     MINMAXINFO, RegisterWindowMessageW, WM_CHAR, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_DESTROY,
-    WM_DPICHANGED, WM_GETMINMAXINFO, WM_NOTIFY, WM_PAINT, WM_SETTINGCHANGE, WM_SIZE, WM_SYSCHAR,
-    WM_SYSCOLORCHANGE, WM_THEMECHANGED, WM_TIMER,
+    WM_DISPLAYCHANGE, WM_DPICHANGED, WM_GETMINMAXINFO, WM_NOTIFY, WM_PAINT, WM_SETTINGCHANGE,
+    WM_SIZE, WM_SYSCHAR, WM_SYSCOLORCHANGE, WM_THEMECHANGED, WM_TIMER,
 };
 use windows::core::{PCWSTR, w};
 
@@ -175,6 +175,14 @@ pub(crate) fn decode(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> Op
                 let rect = read::<windows::Win32::Foundation::RECT>(lparam);
                 crate::geometry::Rect::new(rect.left, rect.top, rect.right, rect.bottom)
             },
+        })
+    } else if msg == WM_DISPLAYCHANGE {
+        // `wParam` is the new bits per pixel; `lParam` packs the new width and
+        // height into its low and high words.
+        Some(Message::DisplayChange {
+            width: (lparam.0 & 0xffff) as u32,
+            height: ((lparam.0 >> 16) & 0xffff) as u32,
+            bits_per_pixel: wparam.0 as u32,
         })
     } else {
         Some(Message::Other {

@@ -89,8 +89,8 @@ pub use message::{
 pub use theme::{Theme, Themed, is_theme_change};
 pub use units::{Dip, Px, dip};
 pub use window::{
-    Backdrop, CursorShape, Icon, Placement, ShowState, TitleBar, Window, WindowClass,
-    WindowExStyle, WindowHandler, WindowStyle, monitor_work_areas,
+    Backdrop, CursorShape, Icon, MonitorInfo, Placement, ShowState, TitleBar, Window, WindowClass,
+    WindowExStyle, WindowHandler, WindowStyle, monitor_of, monitor_work_areas, monitors,
 };
 
 pub use controls::button::Button;

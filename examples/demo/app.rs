@@ -106,6 +106,27 @@ pub(crate) fn main() {
     }
 }
 
+/// A one-line summary of the attached monitors, for the demo's status bar.
+fn monitor_status(backdrop_active: bool) -> String {
+    let list = monitors();
+    let names: Vec<&str> = list
+        .iter()
+        .map(|monitor| {
+            if monitor.friendly_name.is_empty() {
+                monitor.device_name.as_str()
+            } else {
+                monitor.friendly_name.as_str()
+            }
+        })
+        .collect();
+    let prefix = if backdrop_active {
+        "Ready — backdrop active"
+    } else {
+        "Ready"
+    };
+    format!("{prefix}; {} monitor(s): {}", list.len(), names.join(", "))
+}
+
 /// A design-value size from an environment variable, or `default`.
 fn env_dip(name: &str, default: f32) -> f32 {
     std::env::var(name)
@@ -152,6 +173,7 @@ enum Msg {
     AutoClose,
     Foreground,
     Maximize,
+    MonitorsChanged,
     TabsPage(usize),
     Slider(slider::SliderMsg),
     Flow(flow_text::FlowMsg),
@@ -325,6 +347,8 @@ impl win32ui::App for App {
                 });
                 ui.quit();
             }
+            // The display layout changed: re-enumerate and show the new set.
+            Msg::MonitorsChanged => self.set_status(&monitor_status(ui.backdrop_active())),
             Msg::Quit => ui.quit(),
             Msg::Foreground => ui.set_foreground(),
             Msg::Maximize => {

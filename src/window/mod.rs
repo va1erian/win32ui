@@ -6,6 +6,7 @@
 mod backdrop;
 mod icon;
 mod modal;
+mod monitor;
 pub(crate) mod nc;
 mod ops;
 mod placement;
@@ -15,6 +16,7 @@ mod title_bar;
 
 pub use backdrop::Backdrop;
 pub use icon::Icon;
+pub use monitor::{MonitorInfo, monitor_of, monitors};
 pub use ops::CursorShape;
 pub use placement::{Placement, ShowState, centered_in_work_area, monitor_work_areas};
 pub use title_bar::TitleBar;
@@ -388,7 +390,8 @@ impl Drop for Window {
 /// The window types a frontend usually needs.
 pub mod prelude {
     pub use super::{
-        Backdrop, CursorShape, Icon, Placement, ShowState, TitleBar, Window, WindowClass,
-        WindowExStyle, WindowHandler, WindowStyle, centered_in_work_area, monitor_work_areas,
+        Backdrop, CursorShape, Icon, MonitorInfo, Placement, ShowState, TitleBar, Window,
+        WindowClass, WindowExStyle, WindowHandler, WindowStyle, centered_in_work_area, monitor_of,
+        monitor_work_areas, monitors,
     };
 }

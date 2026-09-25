@@ -338,6 +338,14 @@ impl<M: 'static> Ui<M> {
         self.core.set_on_timer(f);
     }
 
+    /// Maps a `WM_DISPLAYCHANGE` notification — the desktop resolution or
+    /// monitor layout changed, for example a monitor was unplugged — to a
+    /// message. Re-enumerate the displays with [`monitors`](crate::monitors)
+    /// when it fires. Only one mapping can be installed.
+    pub fn on_display_change(&self, f: impl Fn() -> Option<M> + 'static) {
+        self.core.set_on_display_change(f);
+    }
+
     /// Registers a keyboard shortcut. The closure maps an activation to a
     /// message; returning `None` ignores it. The shortcut fires whichever
     /// widget has focus. Many shortcuts can be registered; `Display` on the
