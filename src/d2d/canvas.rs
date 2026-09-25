@@ -144,6 +144,14 @@ impl<'a> D2dCanvas<'a> {
         self.with(|target| target.set_translation(x, y));
     }
 
+    /// Replaces everything drawn afterwards with a uniform `scale` about the
+    /// origin followed by a translation to `(x, y)`. Use it to fit a path
+    /// authored in a fixed design box into a target rectangle; reset it with
+    /// [`set_translation`](D2dCanvas::set_translation)`(0.0, 0.0)` when done.
+    pub fn set_scale_translate(&mut self, scale: f32, x: f32, y: f32) {
+        self.with(|target| target.set_scale_translate(scale, x, y));
+    }
+
     /// Presents the frame. A lost device is not an error: the render target
     /// is rebuilt and the window repainted on the next frame.
     pub fn end_draw(mut self) -> Result<()> {
