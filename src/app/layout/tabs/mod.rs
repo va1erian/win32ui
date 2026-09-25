@@ -129,6 +129,11 @@ impl TabsNode {
         self.pages.len()
     }
 
+    /// The pages, so the window can bind a split nested inside a page.
+    pub(crate) fn pages(&self) -> &[LayoutItem] {
+        &self.pages
+    }
+
     /// Shows or hides every page (used when a tabs node is itself a page).
     pub(crate) fn set_tree_visible(&self, visible: bool) {
         for page in &self.pages {

@@ -20,12 +20,17 @@ impl<M> Core<M> {
     where
         M: 'static,
     {
+        // Reinstalling a layout drops the previous one's divider windows before
+        // binding the new tree; otherwise a stale divider survives at its old
+        // rect, over the new split.
+        self.dividers.borrow_mut().clear();
         self.bind_splits(&layout, &ui);
         *self.layout.borrow_mut() = Some(layout);
         self.relayout();
     }
 
-    /// Creates the divider window for every split node in `layout`.
+    /// Creates the divider window for every split node in `layout`, recursing
+    /// into nested layouts, split panes and tab pages.
     fn bind_splits(&self, layout: &Layout, ui: &Ui<M>)
     where
         M: 'static,
@@ -45,8 +50,16 @@ impl<M> Core<M> {
                 if let Some(window) = split::build_divider(ui, node) {
                     self.dividers.borrow_mut().push(window);
                 }
+                for pane in node.panes() {
+                    self.bind_item(pane, ui);
+                }
             }
-            Content::Tabs(node) => tabs::build_tabs(ui, node),
+            Content::Tabs(node) => {
+                tabs::build_tabs(ui, node);
+                for page in node.pages() {
+                    self.bind_item(page, ui);
+                }
+            }
             Content::Widget(_) => {}
         }
     }
