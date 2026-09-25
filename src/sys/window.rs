@@ -225,6 +225,12 @@ pub(crate) fn is_window(hwnd: Hwnd) -> bool {
     unsafe { windows::Win32::UI::WindowsAndMessaging::IsWindow(Some(raw_hwnd(hwnd))).as_bool() }
 }
 
+/// Whether `hwnd` is visible (`WS_VISIBLE` and not a hidden ancestor).
+pub(crate) fn is_visible(hwnd: Hwnd) -> bool {
+    // SAFETY: `IsWindowVisible` only inspects the handle.
+    unsafe { windows::Win32::UI::WindowsAndMessaging::IsWindowVisible(raw_hwnd(hwnd)).as_bool() }
+}
+
 /// The client area of `hwnd`, in pixels.
 pub(crate) fn client_rect(hwnd: Hwnd) -> Rect {
     let mut rect = windows::Win32::Foundation::RECT::default();

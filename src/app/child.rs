@@ -17,12 +17,12 @@ use std::rc::Rc;
 
 use crate::capture::RgbaImage;
 use crate::error::Result;
-use crate::geometry::{Point, Size};
+use crate::geometry::{Point, Rect, Size};
 use crate::hwnd::Hwnd;
 use crate::sys;
 use crate::theme::Theme;
 use crate::window::centered_in_work_area;
-use crate::window::{TitleBar, Window, WindowClass, WindowExStyle, WindowStyle};
+use crate::window::{Placement, TitleBar, Window, WindowClass, WindowExStyle, WindowStyle};
 
 use super::core::Core;
 use super::proxy::Proxy;
@@ -67,6 +67,38 @@ impl<M: 'static> WindowHandle<M> {
     /// The child window's handle.
     pub fn hwnd(&self) -> Hwnd {
         self.hwnd
+    }
+
+    /// The child window's restorable placement: its normal (neither minimized
+    /// nor maximized) bounds and show state. Persist it across runs and restore
+    /// it with [`WindowHandle::set_placement`].
+    pub fn placement(&self) -> Placement {
+        sys::window_ext::get_placement(self.hwnd).unwrap_or_default()
+    }
+
+    /// Restores a placement saved with [`WindowHandle::placement`].
+    pub fn set_placement(&self, placement: &Placement) -> Result<()> {
+        sys::window_ext::set_placement(self.hwnd, placement)
+    }
+
+    /// The child window's outer rectangle, in screen coordinates.
+    pub fn window_rect(&self) -> Rect {
+        sys::window::window_rect(self.hwnd)
+    }
+
+    /// Shows the child window if the app hid it (see [`Ui::hide`]).
+    pub fn show(&self) {
+        sys::window::show(self.hwnd, sys::window::ShowKind::Normal);
+    }
+
+    /// Hides the child window without destroying it, keeping its state.
+    pub fn hide(&self) {
+        sys::window::show(self.hwnd, sys::window::ShowKind::Hidden);
+    }
+
+    /// Whether the child window is visible.
+    pub fn is_visible(&self) -> bool {
+        sys::window::is_visible(self.hwnd)
     }
 
     /// Renders the child window into an image, for screenshots.

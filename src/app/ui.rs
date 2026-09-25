@@ -463,6 +463,23 @@ impl<M: 'static> Ui<M> {
         sys::window::kill_timer(self.core.hwnd(), id.0);
     }
 
+    /// Shows the window if it was hidden (for example a secondary window the
+    /// app hid on close to keep its state).
+    pub fn show(&self) {
+        sys::window::show(self.core.hwnd(), sys::window::ShowKind::Normal);
+    }
+
+    /// Hides the window without destroying it, so a secondary window the app
+    /// hid on close keeps its state and can be shown again with [`Ui::show`].
+    pub fn hide(&self) {
+        sys::window::show(self.core.hwnd(), sys::window::ShowKind::Hidden);
+    }
+
+    /// Whether the window is visible.
+    pub fn is_visible(&self) -> bool {
+        sys::window::is_visible(self.core.hwnd())
+    }
+
     /// Closes the window. For the top-level window this also ends the message
     /// loop; a secondary window closes without disturbing it.
     pub fn close(&self) {
