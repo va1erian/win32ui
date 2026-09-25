@@ -45,6 +45,18 @@ use crate::sys;
 pub trait WindowHandler {
     /// Handles one message for `window`.
     fn message(&self, window: &Window, message: Message) -> Option<LResult>;
+
+    /// Observes the raw message before it is decoded, for shell integrations
+    /// that need a message the typed [`Message`] vocabulary does not model.
+    ///
+    /// `msg` points to a `MSG` valid only for the duration of the call. Return
+    /// `Some(value)` to claim the message (it is then neither decoded nor
+    /// passed to `DefWindowProcW`); `None` (the default) lets handling proceed
+    /// normally and is the right answer for everything the handler does not
+    /// recognise.
+    fn raw_message(&self, _msg: *const std::ffi::c_void) -> Option<LResult> {
+        None
+    }
 }
 
 /// A builder for a window's `dwStyle` bits.

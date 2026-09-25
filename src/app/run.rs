@@ -191,6 +191,10 @@ impl<A: App> AppHandler<A> {
 }
 
 impl<A: App> WindowHandler for AppHandler<A> {
+    fn raw_message(&self, msg: *const std::ffi::c_void) -> Option<LResult> {
+        self.core.map_raw_message(msg).then_some(0)
+    }
+
     fn message(&self, window: &Window, message: Message) -> Option<LResult> {
         // The strip menu (acrylic title bar) paints the window's transparent
         // Direct2D surface and reads its own mouse/keyboard input.
@@ -353,5 +357,59 @@ impl<A: App> WindowHandler for AppHandler<A> {
             }
             _ => None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::Cell;
+
+    use crate::theme::Theme;
+
+    struct TestApp;
+
+    impl App for TestApp {
+        type Msg = u32;
+
+        fn update(&mut self, _msg: u32, _ui: &mut Ui<u32>) {}
+    }
+
+    fn handler_with_hook(
+        hook: impl Fn(*const std::ffi::c_void) -> bool + 'static,
+    ) -> AppHandler<TestApp> {
+        let core = Rc::new(Core::new(Theme::light()));
+        core.set_on_raw_message(hook);
+        let app = Rc::new(RefCell::new(Some(TestApp)));
+        AppHandler::new(core, app)
+    }
+
+    #[test]
+    fn raw_hook_is_consulted_and_can_claim_a_message() {
+        let seen = Rc::new(Cell::new(0));
+        let handler = handler_with_hook({
+            let seen = Rc::clone(&seen);
+            move |_msg| {
+                seen.set(seen.get() + 1);
+                true
+            }
+        });
+
+        assert_eq!(handler.raw_message(std::ptr::null()), Some(0));
+        assert_eq!(seen.get(), 1, "the hook ran");
+    }
+
+    #[test]
+    fn a_hook_that_declines_lets_the_message_through() {
+        let handler = handler_with_hook(|_msg| false);
+        assert_eq!(handler.raw_message(std::ptr::null()), None);
+    }
+
+    #[test]
+    fn no_hook_means_no_claim() {
+        let core = Rc::new(Core::new(Theme::light()));
+        let app = Rc::new(RefCell::new(Some(TestApp)));
+        let handler = AppHandler::new(core, app);
+        assert_eq!(handler.raw_message(std::ptr::null()), None);
     }
 }
