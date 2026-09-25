@@ -256,6 +256,14 @@ impl<A: App> WindowHandler for AppHandler<A> {
                 }
                 Some(0)
             }
+            // The monitor layout changed (a display was added or removed): let
+            // the app re-enumerate and react. A no-op without a mapping.
+            Message::DisplayChange { .. } => {
+                if let Some(msg) = self.core.map_display_change() {
+                    self.core.enqueue(msg);
+                }
+                Some(0)
+            }
             // An accelerator is translated into a `WM_COMMAND` with no control
             // and one of our reserved command ids; a menu bar click arrives the
             // same way with one of the menu's command ids.

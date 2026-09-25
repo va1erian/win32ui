@@ -64,6 +64,17 @@ pub enum Message {
         /// The rectangle Windows suggests the window occupy.
         suggested: Rect,
     },
+    /// `WM_DISPLAYCHANGE`: the desktop resolution or monitor layout changed
+    /// (for example a monitor was plugged or unplugged). The attached displays
+    /// may now differ, so re-enumerate them with [`monitors`](crate::monitors).
+    DisplayChange {
+        /// The new screen width in pixels.
+        width: u32,
+        /// The new screen height in pixels.
+        height: u32,
+        /// The new colour depth in bits per pixel.
+        bits_per_pixel: u32,
+    },
     /// `WM_TIMER`.
     Timer {
         /// The timer that fired.

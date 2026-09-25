@@ -57,6 +57,8 @@ pub(crate) struct Core<M> {
     drain: u32,
     on_close: RefCell<Option<CloseMapper<M>>>,
     on_timer: RefCell<Option<TimerMapper<M>>>,
+    /// Maps a `WM_DISPLAYCHANGE` notification to an optional app message.
+    on_display_change: RefCell<Option<CloseMapper<M>>>,
     accelerators: RefCell<Vec<Accelerator<M>>>,
     theme: Cell<Theme>,
     title_bar: Cell<TitleBar>,
@@ -109,6 +111,7 @@ impl<M> Core<M> {
             drain: sys::message::drain_message(),
             on_close: RefCell::new(None),
             on_timer: RefCell::new(None),
+            on_display_change: RefCell::new(None),
             accelerators: RefCell::new(Vec::new()),
             theme: Cell::new(theme),
             title_bar: Cell::new(TitleBar::Standard),
@@ -209,6 +212,10 @@ impl<M> Core<M> {
         self.on_timer.replace(Some(Box::new(f)));
     }
 
+    pub(crate) fn set_on_display_change(&self, f: impl Fn() -> Option<M> + 'static) {
+        self.on_display_change.replace(Some(Box::new(f)));
+    }
+
     /// Maps a close request: `Some(msg)` intercepts it (the app decides),
     /// `None` means "use the default" (close and quit).
     pub(crate) fn map_close(&self) -> Option<M> {
@@ -218,6 +225,11 @@ impl<M> Core<M> {
     /// Maps a timer tick: `Some(msg)` is enqueued by the caller.
     pub(crate) fn map_timer(&self, id: TimerId) -> Option<M> {
         self.on_timer.borrow().as_ref().and_then(|f| f(id))
+    }
+
+    /// Maps a display-layout change: `Some(msg)` is enqueued by the caller.
+    pub(crate) fn map_display_change(&self) -> Option<M> {
+        self.on_display_change.borrow().as_ref().and_then(|f| f())
     }
 
     /// The window's current theme.

@@ -41,14 +41,11 @@ pub(super) fn build(ui: &mut Ui<Msg>) -> App {
         DemoStatus::Child(StatusBar::new(ui).expect("status"))
     };
     status.set_parts(&[-1]);
-    status.set_text(
-        0,
-        if ui.backdrop_active() {
-            "Ready — backdrop active"
-        } else {
-            "Ready"
-        },
-    );
+    // The status line starts with the attached monitors; `Ui::on_display_change`
+    // maps a monitor layout change (a display plugged or unplugged) to
+    // `Msg::MonitorsChanged`, which refreshes the same summary.
+    status.set_text(0, &super::monitor_status(ui.backdrop_active()));
+    ui.on_display_change(|| Some(Msg::MonitorsChanged));
     // `WIN32UI_DEMO_TOP_BAR=1` draws an interactive transport bar on the top
     // material band (only takes effect with `TitleBar::Extended`).
     let top_bar_on = std::env::var_os("WIN32UI_DEMO_TOP_BAR").is_some();

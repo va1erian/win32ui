@@ -108,6 +108,7 @@ already retained), and closures that capture shared mutable app state.
 | Widget layer: `App`/`Ui`, `Msg` mapping, `ControlExt`, `run_app` | exists |
 | Secondary windows: `Ui::open_window` (non-modal) and `Ui::open_modal` (modal), `WindowHandle` | exists (#45) |
 | Window placement: new windows centred on the owner's monitor (primary for a standalone window), `Ui::placement`/`set_placement` for persisting geometry, `centered_in_work_area` | exists (#157) |
+| Monitor enumeration: `MonitorInfo` (device and friendly name, rect, work area, primary, DPI), `monitors`, `monitor_of`/`Window::monitor`, and `Ui::on_display_change` for `WM_DISPLAYCHANGE` | exists (#161) |
 | Layout tree (`column!`/`row!`, `fill`/`width`, relayout on resize/DPI) | exists |
 | Theming foundation: tokens, `Themed`, live switching, central `WM_CTLCOLOR*` | #30 |
 | Owner-drawn `ProgressBar` (range/value/state/marquee), typed `TaskDialog` | exist (#18) |
