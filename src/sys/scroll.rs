@@ -5,14 +5,15 @@
 //! `// SAFETY:` note. Only documented APIs are used.
 
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
+use windows::Win32::Graphics::Gdi::UpdateWindow;
 use windows::Win32::UI::Controls::{SetScrollInfo, SetScrollPos};
 use windows::Win32::UI::Shell::DefSubclassProc;
 use windows::Win32::UI::WindowsAndMessaging::{
     GWL_STYLE, GetScrollInfo, GetWindowLongPtrW, SB_BOTTOM, SB_ENDSCROLL, SB_LINEDOWN, SB_LINEUP,
     SB_PAGEDOWN, SB_PAGEUP, SB_THUMBPOSITION, SB_THUMBTRACK, SB_TOP, SB_VERT, SCROLLINFO,
-    SIF_DISABLENOSCROLL, SIF_PAGE, SIF_POS, SIF_RANGE, SIF_TRACKPOS, SWP_FRAMECHANGED, SWP_NOMOVE,
-    SWP_NOSIZE, SWP_NOZORDER, SetWindowLongPtrW, SetWindowPos, WHEEL_DELTA, WM_MOUSEWHEEL,
-    WM_VSCROLL, WS_VSCROLL,
+    SIF_DISABLENOSCROLL, SIF_PAGE, SIF_POS, SIF_RANGE, SIF_TRACKPOS, SW_ERASE, SW_INVALIDATE,
+    SW_SCROLLCHILDREN, SWP_FRAMECHANGED, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, ScrollWindowEx,
+    SetWindowLongPtrW, SetWindowPos, WHEEL_DELTA, WM_MOUSEWHEEL, WM_VSCROLL, WS_VSCROLL,
 };
 
 use crate::hwnd::Hwnd;
@@ -230,6 +231,34 @@ unsafe extern "system" fn wheel_proc(
     }
     // SAFETY: forward to the subclass chain's original window procedure.
     unsafe { DefSubclassProc(hwnd, msg, wparam, lparam) }
+}
+
+/// Scrolls `hwnd`'s client area and every child window in it by `dy` pixels,
+/// then paints the uncovered strip at once.
+///
+/// The already-drawn pixels are blitted rather than repainted, so a scroll
+/// step only redraws the band it exposes instead of erasing and repainting
+/// the whole content (which flashes the background through it).
+pub(crate) fn scroll_children(hwnd: Hwnd, dy: i32) {
+    if dy == 0 {
+        return;
+    }
+    // SAFETY: `hwnd` is a live window owned by the caller; null scroll/clip
+    // rectangles mean the whole client area, no update region or rectangle is
+    // requested, and only documented flags are passed.
+    unsafe {
+        let _ = ScrollWindowEx(
+            raw_hwnd(hwnd),
+            0,
+            dy,
+            None,
+            None,
+            None,
+            None,
+            SW_SCROLLCHILDREN | SW_INVALIDATE | SW_ERASE,
+        );
+        let _ = UpdateWindow(raw_hwnd(hwnd));
+    }
 }
 
 #[cfg(test)]

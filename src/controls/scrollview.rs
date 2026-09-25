@@ -104,7 +104,11 @@ impl ScrollShared {
             return;
         }
         let width = sys::window::client_rect(viewport).width();
-        let bounds = Rect::new(0, -self.offset.get(), width, self.content_height.get());
+        let top = -self.offset.get();
+        // `Rect` is edges, not a size: the bottom edge follows the offset so the
+        // content keeps its height instead of growing (and relaying out) as it
+        // scrolls.
+        let bounds = Rect::new(0, top, width, top + self.content_height.get());
         // A recomputed content height that lands on the same size (the
         // `GridView` resize callback recomputes it from the new width) must not
         // re-issue `MoveWindow`: that would send another `WM_SIZE` and loop.
@@ -117,12 +121,25 @@ impl ScrollShared {
 
     /// Scrolls to `offset` device pixels, clamped to the valid range.
     pub(crate) fn scroll_to_px(&self, offset: i32) {
+        let previous = self.offset.get();
         self.offset.set(offset.clamp(0, self.max_offset()));
         let viewport = self.viewport.get();
-        if viewport.is_alive() {
-            sys::scroll::set_vertical_pos(viewport, self.offset.get());
+        if !viewport.is_alive() {
+            return;
         }
-        self.move_content();
+        sys::scroll::set_vertical_pos(viewport, self.offset.get());
+        let content = self.content.get();
+        let delta = previous - self.offset.get();
+        let bounds = self.last_bounds.get();
+        // Content already placed at the previous offset scrolls by blitting:
+        // `move_content` would repaint all of it and erase the viewport
+        // underneath, flashing the background on every wheel notch.
+        if content.is_alive() && bounds.top == -previous && bounds != Rect::default() {
+            sys::scroll::scroll_children(viewport, delta);
+            self.last_bounds.set(bounds.offset(0, delta));
+        } else {
+            self.move_content();
+        }
     }
 
     /// Scrolls by `delta` device pixels (positive scrolls down).
@@ -169,6 +186,7 @@ impl ScrollView {
                 .child()
                 .visible()
                 .tab_stop()
+                .clip_children()
                 .with(style::WS_VSCROLL),
             WindowExStyle::new(),
             Rect::default(),
