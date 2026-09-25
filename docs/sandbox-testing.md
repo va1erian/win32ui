@@ -33,7 +33,8 @@ How it works:
    folder is mapped into the sandbox as `C:\stage`.
 3. Starts a network-less sandbox with a vGPU (for D2D, OpenGL and DWM). Its logon
    command runs every executable and writes `out\<name>.log` and
-   `out\summary.txt`, then shuts the VM down.
+   `out\summary.txt`. The host script then closes the sandbox itself, so you
+   don't get the "Windows Sandbox has closed" dialog.
 4. Prints the logs. It exits with code 1 if any executable failed.
 
 A cold start takes about 15–30 s on top of the build. The sandbox window opens
