@@ -248,12 +248,6 @@ impl ScrollView {
         self.shared.set_content_height_px(height.value());
     }
 
-    /// A shared handle to the scroll state, for a composite widget that resizes
-    /// its content extent from a window-size callback.
-    pub(crate) fn shared(&self) -> Rc<ScrollShared> {
-        Rc::clone(&self.shared)
-    }
-
     /// Scrolls to `offset` from the top, clamped to the content.
     pub fn scroll_to(&self, offset: Px) {
         self.shared.scroll_to_px(offset.value());

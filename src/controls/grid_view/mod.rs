@@ -4,13 +4,13 @@
 //! image grid (cover art, thumbnails, …), not a report list.
 //!
 //! There is no native tiled-image-grid control, so [`GridView`] is a
-//! [`CustomWidget`](crate::CustomWidget) (see `custom.rs`) hosted as the
-//! content of a [`ScrollView`]: the content window is sized to the *full*
-//! document (every row, at the current tile size), [`ScrollView`] positions
-//! and clips it exactly as it does for any tall content, and
-//! [`GridWidget`](widget::GridWidget) paints only the tiles that intersect
-//! the invalidated rectangle each `WM_PAINT` gives it — the virtualization
-//! [`GridModel::get`] is spared from running for every off-screen tile.
+//! [`CustomWidget`](crate::CustomWidget) (see `custom.rs`) hosted with
+//! [`Custom::with_vscroll`](crate::Custom::with_vscroll): the widget window is
+//! the *viewport* size, the scroll host translates the canvas by the scroll
+//! offset, and [`GridWidget`](widget::GridWidget) paints only the tiles that
+//! intersect the invalidated rectangle each `WM_PAINT` gives it. The window
+//! never grows to the full document, so a Direct2D target stays viewport-sized
+//! and off-screen tiles are spared both the paint and the [`GridModel::get`].
 //!
 //! ```rust
 //! use win32ui::gdi::Canvas;
@@ -53,9 +53,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::app::Ui;
-use crate::controls::control::{AsControl, Control, ControlExt};
+use crate::controls::control::{AsControl, Control};
 use crate::controls::custom::Custom;
-use crate::controls::scrollview::ScrollView;
 use crate::d2d::{D2dCanvas, RectF};
 use crate::error::Result;
 use crate::geometry::Rect;
@@ -97,7 +96,6 @@ impl<M> Handlers<M> {
 /// [`GridModel`] with [`GridView::set_model`], and place it in the layout
 /// tree.
 pub struct GridView<T: 'static, M: 'static> {
-    scroll: ScrollView,
     custom: Custom<GridWidget<T>, M>,
     handlers: Rc<Handlers<M>>,
 }
@@ -118,32 +116,28 @@ impl<T: 'static, M: 'static> GridView<T, M> {
         });
         let mapper = Rc::clone(&handlers);
         let widget = GridWidget::new(tile_px, None, spacing_px);
-        let custom = Custom::new(ui, widget)?.on_event(move |event| mapper.map(event));
-        custom.set_tab_stop(true);
+        let custom = Custom::new(ui, widget)?
+            .on_event(move |event| mapper.map(event))
+            .with_vscroll();
         let widget_handle = custom.widget();
+        let scroll = custom.scroll_handle();
+        let dpi = custom.dpi();
 
-        let scroll = ScrollView::new(ui)?;
-        scroll.set_content(&custom);
-
-        // The layout resizes the scroll view on every window resize, which
-        // resizes the content window and fires this. Recompute the extent from
-        // the new width so the scrollbar range never goes stale between
-        // `set_model`/`set_tile_size` calls.
-        let scroll_shared = scroll.shared();
+        // The layout resizes the viewport on every window resize, which fires
+        // this. Recompute the extent from the new width so the scrollbar range
+        // never goes stale between `set_model`/`set_tile_size` calls.
         custom.on_resize(move |bounds| {
             let widget = widget_handle.borrow();
             let columns = widget.columns(bounds.width()).max(1);
             let height =
                 layout::content_height_px(widget.len(), columns, widget.tile_px(), spacing_px);
             drop(widget);
-            scroll_shared.set_content_height_px(height);
+            if let Some(scroll) = &scroll {
+                scroll.set_content_height(Px(height.max(0)).to_dip(dpi), dpi);
+            }
         });
 
-        Ok(GridView {
-            scroll,
-            custom,
-            handlers,
-        })
+        Ok(GridView { custom, handlers })
     }
 
     /// Sets the (square) tile size: a fixed [`Dip`], or a `Dip` range (e.g.
@@ -232,6 +226,14 @@ impl<T: 'static, M: 'static> GridView<T, M> {
         self.custom.invalidate();
     }
 
+    /// Drops the grid's renderer surface and its uploaded cover images, for a
+    /// view being hidden. The next paint recreates the surface, so the caller
+    /// must also drop the cover handles its tiles cached (e.g. by rebuilding
+    /// the model or clearing each tile's image id).
+    pub fn release_renderer(&self) {
+        self.custom.release_renderer();
+    }
+
     /// The tile size, in design units.
     pub fn current_tile_size(&self) -> Dip {
         Px(self.with_widget(GridWidget::tile_px)).to_dip(self.custom.dpi())
@@ -258,13 +260,14 @@ impl<T: 'static, M: 'static> GridView<T, M> {
     /// Recomputes the scrollable extent from the model, the tile size and the
     /// current viewport width, and repaints.
     fn resync(&self) {
-        let width = crate::sys::window::client_rect(self.scroll.control().hwnd()).width();
+        let width = crate::sys::window::client_rect(self.custom.control().hwnd()).width();
         let spacing = self.spacing_px();
         let height = self.with_widget(|widget| {
             let columns = widget.columns(width).max(1);
             layout::content_height_px(widget.len(), columns, widget.tile_px(), spacing)
         });
-        self.scroll.set_content_height(Px(height.max(0)));
+        self.custom
+            .set_content_height(Px(height.max(0)).to_dip(self.custom.dpi()));
         self.custom.invalidate();
     }
 
@@ -282,13 +285,12 @@ impl<T: 'static, M: 'static> GridView<T, M> {
 
 impl<T: 'static, M: 'static> AsControl for GridView<T, M> {
     fn control(&self) -> &Control {
-        self.scroll.control()
+        self.custom.control()
     }
 }
 
 impl<T: 'static, M: 'static> Themed for GridView<T, M> {
     fn apply_theme(&self, theme: &Theme) {
-        self.scroll.apply_theme(theme);
         self.custom.apply_theme(theme);
     }
 }

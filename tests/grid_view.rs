@@ -14,11 +14,10 @@ use std::time::Instant;
 
 use common::run_app_with_watchdog;
 use win32ui::prelude::*;
-use windows::Win32::Foundation::{HWND, LPARAM, RECT, WPARAM};
-use windows::Win32::Graphics::Gdi::{InvalidateRect, UpdateWindow};
+use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
+use windows::Win32::Graphics::Gdi::UpdateWindow;
 use windows::Win32::UI::WindowsAndMessaging::{
-    GW_CHILD, GetClientRect, GetScrollInfo, GetWindow, SB_LINEDOWN, SB_VERT, SCROLLINFO, SIF_POS,
-    SIF_RANGE, SendMessageW, WM_PAINT, WM_VSCROLL,
+    GetScrollInfo, SB_LINEDOWN, SB_VERT, SCROLLINFO, SIF_RANGE, SendMessageW, WM_VSCROLL,
 };
 
 struct Tile(u32);
@@ -125,23 +124,7 @@ fn resizing_the_viewport_resyncs_the_scroll_range() {
     );
 }
 
-/// Reads the viewport's current vertical scroll position, so the 30k-tile test
-/// can invalidate the strip that is actually visible.
-fn scroll_pos(hwnd: Hwnd) -> i32 {
-    let mut info = SCROLLINFO {
-        cbSize: std::mem::size_of::<SCROLLINFO>() as u32,
-        fMask: SIF_POS,
-        ..Default::default()
-    };
-    // SAFETY: `hwnd` is live and `info` is a valid `SCROLLINFO` with matching
-    // `cbSize`.
-    unsafe {
-        let _ = GetScrollInfo(HWND(hwnd.raw() as *mut c_void), SB_VERT, &mut info);
-    }
-    info.nPos
-}
-
-/// The 30k-tile scroll check from the issue: only the visible strip repaints,
+/// The 30k-tile scroll check from the issue: only the visible tiles repaint,
 /// so a synthetic scroll+paint frame stays well under a 16.7 ms (60 Hz) budget.
 /// Ignored by default (timing on a shared CI box is noisy); run explicitly with
 /// `cargo test --test grid_view -- --ignored --nocapture` and read the printed
@@ -149,12 +132,8 @@ fn scroll_pos(hwnd: Hwnd) -> i32 {
 #[test]
 #[ignore = "timing-sensitive; run explicitly for the 30k-tile p95 check"]
 fn scrolling_30k_tiles_keeps_p95_frame_time_low() {
-    // A 32-bit window's height is a `WORD`, so the grid's single tall content
-    // window caps the model at roughly `32767 / row-stride` rows; the test
-    // widens the viewport to fit this many tiles underneath that cap.
     const TILES: usize = 30_000;
     const STEPS: usize = 200;
-    const VIEWPORT_HEIGHT: i32 = 600;
     /// A deliberately loose ceiling, so the debug build passes while a real
     /// regression (painting off-screen tiles) fails loudly.
     const BUDGET_MS: f64 = 50.0;
@@ -174,51 +153,15 @@ fn scrolling_30k_tiles_keeps_p95_frame_time_low() {
                 .map(|index| Tile(index as u32))
                 .collect::<Vec<_>>(),
         );
-        let height = VIEWPORT_HEIGHT;
-        // Pick enough columns that `TILES` tiles fit under the ~32767 px window
-        // height cap (device-pixel arithmetic, so it holds at any DPI).
-        let dpi = ui.dpi();
-        let stride = grid.current_tile_size().to_px(dpi).value() + dip(8.0).to_px(dpi).value();
-        let columns = (TILES * stride as usize).div_ceil(31_000).max(1);
-        let width = columns as i32 * stride;
-        grid.set_bounds(Rect::new(0, 0, width, height));
+        // The widget is the viewport: a 30k-tile document lives entirely in the
+        // scroll extent, never in a window taller than the screen.
+        grid.set_bounds(Rect::new(0, 0, 900, 600));
 
         let viewport = grid.hwnd();
-        // SAFETY: `viewport` is live; `GW_CHILD` is a documented flag and the
-        // content window is its only child.
-        let content =
-            unsafe { GetWindow(HWND(viewport.raw() as *mut c_void), GW_CHILD) }.unwrap_or_default();
-
-        // The whole 30k-tile extent lives in one tall content window; prove the
-        // OS accepted it rather than clamping to the viewport (a clamp would
-        // make the "virtualized" test paint nothing but the first screenful).
-        let mut client = RECT::default();
-        // SAFETY: `content` is the live content window; `client` is a valid
-        // out-parameter.
-        let _ = unsafe { GetClientRect(content, &mut client) };
-        assert!(
-            client.bottom > 30_000,
-            "the content window height was {} px; 30k tiles cannot virtualize",
-            client.bottom
-        );
 
         // Warm up: the first frames build the GDI brush cache and upload data.
         for _ in 0..3 {
-            let _ = unsafe {
-                SendMessageW(
-                    HWND(viewport.raw() as *mut c_void),
-                    WM_VSCROLL,
-                    Some(WPARAM(SB_LINEDOWN.0 as usize)),
-                    Some(LPARAM(0)),
-                )
-            };
-        }
-
-        let mut frames = Vec::with_capacity(STEPS);
-        for _ in 0..STEPS {
-            let start = Instant::now();
-            // SAFETY: live handles; the strip is the visible part of the
-            // content, so the paint exercises exactly one viewport of tiles.
+            // SAFETY: `viewport` is live; a plain line-down scroll message.
             unsafe {
                 let _ = SendMessageW(
                     HWND(viewport.raw() as *mut c_void),
@@ -226,17 +169,22 @@ fn scrolling_30k_tiles_keeps_p95_frame_time_low() {
                     Some(WPARAM(SB_LINEDOWN.0 as usize)),
                     Some(LPARAM(0)),
                 );
-                let pos = scroll_pos(viewport);
-                if !content.0.is_null() {
-                    let strip = RECT {
-                        left: 0,
-                        top: pos,
-                        right: width,
-                        bottom: pos + height,
-                    };
-                    let _ = InvalidateRect(Some(content), Some(&strip), false);
-                    let _ = UpdateWindow(content);
-                }
+            }
+        }
+
+        let mut frames = Vec::with_capacity(STEPS);
+        for _ in 0..STEPS {
+            let start = Instant::now();
+            // SAFETY: `viewport` is live. `scroll_to_px` invalidates the widget,
+            // so `UpdateWindow` paints exactly one viewport of tiles.
+            unsafe {
+                let _ = SendMessageW(
+                    HWND(viewport.raw() as *mut c_void),
+                    WM_VSCROLL,
+                    Some(WPARAM(SB_LINEDOWN.0 as usize)),
+                    Some(LPARAM(0)),
+                );
+                let _ = UpdateWindow(HWND(viewport.raw() as *mut c_void));
             }
             frames.push(start.elapsed().as_secs_f64() * 1000.0);
         }
@@ -277,19 +225,13 @@ impl App for VirtualPaintApp {
         // Everything painted before this message is the surface's first frames.
         self.first.set(Some(self.visited.borrow().len()));
         let viewport = self.grid.hwnd();
-        // SAFETY: live handles; `GW_CHILD` returns the re-parented content and
-        // `WM_PAINT` is delivered synchronously to it.
-        let content =
-            unsafe { GetWindow(HWND(viewport.raw() as *mut c_void), GW_CHILD) }.unwrap_or_default();
         let before = self.visited.borrow().len();
-        // Changing the tile size resizes the tall content window, which marks
-        // the Direct2D surface for a full repaint (as the first frame does).
+        // Changing the tile size resizes the scroll extent and invalidates the
+        // grid; `UpdateWindow` paints one viewport of tiles synchronously.
         self.grid.set_tile_size(dip(21.0));
-        if !content.0.is_null() {
-            // SAFETY: `content` is a live window; a zero wParam is a plain paint.
-            unsafe {
-                let _ = SendMessageW(content, WM_PAINT, Some(WPARAM(0)), Some(LPARAM(0)));
-            }
+        // SAFETY: `viewport` is the live grid window.
+        unsafe {
+            let _ = UpdateWindow(HWND(viewport.raw() as *mut c_void));
         }
         self.observed
             .set(Some(self.visited.borrow().len() - before));
@@ -297,9 +239,9 @@ impl App for VirtualPaintApp {
     }
 }
 
-/// A Direct2D grid inside a `ScrollView` must virtualize from its very first
-/// frame: creating the render target (or resizing the tall content window) must
-/// not paint — and so request cover art for — the whole model.
+/// A Direct2D grid must virtualize from its very first frame: creating the
+/// render target must not paint — and so request cover art for — the whole
+/// model.
 #[test]
 fn direct2d_grid_virtualizes_from_the_first_frame() {
     const TILES: usize = 30_000;

@@ -10,7 +10,7 @@ use windows::Win32::Graphics::Gdi::{
     CreateCompatibleBitmap, CreateCompatibleDC, DRAW_TEXT_FORMAT, DeleteDC, DeleteObject,
     DrawTextW, EndPaint, GetClipBox, HBITMAP, HBRUSH, HDC, HGDIOBJ, IntersectClipRect, LineTo,
     MoveToEx, PAINTSTRUCT, Polygon, SRCCOPY, SelectClipRgn, SelectObject, SetBkMode, SetTextColor,
-    TRANSPARENT,
+    SetViewportOrgEx, TRANSPARENT,
 };
 
 use crate::color::Color;
@@ -122,6 +122,16 @@ fn destroy(buffer: BackBuffer) {
         SelectObject(buffer.memory_dc, buffer.old_bitmap);
         let _ = DeleteObject(HGDIOBJ(buffer.bitmap.0));
         let _ = DeleteDC(buffer.memory_dc);
+    }
+}
+
+/// Sets the mapping origin of `hdc`, so subsequent logical coordinates are
+/// offset by `(x, y)` before hitting the device. Used to scroll a custom
+/// widget's content inside its viewport-sized back buffer.
+pub(crate) fn set_viewport_origin(hdc: HDC, x: i32, y: i32) {
+    // SAFETY: `hdc` is live; the previous origin out-pointer is optional.
+    unsafe {
+        let _ = SetViewportOrgEx(hdc, x, y, None);
     }
 }
 

@@ -81,6 +81,9 @@ impl TextFormat {
 pub struct Canvas {
     dc: HDC,
     paint: Rect,
+    /// A scroll offset the surface is being drawn through (device pixels), so
+    /// `paint_rect` can report the dirty band in the content's coordinates.
+    scroll: std::cell::Cell<i32>,
 }
 
 impl Canvas {
@@ -89,6 +92,7 @@ impl Canvas {
         Canvas {
             dc,
             paint: Rect::default(),
+            scroll: std::cell::Cell::new(0),
         }
     }
 
@@ -99,14 +103,27 @@ impl Canvas {
 
     /// A canvas over `dc`, reporting `paint` from [`Canvas::paint_rect`].
     pub(crate) fn with_paint_rect(dc: HDC, paint: Rect) -> Canvas {
-        Canvas { dc, paint }
+        Canvas {
+            dc,
+            paint,
+            scroll: std::cell::Cell::new(0),
+        }
+    }
+
+    /// Records the scroll offset this canvas is drawn through, in device
+    /// pixels, so `paint_rect` reports content coordinates.
+    pub(crate) fn set_scroll(&self, offset: i32) {
+        self.scroll.set(offset);
     }
 
     /// The rectangle being repainted: the `PAINTSTRUCT.rcPaint` of the paint
     /// that created this canvas, or an empty rectangle for a canvas obtained
     /// from [`Canvas::new`] outside a [`Paint`].
+    ///
+    /// In a scroll host the widget draws its document shifted up by the scroll
+    /// offset, so this is returned in the widget's own (content) coordinates.
     pub fn paint_rect(&self) -> Rect {
-        self.paint
+        self.paint.offset(0, self.scroll.get())
     }
 
     /// Fills `rect` with `color`.
@@ -355,6 +372,15 @@ impl Paint {
         &self.canvas
     }
 
+    /// Draws the widget through the scroll `offset` (device pixels): the back
+    /// buffer is clipped to the viewport, so content above it is shifted out
+    /// while `Canvas::paint_rect` reports the dirty band in content
+    /// coordinates. Call before the widget paints.
+    pub fn set_scroll_offset(&mut self, offset: i32) {
+        self.canvas.set_scroll(offset);
+        sys::gdi::set_viewport_origin(self.memory_dc, 0, -offset);
+    }
+
     /// The rectangle Windows asked to repaint (`PAINTSTRUCT.rcPaint`).
     pub fn paint_rect(&self) -> Rect {
         self.paint
@@ -368,6 +394,9 @@ impl Paint {
 
 impl Drop for Paint {
     fn drop(&mut self) {
+        // Undo any scroll origin so the back buffer is blitted in device
+        // coordinates (`blit_rect`'s source rectangle is in the DC's space).
+        sys::gdi::set_viewport_origin(self.memory_dc, 0, 0);
         sys::gdi::blit_rect(self.ps.hdc, self.memory_dc, self.paint);
         sys::gdi::end_paint(self.hwnd, &self.ps);
     }
