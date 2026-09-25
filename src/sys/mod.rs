@@ -28,6 +28,7 @@ pub(crate) mod gl;
 pub(crate) mod glass_child;
 pub(crate) mod glass_paint;
 pub(crate) mod image_list;
+pub(crate) mod imaging;
 pub(crate) mod layout;
 pub(crate) mod listview;
 pub(crate) mod listview_click;

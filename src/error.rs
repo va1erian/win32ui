@@ -86,6 +86,10 @@ pub enum Error {
     #[error("invalid Direct2D use: {0}")]
     Direct2d(&'static str),
 
+    /// An image could not be decoded, scaled or encoded ([`crate::imaging`]).
+    #[error(transparent)]
+    Imaging(#[from] ImagingError),
+
     /// An OpenGL (WGL) context could not be created on a window, so its widget
     /// falls back to GDI.
     #[error("could not create an OpenGL context: {0}")]
@@ -130,10 +134,31 @@ pub enum CaptureError {
     DeviceLost,
 }
 
+/// Why a Windows Imaging Component operation failed.
+///
+/// Most failures are a corrupt or unsupported image, which a caller usually
+/// treats as "no image" and renders a placeholder for; the wrapped
+/// [`Win32Error`] is kept for diagnosis.
+#[derive(Clone, Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum ImagingError {
+    /// The bytes are not an image in a format the Windows Imaging Component
+    /// understands.
+    #[error("unsupported or corrupt image data")]
+    UnsupportedFormat,
+    /// A width or height of zero was requested, or an image exceeds the
+    /// supported dimensions.
+    #[error("invalid image dimensions")]
+    InvalidSize,
+    /// A call into the Windows Imaging Component failed.
+    #[error("imaging call failed: {0}")]
+    Win32(#[from] Win32Error),
+}
+
 /// Convenience alias used throughout the crate.
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// The error types a frontend usually needs.
 pub mod prelude {
-    pub use super::{CaptureError, Error, Result, Win32Error};
+    pub use super::{CaptureError, Error, ImagingError, Result, Win32Error};
 }
