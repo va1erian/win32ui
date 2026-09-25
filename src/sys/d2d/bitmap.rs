@@ -19,10 +19,28 @@ use crate::d2d::{BASE_DPI, ImageId, Interpolation, RectF};
 
 use super::target::{Target, rect_f};
 
-/// Bitmaps and tiled bitmap brushes, cached per render target.
+/// The default device-bitmap budget, in bytes of premultiplied RGBA. The
+/// surface's retained-image cache is what a lost device re-uploads from; this
+/// is the separate, device-resident copy, kept bounded so a long session cannot
+/// pin a bitmap for every cover it has ever shown.
+const DEVICE_BUDGET_BYTES: usize = 64 * 1024 * 1024;
+
+/// One device bitmap and its LRU bookkeeping.
+struct DeviceBitmap {
+    bitmap: ID2D1Bitmap,
+    bytes: usize,
+    last_used: u64,
+}
+
+/// Bitmaps and tiled bitmap brushes, cached per render target, bounded by an
+/// LRU over the bitmaps' bytes. A bitmap evicted here is re-created from the
+/// surface's retained image on its next use (or skipped if that is gone too).
 pub(crate) struct Images {
-    bitmaps: HashMap<ImageId, ID2D1Bitmap>,
+    bitmaps: HashMap<ImageId, DeviceBitmap>,
     tiled: HashMap<ImageId, ID2D1BitmapBrush>,
+    clock: u64,
+    bytes: usize,
+    budget: usize,
 }
 
 impl Images {
@@ -30,6 +48,36 @@ impl Images {
         Images {
             bitmaps: HashMap::new(),
             tiled: HashMap::new(),
+            clock: 0,
+            bytes: 0,
+            budget: DEVICE_BUDGET_BYTES,
+        }
+    }
+
+    /// Drops `id`'s device bitmap and tiled brush, releasing their memory.
+    pub(crate) fn forget(&mut self, id: ImageId) {
+        if let Some(entry) = self.bitmaps.remove(&id) {
+            self.bytes = self.bytes.saturating_sub(entry.bytes);
+        }
+        self.tiled.remove(&id);
+    }
+
+    fn tick(&mut self) -> u64 {
+        self.clock += 1;
+        self.clock
+    }
+
+    /// Evicts least-recently-used bitmaps until the device budget is met.
+    fn evict(&mut self) {
+        while self.bytes > self.budget && !self.bitmaps.is_empty() {
+            let oldest = self
+                .bitmaps
+                .iter()
+                .min_by_key(|(_, entry)| entry.last_used)
+                .map(|(&id, _)| id);
+            if let Some(id) = oldest {
+                self.forget(id);
+            }
         }
     }
 
@@ -41,8 +89,10 @@ impl Images {
         id: ImageId,
         image: &RgbaImage,
     ) -> Option<ID2D1Bitmap> {
-        if let Some(bitmap) = self.bitmaps.get(&id) {
-            return Some(bitmap.clone());
+        let last_used = self.tick();
+        if let Some(entry) = self.bitmaps.get_mut(&id) {
+            entry.last_used = last_used;
+            return Some(entry.bitmap.clone());
         }
         let pixels = premultiply(image);
         let properties = D2D1_BITMAP_PROPERTIES {
@@ -67,7 +117,17 @@ impl Images {
             )
         }
         .ok()?;
-        self.bitmaps.insert(id, bitmap.clone());
+        let bytes = image.pixels.len();
+        self.bitmaps.insert(
+            id,
+            DeviceBitmap {
+                bitmap: bitmap.clone(),
+                bytes,
+                last_used,
+            },
+        );
+        self.bytes += bytes;
+        self.evict();
         Some(bitmap)
     }
 

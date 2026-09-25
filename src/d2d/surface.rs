@@ -37,6 +37,12 @@ pub struct D2dSurface {
     /// whole-window frame. `D2dCanvas::paint_rect` reports it so a virtualized
     /// widget knows what to draw.
     frame: Cell<Option<Rect>>,
+    /// The current canvas translation, in device-independent pixels, set by
+    /// [`D2dCanvas::set_translation`](super::D2dCanvas::set_translation). A
+    /// scrolling widget draws its document in its own coordinates, so
+    /// `paint_rect` undoes the translation to report the dirty rectangle in
+    /// those coordinates.
+    translation: Cell<(f32, f32)>,
     /// Set when the render target was resized, which blanks it: the next frame
     /// must repaint the whole client, not just the newly exposed rectangle.
     needs_full_repaint: Cell<bool>,
@@ -74,6 +80,7 @@ impl D2dSurface {
             drawing: Cell::new(false),
             images: RefCell::new(ImageCache::new()),
             frame: Cell::new(None),
+            translation: Cell::new((0.0, 0.0)),
             // A fresh surface is blank, so its first frame repaints everything.
             needs_full_repaint: Cell::new(true),
         })
@@ -156,10 +163,16 @@ impl D2dSurface {
                 // rather than a transform-independent `Clear`.
                 canvas.set_translation(0.0, 0.0);
                 if let Some(rect) = clip {
+                    // Clip to the visible client: a scrolled child taller than
+                    // its viewport would otherwise paint (and a virtualized
+                    // widget would request the data for) the whole document,
+                    // both on the frame a fresh target is created and whenever
+                    // the update rectangle spans it.
+                    let visible = sys::window::visible_client_rect(self.hwnd);
                     let rect = if created {
-                        sys::window::client_rect(self.hwnd)
+                        visible
                     } else {
-                        rect
+                        sys::window::intersect(rect, visible)
                     };
                     self.frame.set(Some(rect));
                     canvas.push_clip(self.to_dips(rect));
@@ -178,6 +191,17 @@ impl D2dSurface {
     /// The device-pixel rectangle the current frame is clipped to, if any.
     pub(super) fn frame(&self) -> Option<Rect> {
         self.frame.get()
+    }
+
+    /// The current canvas translation, in device-independent pixels.
+    pub(super) fn translation(&self) -> (f32, f32) {
+        self.translation.get()
+    }
+
+    /// Records the canvas translation `set_translation` applied, so
+    /// `paint_rect` can map the dirty rectangle back to drawing coordinates.
+    pub(super) fn set_translation(&self, x: f32, y: f32) {
+        self.translation.set((x, y));
     }
 
     /// Converts a device-pixel rectangle in this surface's window to

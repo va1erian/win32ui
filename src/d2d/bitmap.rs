@@ -163,15 +163,20 @@ impl<'a> D2dCanvas<'a> {
         }
     }
 
-    /// Releases an uploaded image, freeing its memory.
+    /// Releases an uploaded image, freeing its memory: the retained RGBA data
+    /// and the device bitmap it was uploaded to.
     pub fn forget_image(&mut self, id: ImageId) {
-        self.surface.images.borrow_mut().forget(id);
+        self.surface.forget_image(id);
     }
 }
 
 impl D2dSurface {
-    /// Releases an uploaded image, freeing its memory.
+    /// Releases an uploaded image, freeing its retained RGBA data and the
+    /// device bitmap, if the target is live.
     pub fn forget_image(&self, id: ImageId) {
         self.images.borrow_mut().forget(id);
+        if let Some(target) = self.target.borrow_mut().as_mut() {
+            target.images.forget(id);
+        }
     }
 }

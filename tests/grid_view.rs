@@ -7,7 +7,7 @@
 
 mod common;
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::ffi::c_void;
 use std::rc::Rc;
 use std::time::Instant;
@@ -18,7 +18,7 @@ use windows::Win32::Foundation::{HWND, LPARAM, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{InvalidateRect, UpdateWindow};
 use windows::Win32::UI::WindowsAndMessaging::{
     GW_CHILD, GetClientRect, GetScrollInfo, GetWindow, SB_LINEDOWN, SB_VERT, SCROLLINFO, SIF_POS,
-    SIF_RANGE, SendMessageW, WM_VSCROLL,
+    SIF_RANGE, SendMessageW, WM_PAINT, WM_VSCROLL,
 };
 
 struct Tile(u32);
@@ -257,6 +257,99 @@ fn scrolling_30k_tiles_keeps_p95_frame_time_low() {
     assert!(
         p95 < BUDGET_MS,
         "p95 frame time {p95:.3} ms exceeds the {BUDGET_MS} ms budget (max {max:.3} ms)"
+    );
+}
+
+/// A Direct2D grid inside a `ScrollView`, recording every tile the painter is
+/// called for (`visited`, across all frames) and the count for one repaint
+/// (`observed`).
+struct VirtualPaintApp {
+    grid: GridView<Tile, Msg>,
+    visited: Rc<RefCell<std::collections::HashSet<usize>>>,
+    observed: Rc<Cell<Option<usize>>>,
+    first: Rc<Cell<Option<usize>>>,
+}
+
+impl App for VirtualPaintApp {
+    type Msg = Msg;
+
+    fn update(&mut self, _msg: Msg, ui: &mut Ui<Msg>) {
+        // Everything painted before this message is the surface's first frames.
+        self.first.set(Some(self.visited.borrow().len()));
+        let viewport = self.grid.hwnd();
+        // SAFETY: live handles; `GW_CHILD` returns the re-parented content and
+        // `WM_PAINT` is delivered synchronously to it.
+        let content =
+            unsafe { GetWindow(HWND(viewport.raw() as *mut c_void), GW_CHILD) }.unwrap_or_default();
+        let before = self.visited.borrow().len();
+        // Changing the tile size resizes the tall content window, which marks
+        // the Direct2D surface for a full repaint (as the first frame does).
+        self.grid.set_tile_size(dip(21.0));
+        if !content.0.is_null() {
+            // SAFETY: `content` is a live window; a zero wParam is a plain paint.
+            unsafe {
+                let _ = SendMessageW(content, WM_PAINT, Some(WPARAM(0)), Some(LPARAM(0)));
+            }
+        }
+        self.observed
+            .set(Some(self.visited.borrow().len() - before));
+        ui.quit();
+    }
+}
+
+/// A Direct2D grid inside a `ScrollView` must virtualize from its very first
+/// frame: creating the render target (or resizing the tall content window) must
+/// not paint — and so request cover art for — the whole model.
+#[test]
+fn direct2d_grid_virtualizes_from_the_first_frame() {
+    const TILES: usize = 30_000;
+    let visited = Rc::new(RefCell::new(std::collections::HashSet::new()));
+    let observed = Rc::new(Cell::new(None));
+    let first = Rc::new(Cell::new(None));
+    let visited_for_make = Rc::clone(&visited);
+    let observed_for_make = Rc::clone(&observed);
+    let first_for_make = Rc::clone(&first);
+
+    let Some(run) = run_app_with_watchdog("win32ui.grid_view.d2d_virtual", move |ui| {
+        let visited_for_closure = Rc::clone(&visited_for_make);
+        let grid = GridView::<Tile, Msg>::new(ui)
+            .expect("grid")
+            .tile_size(dip(20.0))
+            .content_d2d(move |tile: &Tile, canvas, rect, _state| {
+                canvas.fill_rect(rect, Color::rgb((tile.0 & 0xFF) as u8, 0x40, 0x80));
+                visited_for_closure.borrow_mut().insert(tile.0 as usize);
+            });
+        grid.set_model((0..TILES).map(|i| Tile(i as u32)).collect::<Vec<_>>());
+        grid.set_bounds(Rect::new(0, 0, 900, 600));
+
+        ui.emit(Msg::Start);
+        VirtualPaintApp {
+            grid,
+            visited: visited_for_make,
+            observed: observed_for_make,
+            first: first_for_make,
+        }
+    }) else {
+        return;
+    };
+
+    assert!(!run.timed_out, "the watchdog fired before the app quit");
+    // 900 px wide at a 20 px tile + 8 px spacing is ~32 columns; a 600 px tall
+    // viewport is ~22 rows, so well under 1,000 tiles are visible. Painting the
+    // whole 30k model (23k+ before the fix) is the regression this guards.
+    let first_count = first.get().expect("the first frames never painted");
+    assert!(
+        first_count > 100,
+        "the first Direct2D frames painted only {first_count} tiles; the grid did not paint at all"
+    );
+    assert!(
+        first_count < 2_000,
+        "the first Direct2D frames painted {first_count} of {TILES} tiles"
+    );
+    let repaint_count = observed.get().expect("the repaint never ran");
+    assert!(
+        repaint_count < 2_000,
+        "a full repaint painted {repaint_count} of {TILES} tiles"
     );
 }
 
