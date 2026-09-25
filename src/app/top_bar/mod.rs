@@ -270,7 +270,11 @@ impl TopBarItem {
     /// Sets a native slot's height, in design units, centred vertically in the
     /// band. Without it the slot fills the band minus a small vertical inset;
     /// set it to the child's natural height (a single-line `Edit`) so the child
-    /// is not stretched. Ignored by other kinds.
+    /// is not stretched.
+    ///
+    /// On an icon or toggle button it sets a compact pill height instead of the
+    /// square default, centred in the band; the glyph scales down with it
+    /// (capped at its default size). Other kinds ignore it.
     pub fn height(mut self, height: Dip) -> TopBarItem {
         self.height = Some(height);
         self
