@@ -65,7 +65,7 @@ pub(super) struct CustomHandler<W: CustomWidget, M> {
     /// Emits an event by mapping it to the app's `Msg`; built once so painting
     /// and input never allocate.
     pub(super) emit: Rc<dyn Fn(W::Event)>,
-    pub(super) renderer: RefCell<RendererState>,
+    pub(super) renderer: Rc<RefCell<RendererState>>,
     /// Whether the widget asked for animation ticks.
     pub(super) animate: Rc<Cell<bool>>,
     /// Whether a `WM_MOUSELEAVE` is armed, so a move re-arms it only after a leave.
@@ -89,12 +89,14 @@ impl<W: CustomWidget, M: 'static> CustomHandler<W, M> {
                 return;
             }
             Renderer::Gl => {
-                let painted = self
-                    .renderer
-                    .borrow_mut()
-                    .paint_gl(hwnd, theme.background, |gl| {
+                let painted = self.renderer.borrow_mut().paint_gl(
+                    hwnd,
+                    theme.background,
+                    |gl| {
                         widget.paint_gl(gl, bounds, &theme);
-                    });
+                    },
+                    |gl| widget.gl_teardown(gl),
+                );
                 // OpenGL could not draw this frame: fall back to the theme
                 // background, exactly as the Direct2D path does.
                 if !painted && let Some(paint) = Paint::begin(hwnd) {

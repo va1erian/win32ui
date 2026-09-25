@@ -98,6 +98,15 @@ impl GlSurface {
         self.context.glow()
     }
 
+    /// Makes the context current and runs `f` with it, without starting a
+    /// frame (no viewport or clear). Use it for GL work outside a paint —
+    /// freeing GPU resources, or uploading an asset up front. The returned
+    /// value is `f`'s.
+    pub fn with_gl<R>(&self, f: impl FnOnce(&glow::Context) -> R) -> R {
+        self.context.make_current();
+        f(self.context.glow())
+    }
+
     /// Presents the frame and validates the window's whole client area.
     ///
     /// A frame covers every pixel (the framework clears it), so the update
