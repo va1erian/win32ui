@@ -15,6 +15,7 @@ use crate::message::TimerId;
 use crate::sys;
 use crate::theme::Theme;
 use crate::units::{Dip, Px, dip};
+use crate::window::Icon;
 use crate::window::Placement;
 
 use super::core::Core;
@@ -110,6 +111,20 @@ impl<M: 'static> Ui<M> {
     /// Sets the window title.
     pub fn set_title(&self, title: &str) {
         let _ = sys::window::set_title(self.core.hwnd(), title);
+    }
+
+    /// Sets the window's large and small icons from `icon`, and keeps the icon
+    /// alive with the window ([`Icon`]'s own copy is released when the window
+    /// closes). A program's `build.rs`-embedded icon is usually resource id 1:
+    ///
+    /// ```ignore
+    /// if let Ok(icon) = Icon::from_resource(1) {
+    ///     ui.set_icon(icon);
+    /// }
+    /// ```
+    pub fn set_icon(&self, icon: Icon) {
+        sys::window_icon::set_icon(self.core.hwnd(), icon.raw());
+        self.core.keep_icon(icon);
     }
 
     /// The window's current theme.

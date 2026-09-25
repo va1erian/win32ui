@@ -4,11 +4,12 @@ use core::ffi::c_void;
 
 use windows::Win32::Foundation::{LPARAM, WPARAM};
 use windows::Win32::Graphics::Gdi::{CreateBitmap, HGDIOBJ};
+use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateIconIndirect, DestroyIcon, HICON, ICON_BIG, ICON_SMALL, ICONINFO, SendMessageW,
-    WM_SETICON,
+    CreateIconIndirect, DestroyIcon, GetSystemMetrics, HICON, ICON_BIG, ICON_SMALL, ICONINFO,
+    IMAGE_ICON, LR_DEFAULTSIZE, LoadImageW, SM_CXICON, SM_CYICON, SendMessageW, WM_SETICON,
 };
-use windows::core::BOOL;
+use windows::core::{BOOL, PCWSTR};
 
 use crate::error::{Error, Result};
 use crate::hwnd::Hwnd;
@@ -53,6 +54,20 @@ pub(crate) fn create_icon(width: i32, height: i32, rgba: &[u8]) -> Result<HICON>
     super::gdi::delete_object(HGDIOBJ(color.0));
     super::gdi::delete_object(HGDIOBJ(mask.0));
     icon.map_err(win32_error)
+}
+
+/// Loads a private copy of the icon resource `id` from this module at the
+/// system icon size, for [`Icon`](crate::Icon) to own and destroy. `None` when
+/// the program has no such resource.
+pub(crate) fn load_icon(id: u16) -> Option<(HICON, i32, i32)> {
+    let module = unsafe { GetModuleHandleW(None) }.ok()?;
+    // SAFETY: `GetSystemMetrics` takes an index; `LoadImageW` reads a resource
+    // name in our own module and returns a new icon the caller owns.
+    let width = unsafe { GetSystemMetrics(SM_CXICON) };
+    let height = unsafe { GetSystemMetrics(SM_CYICON) };
+    let name = PCWSTR(id as usize as *const u16);
+    let handle = unsafe { LoadImageW(Some(module.into()), name, IMAGE_ICON, width, height, LR_DEFAULTSIZE) }.ok()?;
+    Some((HICON(handle.0), width, height))
 }
 
 /// Destroys an icon returned by [`create_icon`].

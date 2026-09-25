@@ -37,6 +37,18 @@ impl Icon {
         })
     }
 
+    /// Loads the icon resource `id` from this program, at the system icon
+    /// size. The returned `Icon` owns its own copy, so it is destroyed with it.
+    /// A program's `build.rs`-embedded icon is usually resource id 1.
+    pub fn from_resource(id: u16) -> Result<Icon> {
+        let (handle, width, height) =
+            sys::window_icon::load_icon(id).ok_or(Error::Icon("resource not found"))?;
+        Ok(Icon {
+            handle,
+            size: Size::new(width, height),
+        })
+    }
+
     /// The icon's dimensions.
     pub fn size(&self) -> Size {
         self.size
@@ -50,6 +62,16 @@ impl Icon {
 impl Drop for Icon {
     fn drop(&mut self) {
         sys::window_icon::destroy_icon(self.handle);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_missing_icon_resource_is_an_error() {
+        assert!(Icon::from_resource(u16::MAX).is_err());
     }
 }
 
