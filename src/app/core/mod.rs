@@ -85,6 +85,9 @@ pub(crate) struct Core<M> {
     material_top_bar: RefCell<Option<Rc<crate::app::top_bar::TopBarState>>>,
     /// The app's mapping from top bar events to messages.
     top_bar_events: RefCell<Option<top_bar::TopBarMapper<M>>>,
+    /// The window icon, kept alive for the window's lifetime (`WM_SETICON`
+    /// stores the handle rather than copying it).
+    icon: RefCell<Option<crate::window::Icon>>,
 }
 
 impl<M> Core<M> {
@@ -123,7 +126,13 @@ impl<M> Core<M> {
             material_status_bar: RefCell::new(None),
             material_top_bar: RefCell::new(None),
             top_bar_events: RefCell::new(None),
+            icon: RefCell::new(None),
         }
+    }
+
+    /// Keeps `icon` alive for the window's lifetime.
+    pub(crate) fn keep_icon(&self, icon: crate::window::Icon) {
+        *self.icon.borrow_mut() = Some(icon);
     }
 
     /// Whether closing this window also quits the message loop.
