@@ -92,7 +92,6 @@ $envLines = ($Env.GetEnumerator() | ForEach-Object {
     "`$env:$($_.Key) = '$($_.Value -replace "'", "''")'"
 }) -join "`n"
 $argList = ($TestArgs | ForEach-Object { "'$($_ -replace "'", "''")'" }) -join ','
-$shutdown = if ($Keep) { '' } else { 'shutdown.exe /s /t 0' }
 @"
 `$ErrorActionPreference = 'Continue'
 `$env:RUST_BACKTRACE = '1'
@@ -105,7 +104,6 @@ Get-ChildItem C:\stage\bin\*.exe | ForEach-Object {
     if (`$LASTEXITCODE -ne 0) { `$failed++ }
 }
 Set-Content C:\stage\out\done.txt `$failed
-$shutdown
 "@ | Set-Content (Join-Path $stage 'runner.ps1') -Encoding UTF8
 
 # --- Sandbox configuration --------------------------------------------------
@@ -138,12 +136,17 @@ $done = Join-Path $out 'done.txt'
 $deadline = (Get-Date).AddMinutes($TimeoutMinutes)
 while (-not (Test-Path $done) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 2 }
 
+function Stop-Sandbox {
+    Get-Process -Name WindowsSandbox, WindowsSandboxClient, WindowsSandboxRemoteSession `
+        -ErrorAction SilentlyContinue | Stop-Process -Force
+}
+if (-not $Keep) { Stop-Sandbox }
+
 Get-ChildItem $out -Filter *.log | ForEach-Object {
     Write-Host "===== $($_.BaseName) =====" -ForegroundColor Cyan
     Get-Content $_.FullName
 }
 if (-not (Test-Path $done)) {
-    Get-Process -Name WindowsSandboxRemoteSession, WindowsSandboxClient -ErrorAction SilentlyContinue | Stop-Process -Force
     throw "Timed out after $TimeoutMinutes minutes; logs are in $out"
 }
 Get-Content (Join-Path $out 'summary.txt')

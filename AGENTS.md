@@ -53,6 +53,11 @@ cargo test
 
 ## Operational rules
 
+- **Running tests on a Windows desktop:** use `scripts\sandbox\run.ps1` (see the
+  `sandbox-tests` skill in `.claude/skills/` and `docs/sandbox-testing.md`). It
+  runs `cargo test`, or a single test binary, inside Windows Sandbox, so windows
+  and synthetic input never reach the shared desktop. Plain `cargo test` on the
+  host is only acceptable in CI or where the sandbox is unavailable.
 - Running the demo: always set `WIN32UI_DEMO_AUTOCLOSE_MS=4000` so it exits on
   its own, and never leave a demo process running when you finish.
 - **Screenshots.** Never raise, activate or foreground a window and never move
