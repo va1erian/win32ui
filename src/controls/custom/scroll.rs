@@ -127,10 +127,17 @@ impl<M: 'static> CustomScroll<M> {
     }
 
     pub(crate) fn scroll_to_px(&self, offset: i32) {
+        let previous = self.offset.get();
         self.offset.set(offset.clamp(0, self.max_offset()));
         let hwnd = self.hwnd.get();
         if hwnd.is_alive() {
             sys::scroll::set_vertical_pos(hwnd, self.offset.get());
+            // The widget draws its document pre-translated by this offset, so a
+            // changed offset is a repaint; without the blit a `ScrollView` does,
+            // nothing else would ask for one.
+            if self.offset.get() != previous {
+                sys::window::invalidate(hwnd);
+            }
         }
         self.push_info();
         self.notify();

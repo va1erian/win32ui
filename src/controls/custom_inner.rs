@@ -81,9 +81,17 @@ impl<W: CustomWidget, M: 'static> CustomHandler<W, M> {
         let widget = self.shared.widget.borrow();
         let bounds = self.bounds.get();
 
+        let scroll = self.shared.scroll.borrow();
+        let offset = scroll.as_ref().map_or(0, |s| s.offset());
+        let dpi = self.shared.ui.dpi();
+
         match widget.renderer() {
             Renderer::Gdi => {
-                if let Some(paint) = Paint::begin(hwnd) {
+                if let Some(mut paint) = Paint::begin(hwnd) {
+                    // The GDI path draws through the same pre-translated
+                    // document coordinates as Direct2D, so `paint_rect` is the
+                    // dirty band in content coordinates either way.
+                    paint.set_scroll_offset(offset);
                     widget.paint(paint.canvas(), bounds, &theme);
                 }
                 return;
@@ -107,9 +115,6 @@ impl<W: CustomWidget, M: 'static> CustomHandler<W, M> {
             Renderer::Direct2D => {}
         }
 
-        let scroll = self.shared.scroll.borrow();
-        let offset = scroll.as_ref().map_or(0, |s| s.offset());
-        let dpi = self.shared.ui.dpi();
         let viewport_offset = pixels_to_dips(offset, dpi);
         drop(scroll);
 

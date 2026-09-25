@@ -307,6 +307,14 @@ impl<W: CustomWidget, M: 'static> Custom<W, M> {
         }
     }
 
+    /// The widget's built-in scroll state, when it was hosted with
+    /// [`Custom::with_vscroll`]. A composite widget captures this in its
+    /// `on_resize` callback (which runs after `Custom` is moved into it) to
+    /// resize the scroll extent from the new viewport width.
+    pub(crate) fn scroll_handle(&self) -> Option<Rc<CustomScroll<M>>> {
+        self.shared.scroll.borrow().clone()
+    }
+
     /// The current scroll offset in design units, clamped to the content.
     pub fn scroll_offset(&self) -> Dip {
         self.shared
@@ -354,6 +362,20 @@ impl<W: CustomWidget, M: 'static> Custom<W, M> {
     /// Schedules a repaint of the widget.
     pub fn invalidate(&self) {
         self.window.invalidate();
+    }
+
+    /// Drops the widget's renderer surface — the Direct2D target and its
+    /// uploaded-image caches (or the OpenGL context) — so a heavy view does not
+    /// hold them while it is hidden. The next paint recreates it, so a caller
+    /// that also cached image handles from the surface must drop them too.
+    pub fn release_renderer(&self) {
+        {
+            let widget = self.shared.widget.borrow();
+            self.renderer
+                .borrow_mut()
+                .teardown_gl(|gl| widget.gl_teardown(gl));
+        }
+        *self.renderer.borrow_mut() = RendererState::Untried;
     }
 
     /// Schedules a repaint of `rect` only — the widget's client coordinates, in

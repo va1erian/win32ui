@@ -7,14 +7,14 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use crate::controls::custom::{CustomWidget, Input, Renderer, WidgetCx};
+use crate::controls::custom::{CustomWidget, Input, KeyResult, Renderer, WidgetCx};
 use crate::controls::grid_view::layout::{self, Direction};
 use crate::controls::grid_view::model::{GridModel, TileState};
 use crate::controls::grid_view::theme::GridViewTheme;
 use crate::d2d::{D2dCanvas, RectF};
 use crate::gdi::Canvas;
 use crate::geometry::Rect;
-use crate::message::{Key, MouseButton};
+use crate::message::{Key, Modifiers, MouseButton};
 use crate::theme::Theme;
 
 /// Draws one tile with GDI: the item, a canvas clipped to the tile's rectangle
@@ -267,6 +267,22 @@ impl<T: 'static> CustomWidget for GridWidget<T> {
 
     fn wants_arrow_keys(&self) -> bool {
         true
+    }
+
+    /// The built-in scroll host would scroll on the arrows; the grid moves its
+    /// selection instead. `PageUp`/`PageDown`/`Home`/`End` stay with the host.
+    fn key(&self, key: Key, _modifiers: Modifiers, cx: &mut WidgetCx<GridEvent>) -> KeyResult {
+        let direction = match key {
+            Key::UP => Direction::Up,
+            Key::DOWN => Direction::Down,
+            _ => return KeyResult::Ignored,
+        };
+        if let Some(index) = self.navigate(cx.bounds().width(), direction) {
+            self.selected.set(Some(index));
+            cx.invalidate();
+            cx.emit(GridEvent::Select(index));
+        }
+        KeyResult::Handled
     }
 
     fn input(&self, input: Input, cx: &mut WidgetCx<GridEvent>) {
