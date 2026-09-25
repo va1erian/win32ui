@@ -135,8 +135,8 @@ fn cube_data() -> Vec<f32> {
 
 /// The GPU objects built once per GL context. The vertex buffer is bound while
 /// the vertex array is set up and is not needed afterwards, so only the program
-/// and vertex array are kept; a demo leaks the objects for the process
-/// lifetime rather than tracking context teardown.
+/// and vertex array are kept; [`CubeWidget::gl_teardown`] deletes them with the
+/// context current when the widget is destroyed.
 struct GlResources {
     program: glow::Program,
     vao: glow::VertexArray,
@@ -274,6 +274,17 @@ impl CustomWidget for CubeWidget {
             gl.enable(glow::DEPTH_TEST);
             gl.uniform_matrix_4_f32_slice(resources.mvp.as_ref(), false, &mvp);
             gl.draw_arrays(glow::TRIANGLES, 0, 36);
+        }
+    }
+
+    fn gl_teardown(&self, gl: &glow::Context) {
+        let resources = self.resources.borrow_mut().take();
+        if let Some(resources) = resources {
+            // SAFETY: the surface made its context current for this teardown.
+            unsafe {
+                gl.delete_program(resources.program);
+                gl.delete_vertex_array(resources.vao);
+            }
         }
     }
 

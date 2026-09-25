@@ -77,6 +77,17 @@ pub trait CustomWidget: 'static {
     /// must not rely on its GL state persisting across a fallback.
     fn paint_gl(&self, _gl: &glow::Context, _bounds: Rect, _theme: &Theme) {}
 
+    /// Releases the GPU resources created in
+    /// [`paint_gl`](CustomWidget::paint_gl).
+    ///
+    /// Called with `gl` made current, just before the window's
+    /// [`GlSurface`](crate::gl::GlSurface) is dropped: when the widget is
+    /// destroyed, or when a failed frame makes the renderer fall back to GDI.
+    /// Free anything that must be destroyed with the context current here — a
+    /// [`glow::Program`], a `projectm_destroy`, and so on — rather than leaking
+    /// it for the lifetime of the process. The default does nothing.
+    fn gl_teardown(&self, _gl: &glow::Context) {}
+
     /// Whether the widget handles the arrow keys itself. When `true`, the
     /// dialog-style navigation of the window leaves the arrows to
     /// [`CustomWidget::input`] instead of moving the focus.
@@ -140,6 +151,7 @@ pub struct Custom<W: CustomWidget, M> {
     window: Window,
     control: Control,
     shared: Rc<CustomShared<W, M>>,
+    renderer: Rc<RefCell<RendererState>>,
 }
 
 impl<W: CustomWidget, M: 'static> Custom<W, M> {
@@ -169,6 +181,7 @@ impl<W: CustomWidget, M: 'static> Custom<W, M> {
             Rc::new(move |event| shared.emit(event))
         };
         let animate = Rc::new(Cell::new(false));
+        let renderer = Rc::new(RefCell::new(RendererState::Untried));
         let access_emit = Rc::clone(&emit);
         let access_bounds = Rc::clone(&client_bounds);
         let access_animate = Rc::clone(&animate);
@@ -176,7 +189,7 @@ impl<W: CustomWidget, M: 'static> Custom<W, M> {
             shared: Rc::clone(&shared),
             bounds: Rc::clone(&client_bounds),
             emit,
-            renderer: RefCell::new(RendererState::Untried),
+            renderer: Rc::clone(&renderer),
             animate,
             tracking_mouse: Cell::new(false),
         };
@@ -230,6 +243,7 @@ impl<W: CustomWidget, M: 'static> Custom<W, M> {
             window,
             control,
             shared,
+            renderer,
         })
     }
 
@@ -356,6 +370,24 @@ impl<W: CustomWidget, M: 'static> Custom<W, M> {
     pub fn window_rect(&self) -> Rect {
         self.window.window_rect()
     }
+
+    /// Runs `f` with the widget's OpenGL context made current, outside a paint,
+    /// and returns its result. `None` when the widget has no live
+    /// [`GlSurface`](crate::gl::GlSurface) — it uses another renderer, its first
+    /// frame has not run yet, or the context could not be created.
+    ///
+    /// Unlike [`CustomWidget::paint_gl`](crate::CustomWidget::paint_gl) neither
+    /// the viewport nor the framebuffer is touched, and nothing is presented:
+    /// issue GL calls directly. Use it to free GPU resources without waiting
+    /// for a paint (hiding a view, say), or to upload assets up front. A widget
+    /// that only frees on teardown can implement
+    /// [`CustomWidget::gl_teardown`](crate::CustomWidget::gl_teardown) instead.
+    pub fn with_gl<R>(&self, f: impl FnOnce(&glow::Context) -> R) -> Option<R> {
+        match &*self.renderer.borrow() {
+            RendererState::Gl(surface) => Some(surface.with_gl(f)),
+            _ => None,
+        }
+    }
 }
 
 impl<W: CustomWidget, M> AsControl for Custom<W, M> {
@@ -380,6 +412,12 @@ impl<W: CustomWidget, M> Themed for Custom<W, M> {
 
 impl<W: CustomWidget, M> Drop for Custom<W, M> {
     fn drop(&mut self) {
+        {
+            let widget = self.shared.widget.borrow();
+            self.renderer
+                .borrow_mut()
+                .teardown_gl(|gl| widget.gl_teardown(gl));
+        }
         crate::theme::unregister_themed(self.control.hwnd());
     }
 }

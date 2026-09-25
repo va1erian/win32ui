@@ -71,14 +71,19 @@ impl RendererState {
     /// window's client size and the framebuffer cleared to `background`; the
     /// frame is presented (`SwapBuffers`) once it returns.
     ///
-    /// Returns `false` when the frame could not be presented (OpenGL cannot be
-    /// created, or the swap failed), so the caller paints the GDI fallback
-    /// instead.
+    /// When the frame cannot be presented (OpenGL cannot be created, or the
+    /// swap failed) `teardown` runs with the context still current, before the
+    /// surface is dropped and the renderer falls back to GDI, so the widget can
+    /// free its GPU resources.
+    ///
+    /// Returns `false` when the frame could not be presented, so the caller
+    /// paints the GDI fallback instead.
     pub(crate) fn paint_gl(
         &mut self,
         hwnd: Hwnd,
         background: Color,
         draw: impl FnOnce(&glow::Context),
+        teardown: impl FnOnce(&glow::Context),
     ) -> bool {
         if matches!(*self, RendererState::Untried) {
             *self = GlSurface::new(hwnd).map_or(RendererState::Gdi, |surface| {
@@ -91,11 +96,23 @@ impl RendererState {
         let gl = surface.begin_frame(background);
         draw(gl);
         if surface.end_frame().is_err() {
+            surface.with_gl(teardown);
             *self = RendererState::Gdi;
             sys::window::invalidate(hwnd);
             return false;
         }
         true
+    }
+
+    /// Drops the OpenGL surface, if one exists, first running `teardown` with
+    /// its context current. Use it when the widget is destroyed so GPU
+    /// resources are freed while the context is still live. A no-op for the
+    /// GDI and Direct2D renderers.
+    pub(crate) fn teardown_gl(&mut self, teardown: impl FnOnce(&glow::Context)) {
+        if let RendererState::Gl(surface) = self {
+            surface.with_gl(teardown);
+            *self = RendererState::Gdi;
+        }
     }
 
     /// Resizes the backing surface (call on `WM_SIZE`).
