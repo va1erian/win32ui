@@ -241,7 +241,9 @@ impl<A: App> WindowHandler for AppHandler<A> {
             // Posted at the end of a DPI change: paint the whole tree once more,
             // after the common controls have finished re-laying themselves out,
             // so no text is left unpainted until the pointer hovers it.
-            Message::Other { code, .. } if code == sys::message::dpi_settled_message() => {
+            Message::Other { code, .. }
+                if code != 0 && code == sys::message::dpi_settled_message() =>
+            {
                 sys::window::paint_now(window.hwnd());
                 Some(0)
             }

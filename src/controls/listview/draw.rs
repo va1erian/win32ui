@@ -38,7 +38,7 @@ pub(crate) struct ListViewInner<T> {
     pub(crate) columns: Vec<Column<T>>,
     pub(crate) font: Font,
     /// The bold variant of `font`, used for [`RowStyle::bold`] rows. Created
-    /// once at construction, never per paint.
+    /// at construction and rebuilt on a DPI change, never per paint.
     pub(crate) bold_font: Font,
     pub(crate) row_style: Option<RowStyleFn<T>>,
     pub(crate) row_painter: Option<RowPainterFn<T>>,
