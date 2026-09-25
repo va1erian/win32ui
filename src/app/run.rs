@@ -328,6 +328,12 @@ impl<A: App> WindowHandler for AppHandler<A> {
                 self.core.refresh_material_top_bar();
                 sys::nc::apply_extended_frame(window.hwnd());
                 sys::nc::refresh_caption_inset(window.hwnd());
+                // Common controls reopen their visual-style data for the new DPI
+                // and can drop the dark sub-app name; re-apply the theme so no
+                // native part (header, scroll bar, tab frame) falls back to
+                // light, then paint the whole tree so nothing is left blank.
+                crate::theme::retheme_children(window.hwnd(), &self.core.theme());
+                sys::window::paint_now(window.hwnd());
                 Some(0)
             }
             _ => None,
