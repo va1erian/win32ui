@@ -100,6 +100,14 @@ impl ImageCache {
         }
     }
 
+    /// Drops every retained image, releasing their RGBA memory. The id counter
+    /// is left as is, so ids issued before this call stay unique; a draw with a
+    /// stale id finds nothing and uploads nothing.
+    pub(super) fn clear(&mut self) {
+        self.images.clear();
+        self.bytes = 0;
+    }
+
     fn tick(&mut self) -> u64 {
         self.clock += 1;
         self.clock
@@ -178,5 +186,55 @@ impl D2dSurface {
         if let Some(target) = self.target.borrow_mut().as_mut() {
             target.images.forget(id);
         }
+    }
+
+    /// Releases every image uploaded to this surface: the retained RGBA cache
+    /// and, if the target is live, its device bitmaps and tiled brushes.
+    ///
+    /// Unlike dropping the whole surface, the render target is kept, so this
+    /// frees the bulk of a heavy view's memory (the uploaded covers) without a
+    /// recreate — and therefore without the unpainted frame that a fresh target
+    /// shows until its first paint. Image ids issued before this call are no
+    /// longer valid; a caller that cached handles must drop them so the next
+    /// paint re-uploads.
+    pub fn release_images(&self) {
+        self.images.borrow_mut().clear();
+        if let Some(target) = self.target.borrow_mut().as_mut() {
+            target.images.clear();
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::capture::RgbaImage;
+
+    fn solid(width: u32, height: u32, byte: u8) -> RgbaImage {
+        RgbaImage {
+            width,
+            height,
+            pixels: vec![byte; (width * height * 4) as usize],
+        }
+    }
+
+    #[test]
+    fn clear_drops_every_retained_image_and_its_bytes() {
+        let mut cache = ImageCache::new();
+        let first = cache.insert(&solid(4, 4, 0x11));
+        let second = cache.insert(&solid(2, 2, 0x22));
+        assert!(cache.bytes > 0);
+        assert!(cache.touch(first).is_some());
+
+        cache.clear();
+
+        assert_eq!(cache.bytes, 0);
+        assert!(cache.touch(first).is_none());
+        assert!(cache.touch(second).is_none());
+        // Ids stay unique across the clear, so a stale id never aliases a new
+        // upload.
+        let third = cache.insert(&solid(1, 1, 0x33));
+        assert_ne!(third, first);
+        assert_ne!(third, second);
     }
 }

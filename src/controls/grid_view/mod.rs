@@ -234,6 +234,16 @@ impl<T: 'static, M: 'static> GridView<T, M> {
         self.custom.release_renderer();
     }
 
+    /// Releases the grid's uploaded cover images — the retained RGBA cache and
+    /// the device bitmaps — while keeping the renderer surface. Prefer this
+    /// over [`GridView::release_renderer`] when hiding a view: the target is
+    /// not recreated, so showing the view again never flashes an unpainted
+    /// frame. The caller must still drop the cover handles its tiles cached
+    /// (e.g. by clearing each tile's image id).
+    pub fn release_images(&self) {
+        self.custom.release_images();
+    }
+
     /// The tile size, in design units.
     pub fn current_tile_size(&self) -> Dip {
         Px(self.with_widget(GridWidget::tile_px)).to_dip(self.custom.dpi())

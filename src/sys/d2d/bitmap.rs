@@ -62,6 +62,15 @@ impl Images {
         self.tiled.remove(&id);
     }
 
+    /// Drops every device bitmap and tiled brush, releasing their memory. The
+    /// bitmaps are re-created lazily from the surface's retained images on
+    /// their next use (or skipped if those were released too).
+    pub(crate) fn clear(&mut self) {
+        self.bitmaps.clear();
+        self.tiled.clear();
+        self.bytes = 0;
+    }
+
     fn tick(&mut self) -> u64 {
         self.clock += 1;
         self.clock
