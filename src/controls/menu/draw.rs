@@ -208,6 +208,10 @@ pub(crate) fn paint_item(
         draw_label(&canvas, &font, label_rect, item.label, state, text);
         if item.submenu {
             draw_chevron(&canvas, area, center, dpi, text);
+            // The system still draws its own default submenu arrow *after*
+            // `WM_DRAWITEM`, over ours, unless we take the item's rectangle out
+            // of the device context's clip region first.
+            canvas.exclude_clip_rect(area);
         }
         return;
     }

@@ -8,9 +8,9 @@ use windows::Win32::Foundation::{COLORREF, POINT, RECT};
 use windows::Win32::Graphics::Gdi::{
     AC_SRC_ALPHA, AC_SRC_OVER, AlphaBlend, BLENDFUNCTION, BeginPaint, BitBlt,
     CreateCompatibleBitmap, CreateCompatibleDC, DRAW_TEXT_FORMAT, DeleteDC, DeleteObject,
-    DrawTextW, EndPaint, GetClipBox, HBITMAP, HBRUSH, HDC, HGDIOBJ, IntersectClipRect, LineTo,
-    MoveToEx, PAINTSTRUCT, Polygon, SRCCOPY, SelectClipRgn, SelectObject, SetBkMode, SetTextColor,
-    SetViewportOrgEx, TRANSPARENT,
+    DrawTextW, EndPaint, ExcludeClipRect, GetClipBox, HBITMAP, HBRUSH, HDC, HGDIOBJ,
+    IntersectClipRect, LineTo, MoveToEx, PAINTSTRUCT, Polygon, SRCCOPY, SelectClipRgn,
+    SelectObject, SetBkMode, SetTextColor, SetViewportOrgEx, TRANSPARENT,
 };
 
 use crate::color::Color;
@@ -148,6 +148,16 @@ pub(crate) fn clip_rect(hdc: HDC, rect: Rect) {
     // SAFETY: `rect` is plain geometry.
     unsafe {
         let _ = IntersectClipRect(hdc, rect.left, rect.top, rect.right, rect.bottom);
+    }
+}
+
+/// Removes `rect` from `hdc`'s clip region, so later drawing cannot paint over
+/// it. Used to suppress the system's default submenu arrow, which it draws
+/// after an owner-drawn menu item's `WM_DRAWITEM`.
+pub(crate) fn exclude_clip_rect(hdc: HDC, rect: Rect) {
+    // SAFETY: `rect` is plain geometry.
+    unsafe {
+        let _ = ExcludeClipRect(hdc, rect.left, rect.top, rect.right, rect.bottom);
     }
 }
 

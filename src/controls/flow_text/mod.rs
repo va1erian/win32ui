@@ -136,6 +136,15 @@ impl<M: 'static> FlowText<M> {
         self.run(Run::weak(text))
     }
 
+    /// Appends a hard line break, so later runs start on a new line.
+    ///
+    /// DirectWrite lays the runs out as one block and treats `\n` as a
+    /// mandatory break, so the wrapped height (and
+    /// [`FlowText::preferred_height`]) grows by one line per call.
+    pub fn line_break(self) -> FlowText<M> {
+        self.run(Run::normal("\n"))
+    }
+
     /// Replaces the base font (a family list and an em size in design units)
     /// that runs without an explicit size inherit.
     pub fn set_font(&self, family: &str, size_dip: f32) -> Result<()> {
