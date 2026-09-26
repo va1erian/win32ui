@@ -8,6 +8,11 @@ use crate::window::{Backdrop, TitleBar};
 
 use super::ui::Ui;
 
+/// The accent tint's default strength, `0..=255`: how much of each material
+/// band the translucent accent covers. Used when a
+/// [`WindowSpec::accent_tint_strength`] is not set.
+pub const DEFAULT_ACCENT_TINT_STRENGTH: u8 = 0x66;
+
 /// Where the strip menu is drawn inside the extended title strip.
 ///
 /// Set with [`WindowSpec::menu_strip_placement`]; only meaningful together with
@@ -48,6 +53,8 @@ pub struct WindowSpec {
     theme: Theme,
     theme_explicit: bool,
     backdrop: Backdrop,
+    accent_tint: bool,
+    accent_tint_strength: u8,
     title_bar: TitleBar,
     menu_in_strip: bool,
     menu_strip_placement: MenuStripPlacement,
@@ -63,6 +70,8 @@ impl WindowSpec {
             theme: Theme::light(),
             theme_explicit: false,
             backdrop: Backdrop::None,
+            accent_tint: false,
+            accent_tint_strength: DEFAULT_ACCENT_TINT_STRENGTH,
             title_bar: TitleBar::Standard,
             menu_in_strip: false,
             menu_strip_placement: MenuStripPlacement::default(),
@@ -91,6 +100,31 @@ impl WindowSpec {
     /// [`Ui::backdrop_active`] whether it is active.
     pub fn backdrop(mut self, backdrop: Backdrop) -> WindowSpec {
         self.backdrop = backdrop;
+        self
+    }
+
+    /// Tints the material bands with the window's [`Theme::accent`]: the
+    /// extended title strip, the material top bar and the material status bar
+    /// are filled with a translucent accent under their content, on the same
+    /// Direct2D surface they already draw on. The client area stays opaque and
+    /// themed, so content stays legible.
+    ///
+    /// Only meaningful together with a [`WindowSpec::backdrop`] material: the
+    /// tint shows where the material is, and is skipped under high contrast or
+    /// when transparency effects are off. Toggle it live with
+    /// [`Ui::set_accent_tint`].
+    pub fn accent_tint(mut self, on: bool) -> WindowSpec {
+        self.accent_tint = on;
+        self
+    }
+
+    /// The strength of the accent tint, `0..=255`: how much of each material
+    /// band the translucent accent covers (`0` is invisible, `255` opaque).
+    /// Ignored when [`accent_tint`](WindowSpec::accent_tint) is off; defaults
+    /// to [`DEFAULT_ACCENT_TINT_STRENGTH`]. Set it live with
+    /// [`Ui::set_accent_tint_strength`].
+    pub fn accent_tint_strength(mut self, strength: u8) -> WindowSpec {
+        self.accent_tint_strength = strength;
         self
     }
 
@@ -132,6 +166,16 @@ impl WindowSpec {
     /// The requested backdrop material.
     pub(crate) fn backdrop_kind(&self) -> Backdrop {
         self.backdrop
+    }
+
+    /// Whether the material should be tinted with the theme accent.
+    pub(crate) fn accent_tint_kind(&self) -> bool {
+        self.accent_tint
+    }
+
+    /// The requested accent tint strength.
+    pub(crate) fn accent_tint_strength_kind(&self) -> u8 {
+        self.accent_tint_strength
     }
 
     /// The requested title-bar style.

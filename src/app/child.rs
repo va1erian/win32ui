@@ -172,6 +172,8 @@ where
     core.set_title_bar(spec.title_bar_kind());
     core.set_menu_in_strip(spec.menu_in_strip_kind());
     core.set_menu_strip_placement(spec.menu_strip_placement_kind());
+    core.set_accent_tint(spec.accent_tint_kind());
+    core.set_accent_tint_strength(spec.accent_tint_strength_kind());
     let mut backdrop_active =
         sys::apply_backdrop(window.hwnd(), spec.backdrop_kind(), theme.is_dark);
     if spec.title_bar_kind() == TitleBar::Colored {

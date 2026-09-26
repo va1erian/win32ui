@@ -68,6 +68,10 @@ pub(crate) struct Core<M> {
     accelerators: RefCell<Vec<Accelerator<M>>>,
     theme: Cell<Theme>,
     title_bar: Cell<TitleBar>,
+    /// Whether the material bands are tinted with the theme accent.
+    accent_tint: Cell<bool>,
+    /// The tint's strength, `0..=255`.
+    accent_tint_strength: Cell<u8>,
     layout: RefCell<Option<Layout>>,
     /// Split-divider child windows, kept alive for the layout's lifetime.
     dividers: RefCell<Vec<Window>>,
@@ -122,6 +126,8 @@ impl<M> Core<M> {
             accelerators: RefCell::new(Vec::new()),
             theme: Cell::new(theme),
             title_bar: Cell::new(TitleBar::Standard),
+            accent_tint: Cell::new(false),
+            accent_tint_strength: Cell::new(crate::app::spec::DEFAULT_ACCENT_TINT_STRENGTH),
             layout: RefCell::new(None),
             dividers: RefCell::new(Vec::new()),
             result: RefCell::new(None),
@@ -270,6 +276,26 @@ impl<M> Core<M> {
     /// The window's title-bar style.
     pub(crate) fn title_bar(&self) -> TitleBar {
         self.title_bar.get()
+    }
+
+    /// Records whether the material bands are tinted with the theme accent.
+    pub(crate) fn set_accent_tint(&self, on: bool) {
+        self.accent_tint.set(on);
+    }
+
+    /// Whether the material bands are tinted with the theme accent.
+    pub(crate) fn accent_tint(&self) -> bool {
+        self.accent_tint.get()
+    }
+
+    /// Records the accent tint strength (`0..=255`).
+    pub(crate) fn set_accent_tint_strength(&self, strength: u8) {
+        self.accent_tint_strength.set(strength);
+    }
+
+    /// The accent tint strength (`0..=255`).
+    pub(crate) fn accent_tint_strength(&self) -> u8 {
+        self.accent_tint_strength.get()
     }
 }
 

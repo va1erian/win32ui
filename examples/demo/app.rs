@@ -76,6 +76,9 @@ pub(crate) fn main() {
         Ok("extended") => TitleBar::Extended,
         _ => TitleBar::Standard,
     };
+    // `WIN32UI_DEMO_ACCENT_TINT=1` tints the material with the theme accent
+    // (the only undocumented call; see README's *Undocumented APIs*).
+    let accent_tint = std::env::var_os("WIN32UI_DEMO_ACCENT_TINT").is_some();
     // `WIN32UI_DEMO_MENU_STRIP=1` draws the menu on the acrylic strip instead
     // of a native bar (only takes effect with the extended title bar and an
     // active material). `WIN32UI_DEMO_MENU_PLACEMENT=inline|stacked` picks
@@ -95,6 +98,7 @@ pub(crate) fn main() {
             .size(dip(width), dip(height))
             .theme(theme)
             .backdrop(backdrop)
+            .accent_tint(accent_tint)
             .title_bar(title_bar)
             .menu_in_strip(menu_in_strip)
             .menu_strip_placement(menu_placement),
@@ -157,6 +161,8 @@ enum Msg {
     Send,
     RemoteImages(bool),
     SetTheme(ThemeChoice),
+    AccentTint(bool),
+    AccentStrength(f64),
     Tick(u64),
     SortChanged(SortKey),
     Search(String),
