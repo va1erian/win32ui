@@ -315,6 +315,30 @@ pub fn capture_screen(rect: Rect) -> Option<RgbaImage> {
     })
 }
 
+/// Clears a control's invalidated region, so a later [`has_pending_paint`]
+/// only sees invalidations raised after this call.
+pub fn clear_pending_paint(hwnd: win32ui::Hwnd) {
+    use core::ffi::c_void;
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::Graphics::Gdi::ValidateRect;
+
+    // SAFETY: `hwnd` is a live control handle; `ValidateRect` only reads it.
+    unsafe {
+        let _ = ValidateRect(Some(HWND(hwnd.raw() as *mut c_void)), None);
+    }
+}
+
+/// Whether a control has an invalidated region awaiting its next `WM_PAINT`.
+pub fn has_pending_paint(hwnd: win32ui::Hwnd) -> bool {
+    use core::ffi::c_void;
+    use windows::Win32::Foundation::{HWND, RECT};
+    use windows::Win32::Graphics::Gdi::GetUpdateRect;
+
+    let mut rect = RECT::default();
+    // SAFETY: `hwnd` is a live control handle; `rect` is a valid out-pointer.
+    unsafe { GetUpdateRect(HWND(hwnd.raw() as *mut c_void), Some(&mut rect), false).as_bool() }
+}
+
 /// Whether `color` is near-white (all channels high), the shape of the #67
 /// combo regression.
 pub fn is_near_white(color: [u8; 4]) -> bool {
