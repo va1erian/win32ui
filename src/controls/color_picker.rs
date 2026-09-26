@@ -138,9 +138,13 @@ impl<M: 'static> ColorPicker<M> {
         self.color.get()
     }
 
-    /// Replaces the colour shown, without raising `on_change`.
+    /// Replaces the colour shown, without raising `on_change`. Setting the
+    /// colour it already shows is a no-op, so syncing a form does not repaint
+    /// (and flicker) the swatch.
     pub fn set_color(&self, color: Color) {
-        self.color.set(color);
+        if self.color.replace(color) == color {
+            return;
+        }
         sys::window::invalidate(self.control.hwnd());
     }
 }

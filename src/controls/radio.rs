@@ -118,13 +118,20 @@ struct RadioShared<T, M> {
 
 impl<T, M: 'static> RadioShared<T, M> {
     /// Records `index` as selected, checks exactly that button and repaints
-    /// the group. (`BM_SETCHECK` alone does not repaint an owner-drawn
-    /// button.)
+    /// only the buttons whose state changed. (`BM_SETCHECK` alone does not
+    /// repaint an owner-drawn button.) A reselection of the current value is a
+    /// no-op, so syncing a form does not cause the radios to flicker.
     fn select(&self, index: usize) {
-        self.selected.set(Some(index));
+        let previous = self.selected.replace(Some(index));
+        if previous == Some(index) {
+            return;
+        }
         for (i, hwnd) in self.hwnds.iter().enumerate() {
-            sys::button::set_checked(*hwnd, i == index);
-            sys::window::invalidate(*hwnd);
+            let checked = i == index;
+            sys::button::set_checked(*hwnd, checked);
+            if checked || previous == Some(i) {
+                sys::window::invalidate(*hwnd);
+            }
         }
     }
 }

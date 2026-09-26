@@ -13,6 +13,8 @@ use std::rc::Rc;
 use common::run_app_with_watchdog;
 use win32ui::prelude::*;
 
+use common::{clear_pending_paint, has_pending_paint};
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum BtnMsg {
     Start,
@@ -258,6 +260,79 @@ fn radiogroup_selects_by_value() {
         *log.borrow(),
         vec![RadioMsg::Start, RadioMsg::Chose(Choice::Light)],
         "clicking the first button did not report its value"
+    );
+}
+
+/// Re-selecting the already-selected radio must be a no-op: it invalidates
+/// nothing, so a periodic form sync cannot make the radios flicker. Switching
+/// selection still repaints the old and the new button.
+#[test]
+fn reselecting_the_current_radio_does_not_repaint() {
+    let result = Rc::new(Cell::new(None));
+    let created = Rc::new(Cell::new(false));
+    let result_for_make = Rc::clone(&result);
+    let created_for_make = Rc::clone(&created);
+
+    struct NoopApp {
+        group: Option<RadioGroup<Choice, ()>>,
+        result: Rc<Cell<Option<(usize, usize)>>>,
+        created: Rc<Cell<bool>>,
+    }
+
+    impl App for NoopApp {
+        type Msg = ();
+        fn update(&mut self, _msg: (), ui: &mut Ui<()>) {
+            if let Some(group) = &self.group {
+                let hwnds: Vec<Hwnd> = group.options().iter().map(|option| option.hwnd()).collect();
+
+                for hwnd in &hwnds {
+                    clear_pending_paint(*hwnd);
+                }
+                group.set_selected(&Choice::Dark);
+                let same = hwnds.iter().filter(|h| has_pending_paint(**h)).count();
+
+                for hwnd in &hwnds {
+                    clear_pending_paint(*hwnd);
+                }
+                group.set_selected(&Choice::Light);
+                let switched = hwnds.iter().filter(|h| has_pending_paint(**h)).count();
+
+                self.result.set(Some((same, switched)));
+            }
+            self.created.set(self.group.is_some());
+            ui.quit();
+        }
+    }
+
+    let Some(run) = run_app_with_watchdog("win32ui.buttons.radio_noop", move |ui| {
+        let group =
+            RadioGroup::<Choice, ()>::new(ui, [("Light", Choice::Light), ("Dark", Choice::Dark)])
+                .ok()
+                .map(|group| group.selected(Choice::Dark));
+        if let Some(group) = &group {
+            ui.set_layout(group.layout());
+        }
+        ui.emit(());
+        NoopApp {
+            group,
+            result: result_for_make,
+            created: created_for_make,
+        }
+    }) else {
+        return;
+    };
+    assert!(!run.timed_out, "the watchdog fired before the app quit");
+    if !created.get() {
+        return;
+    }
+    let (same, switched) = result.get().expect("the checks ran");
+    assert_eq!(
+        same, 0,
+        "re-selecting the current radio invalidated {same} button(s)"
+    );
+    assert_eq!(
+        switched, 2,
+        "switching selection should repaint the old and new radio, repainted {switched}"
     );
 }
 
