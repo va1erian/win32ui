@@ -123,4 +123,13 @@ impl RendererState {
             RendererState::Untried | RendererState::Gdi => {}
         }
     }
+
+    /// Releases the Direct2D surface's uploaded images, keeping the render
+    /// target. A no-op for the OpenGL and GDI renderers, which retain no such
+    /// images.
+    pub(crate) fn release_images(&self) {
+        if let RendererState::Direct2d(surface) = self {
+            surface.release_images();
+        }
+    }
 }

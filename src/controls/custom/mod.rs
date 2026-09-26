@@ -378,6 +378,18 @@ impl<W: CustomWidget, M: 'static> Custom<W, M> {
         *self.renderer.borrow_mut() = RendererState::Untried;
     }
 
+    /// Releases the widget's uploaded Direct2D images — the retained RGBA cache
+    /// and the device bitmaps — while keeping the render target. Use it instead
+    /// of [`release_renderer`](Custom::release_renderer) when hiding a heavy
+    /// Direct2D view: the covers' memory is freed, but the surface is not
+    /// dropped, so the next show does not recreate the target (a fresh target
+    /// paints nothing until its first frame, so the window can flash stale
+    /// pixels). A caller that cached image handles from the surface must drop
+    /// them too. A no-op for the OpenGL and GDI renderers.
+    pub fn release_images(&self) {
+        self.renderer.borrow().release_images();
+    }
+
     /// Schedules a repaint of `rect` only — the widget's client coordinates, in
     /// device pixels. Unlike [`invalidate`](Custom::invalidate) the paint is
     /// clipped to this rectangle (both the GDI and Direct2D paths honour the

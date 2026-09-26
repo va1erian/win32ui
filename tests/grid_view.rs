@@ -13,6 +13,7 @@ use std::rc::Rc;
 use std::time::Instant;
 
 use common::run_app_with_watchdog;
+use win32ui::d2d::Interpolation;
 use win32ui::prelude::*;
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::Graphics::Gdi::UpdateWindow;
@@ -375,6 +376,93 @@ fn direct2d_grid_virtualizes_from_the_first_frame() {
     assert!(
         repaint_count < 2_000,
         "a full repaint painted {repaint_count} of {TILES} tiles"
+    );
+}
+
+/// A Direct2D grid stays paintable after `release_images`: the uploaded covers
+/// are dropped but the renderer surface is kept, so the next frame re-uploads
+/// and paints without recreating (or blanking) the target.
+struct ReleaseImagesApp {
+    grid: GridView<Tile, Msg>,
+    painted: Rc<Cell<usize>>,
+    after_release: Rc<Cell<Option<usize>>>,
+}
+
+impl App for ReleaseImagesApp {
+    type Msg = Msg;
+
+    fn update(&mut self, _msg: Msg, ui: &mut Ui<Msg>) {
+        let viewport = HWND(self.grid.hwnd().raw() as *mut c_void);
+        // First frame: upload the cover and record that it painted.
+        self.grid.invalidate();
+        // SAFETY: `viewport` is the live grid window.
+        unsafe {
+            let _ = UpdateWindow(viewport);
+        }
+        assert!(
+            self.painted.get() > 0,
+            "the first frame never reached the painter"
+        );
+
+        // Release the uploaded images, then repaint: if the surface were
+        // dropped this would still work, but a kept surface must repaint too.
+        self.grid.release_images();
+        self.painted.set(0);
+        self.grid.invalidate();
+        // SAFETY: as above.
+        unsafe {
+            let _ = UpdateWindow(viewport);
+        }
+        self.after_release.set(Some(self.painted.get()));
+        ui.quit();
+    }
+}
+
+#[test]
+fn release_images_keeps_the_grid_paintable() {
+    let painted = Rc::new(Cell::new(0));
+    let after_release = Rc::new(Cell::new(None));
+    let painted_for_make = Rc::clone(&painted);
+    let after_for_make = Rc::clone(&after_release);
+
+    let Some(run) = run_app_with_watchdog("win32ui.grid_view.release_images", move |ui| {
+        let image = RgbaImage {
+            width: 4,
+            height: 4,
+            pixels: vec![0x40; 4 * 4 * 4],
+        };
+        let painted_for_closure = Rc::clone(&painted_for_make);
+        let grid = GridView::<Tile, Msg>::new(ui)
+            .expect("grid")
+            .tile_size(dip(20.0))
+            .content_d2d(move |_tile: &Tile, canvas, rect, _state| {
+                painted_for_closure.set(painted_for_closure.get() + 1);
+                let id = canvas.image(&image);
+                canvas.draw_image(id, rect, None, 1.0, Interpolation::Linear);
+            });
+        grid.set_model((0..200).map(|i| Tile(i as u32)).collect::<Vec<_>>());
+        grid.set_bounds(Rect::new(0, 0, 900, 600));
+
+        // Releasing before the first paint must be a no-op, not a panic.
+        grid.release_images();
+
+        ui.emit(Msg::Start);
+        ReleaseImagesApp {
+            grid,
+            painted: painted_for_make,
+            after_release: after_for_make,
+        }
+    }) else {
+        return;
+    };
+
+    assert!(!run.timed_out, "the watchdog fired before the app quit");
+    let after = after_release
+        .get()
+        .expect("the post-release frame never ran");
+    assert!(
+        after > 0,
+        "the grid painted nothing after release_images; the surface was lost"
     );
 }
 
