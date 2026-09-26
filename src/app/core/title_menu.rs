@@ -50,8 +50,12 @@ impl<M: 'static> Core<M> {
 
     /// Whether the window paints a material surface (the strip menu and/or the
     /// bottom status bar) and so must repaint its transparent Direct2D layer.
+    /// The accent tint also needs the surface, to fill the material bands.
     pub(crate) fn has_material_surface(&self) -> bool {
-        self.has_title_menu() || self.has_material_status_bar() || self.has_material_top_bar()
+        self.has_title_menu()
+            || self.has_material_status_bar()
+            || self.has_material_top_bar()
+            || (self.accent_tint() && crate::theme::backdrop_active(self.hwnd.get()))
     }
 
     /// Recomputes the strip menu's row height and item rectangles for the
@@ -157,8 +161,36 @@ impl<M: 'static> Core<M> {
         // The content starts below the top bar band, which is painted on the
         // material (or opaque by `paint_material_top_bar` on the fallback).
         let content_top = strip + top_bar;
-        canvas.clear_rgba(Rgba::TRANSPARENT);
         let content_bottom = (client.height() - band).max(content_top);
+        canvas.clear_rgba(Rgba::TRANSPARENT);
+        // The accent tint is a translucent fill over the material bands, under
+        // the strip/menu and bar content painted below. Only the bands are
+        // touched; the content region stays the opaque theme background.
+        if self.accent_tint() && crate::theme::backdrop_active(hwnd) {
+            let tint = Rgba::with_alpha(
+                theme.accent.r,
+                theme.accent.g,
+                theme.accent.b,
+                self.accent_tint_strength(),
+            );
+            if content_top > 0 {
+                canvas.fill_rect_rgba(
+                    RectF::new(0.0, 0.0, width, content_top as f32 / scale),
+                    tint,
+                );
+            }
+            if content_bottom < client.height() {
+                canvas.fill_rect_rgba(
+                    RectF::new(
+                        0.0,
+                        content_bottom as f32 / scale,
+                        width,
+                        client.height() as f32 / scale,
+                    ),
+                    tint,
+                );
+            }
+        }
         if content_bottom > content_top {
             canvas.fill_rect_rgba(
                 RectF::new(

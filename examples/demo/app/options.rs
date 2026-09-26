@@ -23,6 +23,9 @@ pub(super) struct Options {
     remote: CheckBox<Msg>,
     themes: RadioGroup<ThemeChoice, Msg>,
     theme_group: GroupBox,
+    tint: CheckBox<Msg>,
+    tint_caption: Label,
+    tint_strength: Slider<Msg>,
     disabled: Button<Msg>,
     notes_label: Label,
     notes: Edit<Msg>,
@@ -56,6 +59,18 @@ impl Options {
         .expect("themes")
         .selected(initial_choice)
         .on_select(|choice| Some(Msg::SetTheme(*choice)));
+        // The accent tint only shows on a window that has a material backdrop
+        // and bands, so the demo turns it on with `WIN32UI_DEMO_ACCENT_TINT`.
+        let tint_on = std::env::var_os("WIN32UI_DEMO_ACCENT_TINT").is_some();
+        let tint = CheckBox::new(ui, "Accent tint")
+            .expect("tint")
+            .checked(tint_on)
+            .on_toggle(|on| Some(Msg::AccentTint(on)));
+        let tint_caption = Label::new(ui, Rect::default(), "Tint strength").expect("tint caption");
+        let tint_strength = Slider::new(ui, 0.0..=255.0)
+            .expect("tint strength")
+            .value(f64::from(win32ui::DEFAULT_ACCENT_TINT_STRENGTH))
+            .on_change(|value| Some(Msg::AccentStrength(value)));
         let disabled = Button::new(ui, "Disabled").expect("disabled");
         disabled.set_enabled(false);
         let notes_label = Label::new(ui, Rect::default(), "Notes").expect("notes label");
@@ -67,6 +82,9 @@ impl Options {
             remote,
             themes,
             theme_group,
+            tint,
+            tint_caption,
+            tint_strength,
             disabled,
             notes_label,
             notes,
@@ -80,6 +98,9 @@ impl Options {
             self.remote,
             self.theme_group.height(dip(20.0)),
             self.themes.layout(),
+            self.tint,
+            self.tint_caption.height(dip(18.0)),
+            self.tint_strength.height(dip(24.0)),
             self.disabled,
             self.notes_label,
             self.notes.height(dip(80.0)),
@@ -132,6 +153,22 @@ impl Options {
                 };
                 ui.set_theme(next);
                 status.set_text(0, "Theme switched");
+            }
+            Msg::AccentTint(on) => {
+                ui.set_accent_tint(*on);
+                status.set_text(
+                    0,
+                    if *on {
+                        "Accent tint on"
+                    } else {
+                        "Accent tint off"
+                    },
+                );
+            }
+            Msg::AccentStrength(value) => {
+                let strength = value.round().clamp(0.0, 255.0) as u8;
+                ui.set_accent_tint_strength(strength);
+                status.set_text(0, &format!("Tint strength {strength}"));
             }
             _ => return false,
         }

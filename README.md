@@ -298,6 +298,18 @@ Controls theme themselves; the app never handles `NM_CUSTOMDRAW`,
   builds before 22621), in high-contrast mode, or when the user disabled
   transparency effects, the window falls back to the solid `Theme::background`;
   `Ui::backdrop_active()` reports which path was taken.
+- **Accent-tinted material.** `WindowSpec::accent_tint(true)` tints the material
+  bands with `Theme::accent`, and `Ui::set_accent_tint` flips it live (a theme or
+  accent change re-tints on the next paint through `Ui::set_theme`).
+  `WindowSpec::accent_tint_strength` (default `DEFAULT_ACCENT_TINT_STRENGTH`)
+  sets how strong the translucent fill is, and `Ui::set_accent_tint_strength`
+  changes it live — a slider can drive it. The bands are already drawn on the
+  window's transparent Direct2D surface (the strip menu, the material top bar
+  and the material status bar), so the tint is a translucent accent fill under
+  their content — documented drawing, no undocumented API. It leaves the client
+  area opaque and themed, so content stays legible. The tint only shows where
+  the material is active; high contrast or transparency off leaves the bands
+  solid.
 - **Extended title bar.** `WindowSpec::title_bar(TitleBar::Extended)` removes
   the standard caption (`WM_NCCALCSIZE`) while keeping the native resize
   borders, and routes `WM_NCHITTEST` through `DwmDefWindowProc` first so the

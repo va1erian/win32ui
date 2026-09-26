@@ -79,7 +79,38 @@ fn mica_and_colored_caption_build() {
     assert!(!run.timed_out, "the watchdog fired before the app quit");
 }
 
-/// The composited (`wgc`) capture includes DWM chrome that `PrintWindow`
+/// Requesting an accent-tinted material builds and reports a bool. The tint is
+/// machine-dependent (it needs the undocumented `user32` export, transparency
+/// on and no high contrast), so the test asserts the spec path runs rather than
+/// that the tint is on.
+#[test]
+fn accent_tinted_backdrop_builds() {
+    struct App;
+
+    impl win32ui::App for App {
+        type Msg = ();
+        fn update(&mut self, _msg: (), ui: &mut Ui<()>) {
+            let _ = ui.backdrop_active();
+            ui.quit();
+        }
+    }
+
+    let Some(run) = run_app_spec_with_watchdog(
+        WindowSpec::new("backdrop.accent")
+            .backdrop(Backdrop::Acrylic)
+            .accent_tint(true)
+            .title_bar(TitleBar::Extended),
+        move |ui| {
+            let _ = ui.backdrop_active();
+            ui.emit(());
+            App
+        },
+    ) else {
+        return;
+    };
+
+    assert!(!run.timed_out, "the watchdog fired before the app quit");
+}
 /// misses. With an extended title bar, the caption-button region — read from
 /// `DWMWA_CAPTION_BUTTON_BOUNDS` and aligned with the image through
 /// `DWMWA_EXTENDED_FRAME_BOUNDS` — must contain real button glyphs (more than

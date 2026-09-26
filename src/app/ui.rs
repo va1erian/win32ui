@@ -164,6 +164,24 @@ impl<M: 'static> Ui<M> {
         crate::theme::backdrop_active(self.core.hwnd())
     }
 
+    /// Tints (or stops tinting) the material bands with the theme accent, live.
+    /// Only has an effect when the window has a material backdrop; see
+    /// [`WindowSpec::accent_tint`](super::WindowSpec::accent_tint).
+    pub fn set_accent_tint(&self, on: bool) {
+        self.core.set_accent_tint(on);
+        // The bands are painted from the theme on every frame, so a repaint is
+        // enough to add or drop the tint.
+        sys::window::invalidate(self.core.hwnd());
+    }
+
+    /// Sets the accent tint's strength, `0..=255` (`0` invisible, `255`
+    /// opaque), live. Ignored while the tint is off; see
+    /// [`Ui::set_accent_tint`].
+    pub fn set_accent_tint_strength(&self, strength: u8) {
+        self.core.set_accent_tint_strength(strength);
+        sys::window::invalidate(self.core.hwnd());
+    }
+
     /// How much room the caption buttons need on the right of an extended title
     /// bar, in design units, so a `title_bar` layout item can leave it free.
     /// Empty on a standard title bar. Re-queried when the window's DPI changes.

@@ -23,7 +23,7 @@ pub use layout::tabs::Tabs;
 pub use layout::{IntoLayoutItem, Layout, LayoutExt, LayoutItem};
 pub use proxy::Proxy;
 pub use run::run_app;
-pub use spec::{App, MenuStripPlacement, WindowSpec};
+pub use spec::{App, DEFAULT_ACCENT_TINT_STRENGTH, MenuStripPlacement, WindowSpec};
 pub use status_bar::MaterialStatusBar;
 pub use top_bar::{Fluent, MaterialTopBar, TopBarEvent, TopBarId, TopBarItem};
 pub use ui::Ui;
@@ -31,9 +31,9 @@ pub use ui::Ui;
 /// The widget-layer types a frontend usually needs.
 pub mod prelude {
     pub use super::{
-        App, Fluent, IntoLayoutItem, Layout, LayoutExt, LayoutItem, MaterialStatusBar,
-        MaterialTopBar, MenuStripPlacement, Proxy, Split, Tabs, TopBarEvent, TopBarId, TopBarItem,
-        Ui, WindowHandle, WindowSpec, run_app,
+        App, DEFAULT_ACCENT_TINT_STRENGTH, Fluent, IntoLayoutItem, Layout, LayoutExt, LayoutItem,
+        MaterialStatusBar, MaterialTopBar, MenuStripPlacement, Proxy, Split, Tabs, TopBarEvent,
+        TopBarId, TopBarItem, Ui, WindowHandle, WindowSpec, run_app,
     };
     pub use crate::{column, row, split_col, split_row, tabs};
 }

@@ -37,8 +37,8 @@ Read this and [README.md](README.md) before writing any code. The README's
   and capability traits (never a base type, `Deref` or downcasting), and design
   values are `Dip`.
 - **Dark mode is first-class**: widgets implement `Themed`, use semantic theme
-  tokens only, and owner-draw any native part that ignores dark mode (documented
-  APIs only). UI PRs attach one light and one dark screenshot.
+  tokens only, and owner-draw any native part that ignores dark mode. UI PRs
+  attach one light and one dark screenshot.
 - Tests that enter the message loop use a watchdog so they fail instead of
   hanging. Never create ad-hoc debug windows.
 
