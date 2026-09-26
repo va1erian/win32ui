@@ -92,6 +92,18 @@ impl SplitShared {
         self.direction == StackDirection::Horizontal
     }
 
+    /// Whether [`position`](Split::position_b) is the second pane's extent.
+    fn is_end_anchored(&self) -> bool {
+        self.anchor_end.get()
+    }
+
+    /// `+1` when a movement towards larger coordinates grows the anchored pane,
+    /// `-1` when the anchored pane sits at the end (its divider edge moves the
+    /// other way).
+    fn anchored_sign(&self) -> i32 {
+        if self.is_end_anchored() { -1 } else { 1 }
+    }
+
     /// The anchored pane's raw extent in device pixels, defaulting to half.
     fn position_px(&self) -> i32 {
         let dpi = self.dpi.get().max(96);
