@@ -95,6 +95,23 @@ fn the_height_grows_as_the_width_shrinks() {
 }
 
 #[test]
+fn a_newline_forces_a_second_line() {
+    let font = system().font(&FontSpec::new(FAMILY, 16.0)).expect("font");
+    let single = font
+        .rich_layout(&[Span::new("alpha bravo")], 600.0)
+        .expect("single");
+    let broken = font
+        .rich_layout(&[Span::new("alpha\nbravo")], 600.0)
+        .expect("broken");
+    assert!(
+        broken.height() > single.height() * 1.5,
+        "a hard newline did not add a line: {} vs {}",
+        broken.height(),
+        single.height()
+    );
+}
+
+#[test]
 fn mixed_sizes_share_one_baseline() {
     let font = system().font(&FontSpec::new(FAMILY, 16.0)).expect("font");
     let spans = [Span::new("Big").size(28.0), Span::new(" small")];

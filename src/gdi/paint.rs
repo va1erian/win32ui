@@ -126,6 +126,13 @@ impl Canvas {
         self.paint.offset(0, self.scroll.get())
     }
 
+    /// Removes `rect` from the device context's clip region, so later drawing
+    /// cannot paint over it. An owner-drawn submenu item uses this to suppress
+    /// the system's default arrow, which it draws after `WM_DRAWITEM`.
+    pub(crate) fn exclude_clip_rect(&self, rect: Rect) {
+        sys::gdi::exclude_clip_rect(self.dc, rect);
+    }
+
     /// Fills `rect` with `color`.
     pub fn fill_rect(&self, rect: Rect, color: Color) {
         if rect.is_empty() {
