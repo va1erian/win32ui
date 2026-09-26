@@ -11,6 +11,7 @@ fn main() {
 
     println!("cargo:rerun-if-changed=win32ui.rc");
     println!("cargo:rerun-if-changed=win32ui.manifest");
+    println!("cargo:rerun-if-changed=win32ui.ico");
 
     embed_resource::compile_for_examples("win32ui.rc", embed_resource::NONE)
         .manifest_optional()

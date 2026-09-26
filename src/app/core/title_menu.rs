@@ -68,11 +68,15 @@ impl<M: 'static> Core<M> {
         let dpi = sys::dpi::window_dpi(hwnd);
         let caption = sys::nc::caption_strip_height(hwnd);
         let title = sys::window::get_title(hwnd);
+        // Hand the strip menu the window icon's pixels before laying out, so
+        // the icon box is reserved and painted.
+        let icon = self.icon.borrow().as_ref().map(|icon| icon.rgba().clone());
         let layout = {
             let menu = self.title_menu.borrow();
             let Some(menu) = menu.as_ref() else {
                 return;
             };
+            menu.set_icon(icon);
             let row = menu.relayout(dpi, caption, &title);
             (row, menu.layout_rects())
         };

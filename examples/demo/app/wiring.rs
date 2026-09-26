@@ -26,6 +26,11 @@ use super::{App, DemoStatus, Msg, env_dip};
 /// the app state. This is the closure [`run_app`] calls.
 pub(super) fn build(ui: &mut Ui<Msg>) -> App {
     let theme = ui.theme();
+    // Install the window icon (resource 1 from win32ui.rc). The strip menu draws
+    // it at the left of the caption row, before the title and menu items.
+    if let Ok(icon) = Icon::from_resource(1) {
+        ui.set_icon(icon);
+    }
     text_specimen::open_if_requested(theme, ui.dpi());
 
     let toolbar = toolbar::build(ui, theme);

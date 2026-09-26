@@ -4,3 +4,8 @@
 // manifest is what gives controls the modern themed look; without it Windows
 // falls back to the v5 (Win9x-style) common controls.
 CREATEPROCESS_MANIFEST_RESOURCE_ID RT_MANIFEST "win32ui.manifest"
+
+// The example/test binaries' window icon, installed by the demo with
+// `Ui::set_icon(Icon::from_resource(1))` so the strip menu shows it on the
+// caption row.
+1 ICON "win32ui.ico"

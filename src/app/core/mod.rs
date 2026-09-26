@@ -146,11 +146,6 @@ impl<M> Core<M> {
         }
     }
 
-    /// Keeps `icon` alive for the window's lifetime.
-    pub(crate) fn keep_icon(&self, icon: crate::window::Icon) {
-        *self.icon.borrow_mut() = Some(icon);
-    }
-
     /// Whether closing this window also quits the message loop.
     pub(crate) fn quits_loop(&self) -> bool {
         self.quits_loop
@@ -300,6 +295,17 @@ impl<M> Core<M> {
 }
 
 impl<M: 'static> Core<M> {
+    /// Keeps `icon` alive for the window's lifetime and, when a strip menu is
+    /// active, shows it on the caption row right away — without waiting for a
+    /// resize or DPI change.
+    pub(crate) fn keep_icon(&self, icon: crate::window::Icon) {
+        *self.icon.borrow_mut() = Some(icon);
+        if self.has_title_menu() {
+            self.refresh_menu_strip();
+            sys::window::invalidate(self.hwnd.get());
+        }
+    }
+
     /// Installs `menu` as this window's menu bar (keeping a clone alive for
     /// owner-draw lookups and live re-theming).
     pub(crate) fn install_menu_bar(&self, menu: Menu<M>) {
