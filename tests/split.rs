@@ -318,8 +318,8 @@ fn dragging_the_divider_reports_the_anchored_pane_extent() {
     let reported = reported.borrow();
     assert_eq!(reported.len(), 1, "one move was reported: {reported:?}");
     assert!(
-        (reported[0] - 140.0).abs() < 2.0,
-        "the anchored (second) pane's extent was reported: {reported:?}"
+        (reported[0] - 60.0).abs() < 2.0,
+        "dragging the divider right shrinks the end-anchored pane: {reported:?}"
     );
     assert!(
         end_anchor_ok.get(),

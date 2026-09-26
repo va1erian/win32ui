@@ -100,9 +100,9 @@ impl CustomWidget for Divider {
                 }
                 cx.cursor(self.cursor());
                 if self.dragging.get() {
-                    let position =
-                        self.shared.position_px() + (self.coordinate(x, y) - self.grab.get());
-                    self.emit_position(cx, position);
+                    let drag =
+                        self.shared.anchored_sign() * (self.coordinate(x, y) - self.grab.get());
+                    self.emit_position(cx, self.shared.position_px() + drag);
                 }
             }
             Input::MouseDown {
@@ -139,7 +139,9 @@ impl CustomWidget for Divider {
                 };
                 if delta != 0 {
                     let dpi = self.shared.dpi.get().max(96);
-                    let step = Dip(ARROW_STEP_DIP).to_px(dpi).value() * delta;
+                    let step = self.shared.anchored_sign()
+                        * Dip(ARROW_STEP_DIP).to_px(dpi).value()
+                        * delta;
                     self.emit_position(cx, self.shared.position_px() + step);
                 }
             }
