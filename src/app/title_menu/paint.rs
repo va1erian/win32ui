@@ -6,11 +6,11 @@
 //! would write zero alpha.
 
 use crate::color::Color;
-use crate::d2d::{D2dCanvas, PointF, RectF, Rgba};
+use crate::d2d::{D2dCanvas, Interpolation, PointF, RectF, Rgba};
 use crate::theme::Theme;
 use crate::units::dip;
 
-use super::{Item, MARGIN, PAD, TitleBarMenu};
+use super::{ICON_LEFT, ICON_SIZE, Item, PAD, TitleBarMenu};
 
 /// Corner radius of the hover/pressed/focus pill.
 const RADIUS: f32 = 5.0;
@@ -31,13 +31,30 @@ impl<M: 'static> TitleBarMenu<M> {
         let inset_px = dip(2.0).to_px(dpi).value().max(1);
         let active = self.active.get();
         let rects = self.layout.borrow();
+        let caption = self.caption_px.get() as f32 / scale;
+
+        if let Some(icon) = self.icon.borrow().as_ref() {
+            let id = self.icon_id.get().unwrap_or_else(|| {
+                let id = canvas.image(icon);
+                self.icon_id.set(Some(id));
+                id
+            });
+            let left = dip(ICON_LEFT).to_px(dpi).value() as f32 / scale;
+            let top = ((caption - ICON_SIZE) / 2.0).max(0.0);
+            canvas.draw_image(
+                id,
+                RectF::new(left, top, left + ICON_SIZE, top + ICON_SIZE),
+                None,
+                1.0,
+                Interpolation::Linear,
+            );
+        }
 
         if let Some(title) = self.title.borrow().as_ref() {
-            let caption = self.caption_px.get() as f32 / scale;
             let top = (caption - self.line_height_dip) / 2.0;
             canvas.draw_text(
                 title,
-                PointF::new(dip(MARGIN).to_px(dpi).value() as f32 / scale, top.max(0.0)),
+                PointF::new(self.title_x.get() as f32 / scale, top.max(0.0)),
                 theme.text,
             );
         }

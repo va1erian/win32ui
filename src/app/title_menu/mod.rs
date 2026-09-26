@@ -22,8 +22,9 @@ mod paint;
 use std::cell::{Cell, RefCell};
 
 use crate::app::spec::MenuStripPlacement;
+use crate::capture::RgbaImage;
 use crate::controls::menu::{BarKind, Menu};
-use crate::d2d::{Font, FontSpec, Layout, TextSystem};
+use crate::d2d::{Font, FontSpec, ImageId, Layout, TextSystem};
 use crate::geometry::{Point, Rect};
 use crate::units::dip;
 
@@ -41,6 +42,12 @@ const GAP: f32 = 2.0;
 const MARGIN: f32 = 8.0;
 /// Gap between the window title and the first inline menu item.
 const TITLE_GAP: f32 = 14.0;
+/// Design size of the window icon drawn on the caption row.
+const ICON_SIZE: f32 = 16.0;
+/// Left offset of the icon on the caption row.
+const ICON_LEFT: f32 = 8.0;
+/// Gap between the icon and the title or menu items that follow it.
+const ICON_GAP: f32 = 8.0;
 
 /// The shared menu font, resolved once per UI thread. `None` when DirectWrite
 /// is unavailable, in which case the strip menu cannot be built.
@@ -107,6 +114,14 @@ pub(crate) struct TitleBarMenu<M> {
     /// The caption row's height in device pixels, from the last
     /// [`TitleBarMenu::relayout`]; the title is centred in it.
     caption_px: Cell<i32>,
+    /// The icon drawn at the left of the caption row, when the window has one.
+    icon: RefCell<Option<RgbaImage>>,
+    /// The uploaded image id of `icon`, set on the first paint so later frames
+    /// reuse the surface's cached upload instead of re-uploading it.
+    icon_id: Cell<Option<ImageId>>,
+    /// The caption row's title origin in device pixels, from the last
+    /// [`TitleBarMenu::relayout`]; the icon shifts it right.
+    title_x: Cell<i32>,
     focus: Cell<Option<usize>>,
     hover: Cell<Option<usize>>,
     pressed: Cell<Option<usize>>,
@@ -144,6 +159,9 @@ impl<M: 'static> TitleBarMenu<M> {
             layout: RefCell::new(Vec::new()),
             title: RefCell::new(None),
             caption_px: Cell::new(0),
+            icon: RefCell::new(None),
+            icon_id: Cell::new(None),
+            title_x: Cell::new(0),
             focus: Cell::new(None),
             hover: Cell::new(None),
             pressed: Cell::new(None),
@@ -161,6 +179,18 @@ impl<M: 'static> TitleBarMenu<M> {
         }
     }
 
+    /// Sets (or clears) the icon drawn at the left of the caption row. The
+    /// caller feeds the window icon's pixels before [`TitleBarMenu::relayout`],
+    /// so the icon box is reserved. A change drops the cached upload, and the
+    /// next paint re-uploads the new pixels.
+    pub(crate) fn set_icon(&self, icon: Option<RgbaImage>) {
+        if self.icon.borrow().as_ref() == icon.as_ref() {
+            return;
+        }
+        *self.icon.borrow_mut() = icon;
+        self.icon_id.set(None);
+    }
+
     /// Lays the title and items out for the given strip geometry and stores the
     /// rectangles: `caption_px` is the caption row's height. In `Inline` mode
     /// the items follow the title on the caption row; in `Stacked` mode they
@@ -174,12 +204,22 @@ impl<M: 'static> TitleBarMenu<M> {
         self.caption_px.set(caption_px);
         let title_dip = self.title.borrow().as_ref().map_or(0.0, Layout::width);
 
+        // The icon reserves a box at the left of the caption row; the title (and
+        // in `Inline` the items that follow it) starts after it. A stacked menu
+        // keeps its own row at `MARGIN`, untouched by the icon.
+        let title_x = if self.icon.borrow().is_some() {
+            dip(ICON_LEFT + ICON_SIZE + ICON_GAP).to_px(dpi).value()
+        } else {
+            dip(MARGIN).to_px(dpi).value()
+        };
+        self.title_x.set(title_x);
+
         let added = self.added_row_px(dpi);
-        let start_x = dip(MARGIN).to_px(dpi).value();
+        let menu_x = dip(MARGIN).to_px(dpi).value();
         let (start_x, y, height) = match self.placement.get() {
-            MenuStripPlacement::Stacked => (start_x, caption_px, added.max(1)),
+            MenuStripPlacement::Stacked => (menu_x, caption_px, added.max(1)),
             MenuStripPlacement::Inline => (
-                (start_x as f32 + title_dip * scale + dip(TITLE_GAP).to_px(dpi).value() as f32)
+                (title_x as f32 + title_dip * scale + dip(TITLE_GAP).to_px(dpi).value() as f32)
                     as i32,
                 0,
                 caption_px.max(1),
@@ -364,6 +404,77 @@ mod tests {
         let menu = Menu::<u8>::new().item("&File", None, || 1);
         let tm = TitleBarMenu::new(menu, MenuStripPlacement::Inline)?;
         tm.relayout(96, 34, "Title");
+        Some(tm)
+    }
+
+    /// A tiny opaque icon; the layout only cares that pixels are present.
+    fn sample_icon() -> RgbaImage {
+        RgbaImage {
+            width: 2,
+            height: 2,
+            pixels: vec![0xFF; 2 * 2 * 4],
+        }
+    }
+
+    fn icon_end_px() -> i32 {
+        dip(ICON_LEFT + ICON_SIZE + ICON_GAP).to_px(96).value()
+    }
+
+    #[test]
+    fn a_stacked_icon_shifts_the_title_but_not_the_menu_row() {
+        let Some(tm) = strip_menu() else {
+            return;
+        };
+        tm.set_icon(Some(sample_icon()));
+        tm.relayout(96, 40, "Title");
+        assert_eq!(
+            tm.title_x.get(),
+            icon_end_px(),
+            "the title starts after the icon box"
+        );
+        let first = tm.item_rect(0).expect("first item");
+        assert_eq!(first.top, 40, "the stacked menu keeps its own row");
+        assert_eq!(
+            first.left,
+            dip(MARGIN).to_px(96).value(),
+            "the icon does not move the stacked menu row"
+        );
+    }
+
+    #[test]
+    fn no_icon_leaves_title_and_items_at_the_margin() {
+        let Some(tm) = strip_menu() else {
+            return;
+        };
+        tm.relayout(96, 40, "Title");
+        assert_eq!(tm.title_x.get(), dip(MARGIN).to_px(96).value());
+        let first = tm.item_rect(0).expect("first item");
+        assert_eq!(first.left, dip(MARGIN).to_px(96).value());
+    }
+
+    #[test]
+    fn an_inline_icon_shifts_the_title_and_the_items() {
+        let Some(tm) = maybe_inline_with_icon() else {
+            return;
+        };
+        assert_eq!(
+            tm.title_x.get(),
+            icon_end_px(),
+            "the inline title starts after the icon box"
+        );
+        let first = tm.item_rect(0).expect("first item");
+        assert_eq!(
+            first.left,
+            icon_end_px() + dip(TITLE_GAP).to_px(96).value(),
+            "an empty inline title leaves the items right after the icon"
+        );
+    }
+
+    fn maybe_inline_with_icon() -> Option<TitleBarMenu<u8>> {
+        let menu = Menu::<u8>::new().item("&File", None, || 1);
+        let tm = TitleBarMenu::new(menu, MenuStripPlacement::Inline)?;
+        tm.set_icon(Some(sample_icon()));
+        tm.relayout(96, 34, "");
         Some(tm)
     }
 
