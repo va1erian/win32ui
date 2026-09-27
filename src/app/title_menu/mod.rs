@@ -216,11 +216,15 @@ impl<M: 'static> TitleBarMenu<M> {
 
         let added = self.added_row_px(dpi);
         let menu_x = dip(MARGIN).to_px(dpi).value();
+        let title_gap = if title_dip > 0.0 {
+            dip(TITLE_GAP).to_px(dpi).value() as f32
+        } else {
+            0.0
+        };
         let (start_x, y, height) = match self.placement.get() {
             MenuStripPlacement::Stacked => (menu_x, caption_px, added.max(1)),
             MenuStripPlacement::Inline => (
-                (title_x as f32 + title_dip * scale + dip(TITLE_GAP).to_px(dpi).value() as f32)
-                    as i32,
+                (title_x as f32 + title_dip * scale + title_gap) as i32,
                 0,
                 caption_px.max(1),
             ),
@@ -465,8 +469,24 @@ mod tests {
         let first = tm.item_rect(0).expect("first item");
         assert_eq!(
             first.left,
-            icon_end_px() + dip(TITLE_GAP).to_px(96).value(),
+            icon_end_px(),
             "an empty inline title leaves the items right after the icon"
+        );
+    }
+
+    #[test]
+    fn an_inline_title_keeps_the_gap_before_the_items() {
+        let Some(tm) = maybe_inline() else {
+            return;
+        };
+        let title_dip = tm.title.borrow().as_ref().expect("title").width();
+        let expected = (dip(MARGIN).to_px(96).value() as f32
+            + title_dip
+            + dip(TITLE_GAP).to_px(96).value() as f32) as i32;
+        let first = tm.item_rect(0).expect("first item");
+        assert_eq!(
+            first.left, expected,
+            "a non-empty inline title keeps the gap before the items"
         );
     }
 
