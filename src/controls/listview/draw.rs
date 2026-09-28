@@ -68,6 +68,9 @@ pub(crate) struct ListViewInner<T> {
     /// While set, selection notifications are swallowed: a programmatic
     /// change reports its own single event instead.
     pub(crate) selection_muted: bool,
+    /// The drag-and-drop insertion marker: `(row, after)`; see
+    /// [`ListView::set_insert_mark`](super::ListView::set_insert_mark).
+    pub(crate) insert_mark: Option<(usize, bool)>,
 }
 
 impl<T: 'static> ControlEvents for ListViewInner<T> {
@@ -213,6 +216,7 @@ impl<T> ListViewInner<T> {
                 .and_then(|model| model.get(item as usize))
             && painter(data_row, &canvas, row, state)
         {
+            self.draw_insert_mark(&canvas, row, item);
             return sys::listview::CustomDrawResult::SkipDefault;
         }
 
@@ -291,6 +295,7 @@ impl<T> ListViewInner<T> {
             }
         }
 
+        self.draw_insert_mark(&canvas, row, item);
         sys::listview::CustomDrawResult::SkipDefault
     }
 }

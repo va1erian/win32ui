@@ -33,17 +33,17 @@ type ResizeFn = Rc<dyn Fn(Rect)>;
 /// The state shared between [`Custom`](super::custom::Custom) and its handler:
 /// the widget itself, the event mapper set by `on_event`, the `Ui` used to
 /// enqueue mapped messages, and the optional vertical scroll host.
-pub(super) struct CustomShared<W: CustomWidget, M> {
-    pub(super) widget: Rc<RefCell<W>>,
+pub(crate) struct CustomShared<W: CustomWidget, M> {
+    pub(crate) widget: Rc<RefCell<W>>,
     pub(super) mapper: RefCell<Option<EventMapper<W, M>>>,
-    pub(super) scroll: RefCell<Option<Rc<CustomScroll<M>>>>,
+    pub(crate) scroll: RefCell<Option<Rc<CustomScroll<M>>>>,
     /// Runs when the widget's client area changes size; see
     /// [`Custom::on_resize`](super::custom::Custom::on_resize).
     pub(super) resize: RefCell<Option<ResizeFn>>,
     /// The running animation timer, if any: it exists only while the widget
     /// has asked for animation ticks.
     pub(super) timer: Cell<Option<TimerId>>,
-    pub(super) ui: Ui<M>,
+    pub(crate) ui: Ui<M>,
 }
 
 impl<W: CustomWidget, M: 'static> CustomShared<W, M> {

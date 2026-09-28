@@ -5,6 +5,7 @@
 use win32ui::prelude::*;
 use win32ui::{column, row, tabs};
 
+use super::dnd::DndTab;
 use super::document;
 use super::flow_text::Flow;
 use super::form::Form;
@@ -84,6 +85,7 @@ pub(super) fn build(ui: &mut Ui<Msg>) -> App {
     let library_page = library.page();
     let mail = MailTab::build(ui);
     let mail_page = mail.page();
+    let dnd = DndTab::build(ui);
     let sliders = Sliders::build(ui);
     let sliders_page = sliders.page();
     let flow = Flow::build(ui);
@@ -93,6 +95,7 @@ pub(super) fn build(ui: &mut Ui<Msg>) -> App {
     let views = tabs![
         ("Library", library_page),
         ("Mail", mail_page),
+        ("Drag", dnd.page()),
         ("Primitives", primitives),
         ("Document", document),
         ("Sliders", sliders_page),
@@ -169,6 +172,7 @@ pub(super) fn build(ui: &mut Ui<Msg>) -> App {
         toolbar,
         library,
         mail,
+        dnd,
         status,
         progress,
         swatch,

@@ -72,6 +72,7 @@ use crate::theme::{Theme, Themed};
 mod access;
 mod api;
 mod builders;
+mod dnd;
 mod draw;
 pub(crate) mod events;
 mod header;
@@ -79,6 +80,7 @@ mod model;
 mod row_style;
 mod theme;
 
+pub use self::dnd::ListDrop;
 pub use self::events::ListViewEvent;
 pub use self::model::{Column, ColumnWidth, Fill, ListModel, SortDirection};
 pub use self::row_style::{RowState, RowStyle};
@@ -104,6 +106,8 @@ pub struct ListView<T, M> {
     header_subclass: Option<sys::listview_header::HeaderSubclass>,
     size_subclass: Option<sys::listview_header::SizeSubclass>,
     click_subclass: Option<sys::listview_click::ClickSubclass>,
+    /// The OLE drop-target registration, once [`ListView::on_drop`] ran.
+    drop_target: RefCell<Option<sys::dnd::Registration>>,
     events: Rc<RefCell<ListViewEvents<M>>>,
     sink: Ui<M>,
 }
@@ -173,6 +177,7 @@ impl<T: 'static, M: 'static> ListView<T, M> {
             dpi,
             last_selection: Vec::new(),
             selection_muted: false,
+            insert_mark: None,
         }));
         let control_events: Rc<RefCell<dyn ControlEvents>> = inner.clone();
         registry::register(hwnd, control_events);
@@ -284,6 +289,7 @@ impl<T: 'static, M: 'static> ListView<T, M> {
             header_subclass,
             size_subclass,
             click_subclass,
+            drop_target: RefCell::new(None),
             events,
             sink: ui.clone(),
         })
@@ -325,7 +331,9 @@ impl<T, M> Themed for ListView<T, M> {
 
 impl<T, M> Drop for ListView<T, M> {
     fn drop(&mut self) {
-        // Remove the subclasses before the window (and its header) go away.
+        // Revoke the drop target and remove the subclasses before the window
+        // (and its header) go away.
+        self.drop_target.borrow_mut().take();
         self.click_subclass = None;
         self.header_subclass = None;
         self.size_subclass = None;

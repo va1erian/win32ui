@@ -2,9 +2,9 @@
 
 use windows::Win32::Foundation::LPARAM;
 use windows::Win32::UI::Controls::{
-    LVIS_SELECTED, LVN_COLUMNCLICK, LVN_ITEMCHANGED, LVN_KEYDOWN, LVN_ODSTATECHANGED, NM_CLICK,
-    NM_DBLCLK, NM_RCLICK, NM_RETURN, NMITEMACTIVATE, NMLISTVIEW, NMLVKEYDOWN, NMLVODSTATECHANGE,
-    NMTREEVIEWW, TVIS_EXPANDED, TVN_ITEMEXPANDED, TVN_SELCHANGED,
+    LVIS_SELECTED, LVN_BEGINDRAG, LVN_BEGINRDRAG, LVN_COLUMNCLICK, LVN_ITEMCHANGED, LVN_KEYDOWN,
+    LVN_ODSTATECHANGED, NM_CLICK, NM_DBLCLK, NM_RCLICK, NM_RETURN, NMITEMACTIVATE, NMLISTVIEW,
+    NMLVKEYDOWN, NMLVODSTATECHANGE, NMTREEVIEWW, TVIS_EXPANDED, TVN_ITEMEXPANDED, TVN_SELCHANGED,
 };
 
 use crate::controls::listview::ListViewEvent;
@@ -52,6 +52,16 @@ pub(crate) fn decode_notify(lparam: LPARAM) -> Notify {
                 },
             };
         }
+    }
+    if code == LVN_BEGINDRAG || code == LVN_BEGINRDRAG {
+        let info = read::<NMLISTVIEW>(lparam);
+        return Notify::ListView {
+            id,
+            event: ListViewEvent::BeginDrag {
+                item: info.iItem,
+                right_button: code == LVN_BEGINRDRAG,
+            },
+        };
     }
     if code == LVN_COLUMNCLICK {
         let info = read::<NMLISTVIEW>(lparam);
