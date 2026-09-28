@@ -15,6 +15,7 @@
 
 mod data;
 mod dialogs;
+mod dnd;
 mod document;
 mod flow_text;
 mod form;
@@ -38,6 +39,7 @@ mod wiring;
 
 use win32ui::prelude::*;
 
+use self::dnd::{DndMsg, DndTab};
 use self::document::DocumentWidget;
 use self::flow_text::Flow;
 use self::form::{Form, FormMsg};
@@ -155,6 +157,7 @@ enum Msg {
     TreeFold(u32, bool),
     Play(usize),
     MailOpen(usize),
+    Dnd(DndMsg),
     Selected(Vec<usize>),
     Sort(usize),
     Copy,
@@ -227,6 +230,7 @@ struct App {
     toolbar: Toolbar<Msg>,
     library: Library,
     mail: MailTab,
+    dnd: DndTab,
     status: DemoStatus,
     progress: ProgressBar,
     swatch: Custom<Swatch, Msg>,
@@ -264,6 +268,9 @@ impl win32ui::App for App {
             return;
         }
         if self.mail.update(&msg) {
+            return;
+        }
+        if self.dnd.update(&msg, &self.status) {
             return;
         }
         if self.options.update(&msg, ui, &self.status) {

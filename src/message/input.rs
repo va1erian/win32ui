@@ -44,6 +44,7 @@ keys! {
     SHIFT => VK_SHIFT,
     CONTROL => VK_CONTROL,
     MENU => VK_MENU,
+    APPS => VK_APPS,
     CAPITAL => VK_CAPITAL,
     ESCAPE => VK_ESCAPE,
     SPACE => VK_SPACE,

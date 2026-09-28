@@ -13,7 +13,9 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use windows::Win32::Foundation::{HWND, LPARAM};
-use windows::Win32::UI::Controls::{NM_CLICK, NM_RETURN, NMHDR};
+use windows::Win32::UI::Controls::{
+    LVN_BEGINDRAG, LVN_BEGINRDRAG, NM_CLICK, NM_RETURN, NMHDR, NMLISTVIEW,
+};
 
 use super::*;
 use crate::controls::registry::{ControlEvents, ControlKind};
@@ -115,6 +117,43 @@ fn treeview_click_still_decodes() {
         result,
         Notify::TreeView {
             event: TreeViewEvent::Click,
+            ..
+        }
+    ));
+}
+
+fn begin_drag_notify(code: u32) -> Notify {
+    let info = NMLISTVIEW {
+        hdr: NMHDR {
+            hwndFrom: HWND(0xC1A6 as *mut c_void),
+            idFrom: 9,
+            code,
+        },
+        iItem: 5,
+        ..Default::default()
+    };
+    decode_notify(LPARAM(&info as *const NMLISTVIEW as isize))
+}
+
+#[test]
+fn begin_drag_decodes_the_row_and_button() {
+    assert!(matches!(
+        begin_drag_notify(LVN_BEGINDRAG),
+        Notify::ListView {
+            id: 9,
+            event: ListViewEvent::BeginDrag {
+                item: 5,
+                right_button: false
+            }
+        }
+    ));
+    assert!(matches!(
+        begin_drag_notify(LVN_BEGINRDRAG),
+        Notify::ListView {
+            event: ListViewEvent::BeginDrag {
+                item: 5,
+                right_button: true
+            },
             ..
         }
     ));

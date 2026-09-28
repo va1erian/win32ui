@@ -10,6 +10,7 @@
 //! to the app's `Msg` through the same per-window queue as every other widget,
 //! so [`App::update`](crate::App::update) is never re-entered.
 
+mod drag;
 mod renderer;
 mod scroll;
 mod widget;
@@ -25,8 +26,10 @@ use crate::accessibility::{AccessCx, Action, Node};
 use crate::app::Ui;
 use crate::controls::control::{AsControl, Control};
 use crate::controls::custom_access::CustomAccess;
+use crate::controls::custom_drop::CustomDropSink;
 use crate::controls::custom_inner::{CustomHandler, CustomShared};
 use crate::d2d::{D2dCanvas, RectF};
+use crate::dnd::{DragEvent, DropEffect};
 use crate::error::Result;
 use crate::gdi::Canvas;
 use crate::geometry::{Rect, Size};
@@ -112,6 +115,20 @@ pub trait CustomWidget: 'static {
     /// Handles one input event. The default ignores everything.
     fn input(&self, _input: Input, _cx: &mut WidgetCx<Self::Event>) {}
 
+    /// Handles a drag over the widget and answers with the effect a drop
+    /// would have. Only called after the widget opted in with
+    /// [`Custom::accept_drops`]; coordinates are client pixels (add
+    /// [`Custom::scroll_offset`] for document coordinates).
+    ///
+    /// Answer [`DropEffect::None`] to reject (the default). The answer for
+    /// [`DragEvent::Drop`] is reported to the drag source. A widget with a
+    /// vertical scroll host scrolls by itself near its top and bottom edges
+    /// during a drag; [`DragEvent::Over`] repeats about every 50 ms even while
+    /// the pointer rests, for a widget that animates its own drop marker.
+    fn drag(&self, _event: DragEvent<'_>, _cx: &mut WidgetCx<Self::Event>) -> DropEffect {
+        DropEffect::None
+    }
+
     /// Describes the widget to assistive technology and UI Automation clients
     /// as a tree of [`Node`]s (`None`, the default, leaves the widget opaque).
     ///
@@ -152,6 +169,9 @@ pub struct Custom<W: CustomWidget, M> {
     control: Control,
     shared: Rc<CustomShared<W, M>>,
     renderer: Rc<RefCell<RendererState>>,
+    /// The OLE drop-target registration, once [`Custom::accept_drops`] ran.
+    drop_target: RefCell<Option<sys::dnd::Registration>>,
+    drop_sink: Rc<CustomDropSink<W, M>>,
 }
 
 impl<W: CustomWidget, M: 'static> Custom<W, M> {
@@ -185,6 +205,13 @@ impl<W: CustomWidget, M: 'static> Custom<W, M> {
         let access_emit = Rc::clone(&emit);
         let access_bounds = Rc::clone(&client_bounds);
         let access_animate = Rc::clone(&animate);
+        let drop_sink = Rc::new(CustomDropSink {
+            shared: Rc::downgrade(&shared),
+            bounds: Rc::clone(&client_bounds),
+            emit: Rc::clone(&emit),
+            animate: Rc::clone(&animate),
+            hwnd: Cell::new(crate::hwnd::Hwnd::NULL),
+        });
         let handler = CustomHandler {
             shared: Rc::clone(&shared),
             bounds: Rc::clone(&client_bounds),
@@ -239,11 +266,15 @@ impl<W: CustomWidget, M: 'static> Custom<W, M> {
             );
         }
 
+        drop_sink.hwnd.set(window.hwnd());
+
         Ok(Custom {
             window,
             control,
             shared,
             renderer,
+            drop_sink,
+            drop_target: RefCell::new(None),
         })
     }
 
@@ -446,6 +477,9 @@ impl<W: CustomWidget, M> Themed for Custom<W, M> {
 
 impl<W: CustomWidget, M> Drop for Custom<W, M> {
     fn drop(&mut self) {
+        // Revoke while the window is still alive; OLE keeps its own reference
+        // to the target until then.
+        self.drop_target.borrow_mut().take();
         {
             let widget = self.shared.widget.borrow();
             self.renderer

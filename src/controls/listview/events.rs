@@ -10,7 +10,7 @@ use crate::controls::listview::draw::ListViewInner;
 use crate::controls::registry;
 use crate::geometry::Point;
 use crate::hwnd::Hwnd;
-use crate::message::{Key, Message, Modifiers, Notify};
+use crate::message::{Key, Message, Modifiers, MouseButton, Notify};
 use crate::sys;
 
 /// An event from the list view, delivered to the parent window.
@@ -57,6 +57,15 @@ pub enum ListViewEvent {
         /// The column clicked.
         column: i32,
     },
+    /// The user started dragging rows (`LVN_BEGINDRAG`, or `LVN_BEGINRDRAG`
+    /// with the right button). The dragged rows are the selection; answer with
+    /// [`ListView::begin_drag`](super::ListView::begin_drag).
+    BeginDrag {
+        /// The row under the pointer when the drag started.
+        item: i32,
+        /// Whether the right button started the drag.
+        right_button: bool,
+    },
     /// A key was pressed while the list had focus.
     KeyDown {
         /// The virtual-key code.
@@ -76,6 +85,10 @@ pub(crate) type KeyMapper<M> = Box<dyn Fn(Key, Modifiers) -> Option<M>>;
 /// app message. A `Some` message consumes the click.
 pub(crate) type CellClickMapper<M> = Box<dyn Fn(usize, usize, Point) -> Option<M>>;
 
+/// Maps the dragged rows and the button that dragged them to an optional app
+/// message.
+pub(crate) type BeginDragMapper<M> = Box<dyn Fn(&[usize], MouseButton) -> Option<M>>;
+
 /// The app-level events a [`ListView`](super::ListView) maps to `Msg`.
 pub(crate) struct ListViewEvents<M> {
     pub(crate) on_select: Option<SelectMapper<M>>,
@@ -84,6 +97,8 @@ pub(crate) struct ListViewEvents<M> {
     pub(crate) on_sort: Option<Box<dyn Fn(usize) -> Option<M>>>,
     pub(crate) on_cell_click: Option<CellClickMapper<M>>,
     pub(crate) on_key: Option<KeyMapper<M>>,
+    pub(crate) on_begin_drag: Option<BeginDragMapper<M>>,
+    pub(crate) drop: super::dnd::DropHooks<M>,
 }
 
 impl<M> ListViewEvents<M> {
@@ -95,6 +110,8 @@ impl<M> ListViewEvents<M> {
             on_sort: None,
             on_cell_click: None,
             on_key: None,
+            on_begin_drag: None,
+            drop: super::dnd::DropHooks::new(),
         }
     }
 }
@@ -135,10 +152,33 @@ pub(crate) fn install_mapper<T: 'static, M: 'static>(
                         ListViewEvent::ColumnClick { column } if column >= 0 => {
                             events.on_sort.as_ref().and_then(|f| f(column as usize))
                         }
-                        ListViewEvent::KeyDown { key, modifiers } => events
-                            .on_key
-                            .as_ref()
-                            .and_then(|f| f(Key::from_code(key), modifiers)),
+                        ListViewEvent::KeyDown { key, modifiers } => {
+                            let context = wants_context_menu(key, modifiers)
+                                .then(|| sys::listview::lv_focused(view))
+                                .flatten()
+                                .and_then(|row| events.on_context.as_ref().and_then(|f| f(row)));
+                            if let Some(context) = context {
+                                sink.emit(context);
+                            }
+                            events
+                                .on_key
+                                .as_ref()
+                                .and_then(|f| f(Key::from_code(key), modifiers))
+                        }
+                        ListViewEvent::BeginDrag { item, right_button } => {
+                            events.on_begin_drag.as_ref().and_then(|f| {
+                                let mut rows = sys::listview::lv_selected_all(view);
+                                if item >= 0 && !rows.contains(&(item as usize)) {
+                                    rows = vec![item as usize];
+                                }
+                                let button = if right_button {
+                                    MouseButton::Right
+                                } else {
+                                    MouseButton::Left
+                                };
+                                f(&rows, button)
+                            })
+                        }
                         _ => None,
                     }
                 };
@@ -150,6 +190,12 @@ pub(crate) fn install_mapper<T: 'static, M: 'static>(
         true
     });
     registry::register_app_events(view, mapper);
+}
+
+/// Whether a key press asks for the context menu of the focused row: the
+/// Apps key, or Shift+F10 (`WM_CONTEXTMENU` from the keyboard).
+fn wants_context_menu(key: u16, modifiers: Modifiers) -> bool {
+    key == Key::APPS.code() || (key == Key::F10.code() && modifiers.shift)
 }
 
 /// Reads the control's current selection and maps it to a message, unless it

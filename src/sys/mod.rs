@@ -20,6 +20,7 @@ pub(crate) mod control;
 pub(crate) mod cursor_idle;
 pub(crate) mod d2d;
 pub(crate) mod dispatch;
+pub(crate) mod dnd;
 pub(crate) mod dpi;
 pub(crate) mod dwm;
 pub(crate) mod edit;

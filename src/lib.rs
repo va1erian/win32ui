@@ -61,6 +61,7 @@ mod window;
 pub mod clipboard;
 pub mod controls;
 pub mod d2d;
+pub mod dnd;
 pub mod gdi;
 pub mod gl;
 pub mod imaging;
@@ -105,8 +106,8 @@ pub use controls::grid_view::{GridModel, GridView, GridViewTheme, TileSizeSpec, 
 pub use controls::groupbox::GroupBox;
 pub use controls::label::Label;
 pub use controls::listview::{
-    Column, ColumnWidth, Fill, ListModel, ListView, ListViewEvent, ListViewTheme, RowState,
-    RowStyle, SortDirection,
+    Column, ColumnWidth, Fill, ListDrop, ListModel, ListView, ListViewEvent, ListViewTheme,
+    RowState, RowStyle, SortDirection,
 };
 pub use controls::menu::Menu;
 pub use controls::panel::Panel;
@@ -131,6 +132,7 @@ pub mod prelude {
     pub use crate::capture::prelude::*;
     pub use crate::color::prelude::*;
     pub use crate::controls::prelude::*;
+    pub use crate::dnd::prelude::*;
     pub use crate::error::prelude::*;
     pub use crate::geometry::prelude::*;
     pub use crate::hwnd::prelude::*;
