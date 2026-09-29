@@ -25,21 +25,21 @@ wgc = [
 ]
 
 [dependencies]
-thiserror = "2"
+thiserror = "2.0.21"
 
 [target.'cfg(windows)'.dependencies]
 # The safe OpenGL binding a `Renderer::Gl` widget draws with. Re-exported as
 # `win32ui::glow` so an implementor names the same version this crate links.
-glow = "0.16"
+glow = "0.18"
 # Deliberately narrow: one feature group per Win32 namespace actually used, so
 # the generated bindings (and the resulting binary) stay as small as possible.
 # `Vector2`/`Matrix3x2`, the point and transform types Direct2D takes, live here
 # rather than in `windows`.
-windows-numerics = "0.3"
+windows-numerics = "0.3.1"
 # The `#[implement]` macro (COM providers for UI Automation) expands to paths
 # rooted at `windows_core`, so the crate must be a direct dependency.
-windows-core = "0.62"
-windows = { version = "0.62", default-features = false, features = [
+windows-core = "0.62.2"
+windows = { version = "0.62.2", default-features = false, features = [
     "Win32_Foundation",
     "Win32_Globalization",
     "Win32_Graphics_Direct2D",
@@ -72,7 +72,7 @@ windows = { version = "0.62", default-features = false, features = [
 
 [dev-dependencies]
 # Only the demo writes a PNG; the library itself stays dependency-free.
-png = "0.17"
+png = "0.18"
 
 [build-dependencies]
-embed-resource = "3.0"
+embed-resource = "3.0.11"
