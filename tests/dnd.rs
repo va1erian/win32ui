@@ -24,8 +24,8 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, mouse_event,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetCursorPos, GetSystemMetrics, GetWindowRect, SM_CXSCREEN, SM_CYSCREEN, SendMessageW,
-    SetCursorPos, WindowFromPoint,
+    GetCursorPos, GetSystemMetrics, GetWindowRect, GetWindowThreadProcessId, SM_CXSCREEN,
+    SM_CYSCREEN, SendMessageW, SetCursorPos, WindowFromPoint,
 };
 
 /// `LVM_GETITEMRECT`.
@@ -204,10 +204,12 @@ fn park_real_pointer() {
 enum Pointer {
     /// The cursor moved to the point and the list is the window under it.
     Reaches,
-    /// The cursor could not be moved there: no interactive desktop (a
-    /// headless CI runner), so the drag cannot happen and the test skips.
+    /// The cursor could not be moved there, or the window under it is not ours
+    /// (a headless CI runner: the cursor is settable but nothing of ours is
+    /// hit-testable), so the drag cannot happen and the test skips.
     Unavailable,
-    /// The cursor moved but another window is under it: a real failure.
+    /// The cursor moved but another window of this process covers the list:
+    /// a real failure.
     Missed,
 }
 
@@ -225,6 +227,17 @@ impl Pointer {
     }
 }
 
+/// Whether `hwnd` belongs to this process.
+fn window_is_ours(hwnd: HWND) -> bool {
+    if hwnd.0.is_null() {
+        return false;
+    }
+    let mut pid = 0u32;
+    // SAFETY: `pid` is a valid out pointer; a stale handle just yields 0.
+    unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)) };
+    pid == std::process::id()
+}
+
 /// Moves the cursor to `at` and reports whether `expect` is under it.
 fn pointer_reaches(at: (i32, i32), expect: Hwnd) -> Pointer {
     let mut cursor = POINT::default();
@@ -238,8 +251,10 @@ fn pointer_reaches(at: (i32, i32), expect: Hwnd) -> Pointer {
             Pointer::Unavailable
         } else if under.0 as usize == expect.raw() {
             Pointer::Reaches
-        } else {
+        } else if window_is_ours(under) {
             Pointer::Missed
+        } else {
+            Pointer::Unavailable
         }
     }
 }
