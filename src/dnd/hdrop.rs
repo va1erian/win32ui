@@ -12,7 +12,7 @@ const HEADER: usize = 20;
 ///
 /// The list is a run of nul-terminated strings ended by an empty one, in UTF-16
 /// when the header's `fWide` flag is set (always, for Explorer) and in the
-/// ANSI code page otherwise (decoded here as lossy UTF-8). A malformed block
+/// system ANSI code page otherwise. A malformed block
 /// yields the paths that could be read.
 pub(crate) fn parse(block: &[u8]) -> Vec<PathBuf> {
     let (Some(offset), Some(wide)) = (read_u32(block, 0), read_u32(block, 16)) else {
@@ -37,7 +37,7 @@ pub(crate) fn parse(block: &[u8]) -> Vec<PathBuf> {
     } else {
         list.split(|byte| *byte == 0)
             .take_while(|path| !path.is_empty())
-            .map(|path| PathBuf::from(String::from_utf8_lossy(path).into_owned()))
+            .map(|path| PathBuf::from(crate::sys::dnd::ansi_to_string(path)))
             .collect()
     }
 }

@@ -11,6 +11,7 @@
 //! disturbed. A thread already in a multithreaded apartment cannot host drag
 //! and drop, and the calls fail with the OS error.
 
+mod ansi;
 mod data;
 mod hglobal;
 mod image;
@@ -18,6 +19,7 @@ mod ole;
 mod source;
 mod target;
 
+pub(crate) use ansi::ansi_to_string;
 pub(crate) use data::DataObj;
 pub(crate) use image::DragImageBits;
 pub(crate) use source::{Outcome, do_drag_drop};

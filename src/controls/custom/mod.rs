@@ -44,8 +44,9 @@ use crate::window::{Window, WindowClass, WindowExStyle, WindowStyle};
 /// Implement this, then wrap the value in a [`Custom`] to host it in a child
 /// window. `paint` draws into the double-buffered [`Canvas`]; `input` receives
 /// typed [`Input`] and can raise [`CustomWidget::Event`]s through the [`WidgetCx`].
-/// The widget is shared (`&self`), so any state that changes during `paint` or
-/// `input` must live in `Cell`/`RefCell` fields.
+/// The widget is shared (`&self`), so any state that changes during `paint`,
+/// `input` or `drag` must live in `Cell`/`RefCell` fields; a callback must not
+/// mutably borrow the widget through [`Custom::widget`].
 pub trait CustomWidget: 'static {
     /// The events the widget raises through [`WidgetCx::emit`].
     type Event: 'static;
@@ -120,7 +121,10 @@ pub trait CustomWidget: 'static {
     /// [`Custom::accept_drops`]; coordinates are client pixels (add
     /// [`Custom::scroll_offset`] for document coordinates).
     ///
-    /// Answer [`DropEffect::None`] to reject (the default). The answer for
+    /// Answer [`DropEffect::None`] to reject (the default). Answer
+    /// [`DropEffect::Copy`] for files dragged from Explorer that the widget only
+    /// reads: [`DropEffect::Move`] tells the shell it may delete the originals.
+    /// The answer for
     /// [`DragEvent::Drop`] is reported to the drag source. A widget with a
     /// vertical scroll host scrolls by itself near its top and bottom edges
     /// during a drag; [`DragEvent::Over`] repeats about every 50 ms even while
@@ -384,8 +388,9 @@ impl<W: CustomWidget, M: 'static> Custom<W, M> {
 
     /// A shared handle to the widget, for app-side mutation between paints.
     ///
-    /// `paint` and `input` take `&self`, so the widget's own mutable state lives
-    /// in `Cell`/`RefCell` fields; the app mutates it through this handle.
+    /// `paint`, `input` and `drag` take `&self`, so the widget's own mutable
+    /// state lives in `Cell`/`RefCell` fields; the app mutates it through this
+    /// handle between callbacks, never from inside one.
     pub fn widget(&self) -> Rc<RefCell<W>> {
         Rc::clone(&self.shared.widget)
     }

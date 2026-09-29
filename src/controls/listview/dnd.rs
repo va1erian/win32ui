@@ -45,7 +45,9 @@ pub struct ListDrop {
     pub payload: Option<Vec<u8>>,
     /// Files dropped from Explorer; empty for an app drag.
     pub files: Vec<PathBuf>,
-    /// The effect the drop was accepted with.
+    /// The effect the drop was accepted with. Files from Explorer are always
+    /// accepted as [`DropEffect::Copy`]; for an app payload the drag source
+    /// performs a [`DropEffect::Move`] itself.
     pub effect: DropEffect,
     /// The modifier keys held at the drop.
     pub modifiers: Modifiers,
@@ -170,11 +172,21 @@ impl<T: 'static, M: 'static> ListDropSink<T, M> {
             Some(filter) => filter(&info.data),
             None => info.data.has_payload() || info.data.has_files(),
         };
-        if accepted {
-            info.preferred_effect().bits()
-        } else {
-            0
+        if !accepted {
+            return 0;
         }
+        // An app payload is moved by its source, which sees the effect. Files
+        // dragged from Explorer are only ever imported here, and a `Move`
+        // result would tell the shell it may delete the originals, so they are
+        // accepted as `Copy` (or rejected when the source forbids copying).
+        if !info.data.has_payload() && info.data.has_files() {
+            return if info.allowed.contains(DropEffect::Copy) {
+                DropEffect::Copy.bits()
+            } else {
+                0
+            };
+        }
+        info.preferred_effect().bits()
     }
 
     /// Where a drag at client height `y` would insert.
