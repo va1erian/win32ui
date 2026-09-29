@@ -38,6 +38,12 @@ mod tests {
     fn high_bytes_do_not_become_replacement_characters_on_a_single_byte_page() {
         // 0xE9 is 'é' in Windows-1252; on other code pages it still decodes to
         // some character rather than the lossy-UTF-8 U+FFFD.
+        // Under a UTF-8 ANSI page a lone 0xE9 is invalid by definition, so
+        // there is nothing to assert there.
+        // SAFETY: `GetACP` takes no arguments and only reads the process code page.
+        if unsafe { GetACP() } == CP_UTF8 {
+            return;
+        }
         assert!(!ansi_to_string(&[b'a', 0xE9]).contains('\u{FFFD}'));
     }
 }
