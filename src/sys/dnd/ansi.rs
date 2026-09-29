@@ -26,6 +26,7 @@ pub(crate) fn ansi_to_string(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use windows::Win32::Globalization::{CP_UTF8, GetACP};
 
     #[test]
     fn ascii_passes_through() {
