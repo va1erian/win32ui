@@ -11,7 +11,7 @@ mod common;
 
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -199,10 +199,34 @@ fn park_real_pointer() {
     }
 }
 
-/// Whether real pointer input reaches `expect` at `at`: the cursor moved
-/// there and the window under it is `expect`. False in a session without an
-/// interactive desktop (a headless CI runner), where the drag cannot happen.
-fn pointer_reaches(at: (i32, i32), expect: Hwnd) -> bool {
+/// Whether real pointer input can drive the test.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Pointer {
+    /// The cursor moved to the point and the list is the window under it.
+    Reaches,
+    /// The cursor could not be moved there: no interactive desktop (a
+    /// headless CI runner), so the drag cannot happen and the test skips.
+    Unavailable,
+    /// The cursor moved but another window is under it: a real failure.
+    Missed,
+}
+
+const POINTER_REACHES: u8 = 0;
+const POINTER_UNAVAILABLE: u8 = 1;
+const POINTER_MISSED: u8 = 2;
+
+impl Pointer {
+    fn code(self) -> u8 {
+        match self {
+            Pointer::Reaches => POINTER_REACHES,
+            Pointer::Unavailable => POINTER_UNAVAILABLE,
+            Pointer::Missed => POINTER_MISSED,
+        }
+    }
+}
+
+/// Moves the cursor to `at` and reports whether `expect` is under it.
+fn pointer_reaches(at: (i32, i32), expect: Hwnd) -> Pointer {
     let mut cursor = POINT::default();
     // SAFETY: plain integers and a valid out pointer.
     unsafe {
@@ -210,7 +234,13 @@ fn pointer_reaches(at: (i32, i32), expect: Hwnd) -> bool {
         std::thread::sleep(Duration::from_millis(150));
         let moved = GetCursorPos(&mut cursor).is_ok() && (cursor.x, cursor.y) == at;
         let under = WindowFromPoint(POINT { x: at.0, y: at.1 });
-        moved && under.0 as usize == expect.raw()
+        if !moved {
+            Pointer::Unavailable
+        } else if under.0 as usize == expect.raw() {
+            Pointer::Reaches
+        } else {
+            Pointer::Missed
+        }
     }
 }
 
@@ -256,8 +286,8 @@ fn run_case(name: &str, goal: Goal) -> Option<Outcome> {
     park_real_pointer();
     let outcome = Rc::new(RefCell::new(Outcome::default()));
     let outcome_for_app = Rc::clone(&outcome);
-    let input_works = Arc::new(AtomicBool::new(true));
-    let input_for_thread = Arc::clone(&input_works);
+    let input_state = Arc::new(AtomicU8::new(POINTER_REACHES));
+    let input_for_thread = Arc::clone(&input_state);
     let Some(run) = run_app_with_watchdog(name, move |ui| {
         let list = ListView::new(ui)
             .expect("list")
@@ -299,10 +329,11 @@ fn run_case(name: &str, goal: Goal) -> Option<Outcome> {
                     ((left + 20, (top + bottom) / 2), (left + 20, lower))
                 }
             };
-            if pointer_reaches(from, view) {
+            let pointer = pointer_reaches(from, view);
+            if pointer == Pointer::Reaches {
                 drag_with_mouse(from, to);
             } else {
-                input_for_thread.store(false, Ordering::SeqCst);
+                input_for_thread.store(pointer.code(), Ordering::SeqCst);
             }
             park_real_pointer();
             let _ = proxy.send(Msg::Done);
@@ -317,9 +348,15 @@ fn run_case(name: &str, goal: Goal) -> Option<Outcome> {
         panic!("{name}: the session could not create windows");
     };
     assert!(!run.timed_out, "{name}: the watchdog fired");
-    if !input_works.load(Ordering::SeqCst) {
-        eprintln!("{name}: skipped, real pointer input does not reach the window here");
-        return None;
+    match input_state.load(Ordering::SeqCst) {
+        POINTER_UNAVAILABLE => {
+            eprintln!("{name}: skipped, the cursor cannot be moved in this session");
+            return None;
+        }
+        POINTER_MISSED => {
+            panic!("{name}: the cursor moved but the list is not the window under it")
+        }
+        _ => {}
     }
     Some(outcome.take())
 }
