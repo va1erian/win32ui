@@ -11,7 +11,8 @@ mod common;
 
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use common::run_app_with_watchdog;
@@ -23,7 +24,8 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, mouse_event,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetSystemMetrics, GetWindowRect, SM_CXSCREEN, SM_CYSCREEN, SendMessageW, SetCursorPos,
+    GetCursorPos, GetSystemMetrics, GetWindowRect, SM_CXSCREEN, SM_CYSCREEN, SendMessageW,
+    SetCursorPos, WindowFromPoint,
 };
 
 /// `LVM_GETITEMRECT`.
@@ -58,7 +60,7 @@ struct Outcome {
     effect: Option<DropEffect>,
     payload: Option<Vec<u8>>,
     list_drop: Option<ListDrop>,
-    target_events: Vec<&'static str>,
+    target_events: Vec<String>,
 }
 
 /// A drop target that logs the drag events it sees and accepts app payloads.
@@ -81,21 +83,21 @@ impl CustomWidget for Target {
         let mut log = self.log.borrow_mut();
         match event {
             DragEvent::Enter(info) => {
-                log.target_events.push("enter");
+                log.target_events
+                    .push(format!("enter {:?}", info.position()));
                 accept(&info)
             }
             DragEvent::Over(info) => {
-                if log.target_events.last() != Some(&"over") {
-                    log.target_events.push("over");
-                }
+                log.target_events
+                    .push(format!("over {:?} {:?}", info.position(), info.allowed));
                 accept(&info)
             }
             DragEvent::Leave => {
-                log.target_events.push("leave");
+                log.target_events.push("leave".to_string());
                 DropEffect::None
             }
             DragEvent::Drop(info) => {
-                log.target_events.push("drop");
+                log.target_events.push("drop".to_string());
                 if let Some(payload) = info.data.payload() {
                     cx.emit(payload);
                 }
@@ -197,12 +199,26 @@ fn park_real_pointer() {
     }
 }
 
+/// Whether real pointer input reaches `expect` at `at`: the cursor moved
+/// there and the window under it is `expect`. False in a session without an
+/// interactive desktop (a headless CI runner), where the drag cannot happen.
+fn pointer_reaches(at: (i32, i32), expect: Hwnd) -> bool {
+    let mut cursor = POINT::default();
+    // SAFETY: plain integers and a valid out pointer.
+    unsafe {
+        let _ = SetCursorPos(at.0, at.1);
+        std::thread::sleep(Duration::from_millis(150));
+        let moved = GetCursorPos(&mut cursor).is_ok() && (cursor.x, cursor.y) == at;
+        let under = WindowFromPoint(POINT { x: at.0, y: at.1 });
+        moved && under.0 as usize == expect.raw()
+    }
+}
+
 /// Presses at `from`, drags to `to` in small steps and releases.
 fn drag_with_mouse(from: (i32, i32), to: (i32, i32)) {
     // SAFETY: plain integer arguments to the input APIs.
     unsafe {
         let _ = SetCursorPos(from.0, from.1);
-        std::thread::sleep(Duration::from_millis(150));
         mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0);
         std::thread::sleep(Duration::from_millis(150));
         // Cross the drag threshold so the list reports `LVN_BEGINDRAG`.
@@ -217,7 +233,7 @@ fn drag_with_mouse(from: (i32, i32), to: (i32, i32)) {
             let _ = SetCursorPos(x, y);
             std::thread::sleep(Duration::from_millis(30));
         }
-        std::thread::sleep(Duration::from_millis(200));
+        std::thread::sleep(Duration::from_millis(500));
         mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
         std::thread::sleep(Duration::from_millis(300));
     }
@@ -233,13 +249,15 @@ enum Goal {
     ReorderInList,
 }
 
-fn run_case(name: &str, goal: Goal) -> Outcome {
+fn run_case(name: &str, goal: Goal) -> Option<Outcome> {
     let _serial = DRAG_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     park_real_pointer();
     let outcome = Rc::new(RefCell::new(Outcome::default()));
     let outcome_for_app = Rc::clone(&outcome);
+    let input_works = Arc::new(AtomicBool::new(true));
+    let input_for_thread = Arc::clone(&input_works);
     let Some(run) = run_app_with_watchdog(name, move |ui| {
         let list = ListView::new(ui)
             .expect("list")
@@ -281,7 +299,12 @@ fn run_case(name: &str, goal: Goal) -> Outcome {
                     ((left + 20, (top + bottom) / 2), (left + 20, lower))
                 }
             };
-            drag_with_mouse(from, to);
+            if pointer_reaches(from, view) {
+                drag_with_mouse(from, to);
+            } else {
+                input_for_thread.store(false, Ordering::SeqCst);
+            }
+            park_real_pointer();
             let _ = proxy.send(Msg::Done);
         });
 
@@ -294,12 +317,18 @@ fn run_case(name: &str, goal: Goal) -> Outcome {
         panic!("{name}: the session could not create windows");
     };
     assert!(!run.timed_out, "{name}: the watchdog fired");
-    outcome.take()
+    if !input_works.load(Ordering::SeqCst) {
+        eprintln!("{name}: skipped, real pointer input does not reach the window here");
+        return None;
+    }
+    Some(outcome.take())
 }
 
 #[test]
 fn list_row_dropped_on_a_custom_target() {
-    let outcome = run_case("win32ui.dnd.custom", Goal::CustomTarget);
+    let Some(outcome) = run_case("win32ui.dnd.custom", Goal::CustomTarget) else {
+        return;
+    };
     assert_eq!(
         outcome.payload.as_deref(),
         Some(&b"rows:[1]"[..]),
@@ -307,13 +336,18 @@ fn list_row_dropped_on_a_custom_target() {
         outcome.target_events
     );
     assert_eq!(outcome.effect, Some(DropEffect::Move));
-    assert_eq!(outcome.target_events.first(), Some(&"enter"));
-    assert_eq!(outcome.target_events.last(), Some(&"drop"));
+    assert!(outcome.target_events[0].starts_with("enter"));
+    assert_eq!(
+        outcome.target_events.last().map(String::as_str),
+        Some("drop")
+    );
 }
 
 #[test]
 fn list_row_reordered_within_its_list() {
-    let outcome = run_case("win32ui.dnd.reorder", Goal::ReorderInList);
+    let Some(outcome) = run_case("win32ui.dnd.reorder", Goal::ReorderInList) else {
+        return;
+    };
     let drop = outcome.list_drop.expect("the list reported a drop");
     assert_eq!(drop.payload.as_deref(), Some(&b"rows:[0]"[..]));
     assert_eq!(drop.row, Some(3));

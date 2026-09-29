@@ -54,8 +54,10 @@ impl<W: CustomWidget, M: 'static> CustomDropSink<W, M> {
 
     /// Scrolls the scroll host when the pointer is in an edge zone.
     fn auto_scroll(&self, shared: &CustomShared<W, M>, y: i32) {
-        let scroll = shared.scroll.borrow();
-        let Some(scroll) = scroll.as_ref() else {
+        // Clone the handle and release the borrow first: scrolling runs the
+        // app's `on_scroll` mapper, which may touch `shared.scroll` itself.
+        let scroll = shared.scroll.borrow().clone();
+        let Some(scroll) = scroll else {
             return;
         };
         let dpi = shared.ui.dpi();
