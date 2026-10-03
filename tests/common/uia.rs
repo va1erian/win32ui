@@ -52,8 +52,17 @@ pub fn spawn_client<T: Send + 'static>(
         unsafe {
             let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
         }
-        std::thread::sleep(Duration::from_millis(400));
-        let result = Client::connect(title).map(|client| f(&client));
+        // The window may not be up yet on a loaded machine: retry for a few
+        // seconds instead of trusting one fixed sleep.
+        let mut client = None;
+        for _ in 0..50 {
+            std::thread::sleep(Duration::from_millis(100));
+            client = Client::connect(title);
+            if client.is_some() {
+                break;
+            }
+        }
+        let result = client.map(|client| f(&client));
         // SAFETY: balances the initialisation above.
         unsafe { CoUninitialize() };
         done();
