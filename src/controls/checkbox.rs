@@ -48,6 +48,7 @@ impl CheckState {
         }
     }
 
+    /// Paints the box for a `WM_DRAWITEM` from the current state and theme.
     fn draw(&self, dc: isize, area: Rect, state: u32) {
         let theme = self.theme.get();
         let paint = sys::checkbox_draw::CheckPaint {
@@ -120,9 +121,14 @@ impl<M: 'static> CheckBox<M> {
         let events_for_mapper = Rc::clone(&events);
         let state_for_mapper = Rc::clone(&state);
         let mapper: Rc<dyn Fn(&Message) -> bool> = Rc::new(move |message| match message {
+            // An owner-drawn button reports the second click of a double
+            // click as `BN_DOUBLECLICKED` instead of `BN_CLICKED`.
             Message::Command(command)
                 if command.control == Some(hwnd)
-                    && command.notification == CommandNotification::Clicked =>
+                    && matches!(
+                        command.notification,
+                        CommandNotification::Clicked | CommandNotification::DoubleClicked
+                    ) =>
             {
                 let checked = !state_for_mapper.checked.get();
                 state_for_mapper.set_checked(checked);
