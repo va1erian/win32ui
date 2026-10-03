@@ -1,8 +1,15 @@
 #![forbid(unsafe_code)]
 
 //! A two-state check box that maps toggles to the app's `Msg`.
+//!
+//! The themed native check box fills its checked glyph with the *system*
+//! accent, so the app's [`Theme::accent`] never reaches it. The box is an
+//! owner-drawn (`BS_OWNERDRAW`) button instead: the glyph and label are
+//! painted from theme tokens on `WM_DRAWITEM`, while the native button
+//! behaviour (focus, Space, `BN_CLICKED`) is kept. An owner-drawn button holds
+//! no check state, so the widget keeps it.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use crate::app::Ui;
@@ -12,6 +19,7 @@ use crate::controls::{create_child, next_id, style};
 use crate::error::Result;
 use crate::gdi::Font;
 use crate::geometry::Rect;
+use crate::hwnd::Hwnd;
 use crate::message::{CommandNotification, Message};
 use crate::sys;
 use crate::theme::{Theme, Themed};
@@ -22,14 +30,57 @@ struct CheckBoxEvents<M> {
     on_toggle: Option<Box<dyn Fn(bool) -> Option<M>>>,
 }
 
-/// A native auto check box (`BS_AUTOCHECKBOX`).
+/// The state the `WM_DRAWITEM` mapper paints from, shared with the widget.
+struct CheckState {
+    hwnd: Hwnd,
+    checked: Cell<bool>,
+    label: RefCell<String>,
+    theme: Cell<Theme>,
+    font: Rc<Font>,
+}
+
+impl CheckState {
+    /// Records the check state, repainting only on a change. (An owner-drawn
+    /// button does not repaint itself when its state changes.)
+    fn set_checked(&self, checked: bool) {
+        if self.checked.replace(checked) != checked {
+            sys::window::invalidate(self.hwnd);
+        }
+    }
+
+    /// Paints the box for a `WM_DRAWITEM` from the current state and theme.
+    fn draw(&self, dc: isize, area: Rect, state: u32) {
+        let theme = self.theme.get();
+        let paint = sys::checkbox_draw::CheckPaint {
+            text: theme.text,
+            text_disabled: theme.text_disabled,
+            edge: theme.text_secondary,
+            accent: theme.accent,
+            mark: theme.text_on_accent,
+            focus: theme.border_focused,
+            background: theme.background,
+        };
+        sys::checkbox_draw::draw_checkbox(
+            dc,
+            area,
+            &self.label.borrow(),
+            sys::control::current_font(self.hwnd).unwrap_or(self.font.raw()),
+            self.checked.get(),
+            state,
+            &paint,
+        );
+    }
+}
+
+/// An owner-drawn two-state check box.
 ///
-/// The box toggles itself natively; the click notification only reports the
-/// new state through [`CheckBox::is_checked`]. Colours follow the window
-/// theme like [`Button`](crate::Button).
+/// Clicking (or Space) toggles it and reports the new state through
+/// [`CheckBox::on_toggle`]. Checked, the box is filled with the theme's
+/// accent colour, like [`RadioGroup`](crate::RadioGroup)'s dot.
 pub struct CheckBox<M> {
     control: Control,
     events: Rc<RefCell<CheckBoxEvents<M>>>,
+    state: Rc<CheckState>,
 }
 
 impl<M: 'static> CheckBox<M> {
@@ -44,49 +95,81 @@ impl<M: 'static> CheckBox<M> {
         let height =
             (font.pixel_height() + dip(10.0).to_px(dpi).value()).max(dip(20.0).to_px(dpi).value());
         let bounds = Rect::new(0, 0, width, height);
-        let style =
-            style::WS_CHILD | style::WS_VISIBLE | style::WS_TABSTOP | sys::button::checkbox_style();
+        let style = style::WS_CHILD
+            | style::WS_VISIBLE
+            | style::WS_TABSTOP
+            | sys::button_draw::owner_drawn(sys::button::checkbox_style());
         let hwnd = create_child("CheckBox", "BUTTON", parent, style, 0, next_id(), bounds)?;
-        sys::apply_native_theme(hwnd, sys::NativeControlKind::Button, ui.theme().is_dark);
+        let _ = sys::window::set_title(hwnd, text);
+
+        let state = Rc::new(CheckState {
+            hwnd,
+            checked: Cell::new(false),
+            label: RefCell::new(text.to_string()),
+            theme: Cell::new(ui.theme()),
+            font,
+        });
+        let weak = Rc::downgrade(&state);
+        sys::uia::attach_native_state(
+            hwnd,
+            crate::accessibility::Role::CheckBox,
+            Rc::new(move || weak.upgrade().is_some_and(|state| state.checked.get())),
+        );
 
         let events = Rc::new(RefCell::new(CheckBoxEvents { on_toggle: None }));
         let sink = ui.clone();
         let events_for_mapper = Rc::clone(&events);
-        let mapper: Rc<dyn Fn(&Message) -> bool> = Rc::new(move |message| {
-            let Message::Command(command) = message else {
-                return false;
-            };
-            if command.control != Some(hwnd) || command.notification != CommandNotification::Clicked
+        let state_for_mapper = Rc::clone(&state);
+        let mapper: Rc<dyn Fn(&Message) -> bool> = Rc::new(move |message| match message {
+            // An owner-drawn button reports the second click of a double
+            // click as `BN_DOUBLECLICKED` instead of `BN_CLICKED`.
+            Message::Command(command)
+                if command.control == Some(hwnd)
+                    && matches!(
+                        command.notification,
+                        CommandNotification::Clicked | CommandNotification::DoubleClicked
+                    ) =>
             {
-                return false;
+                let checked = !state_for_mapper.checked.get();
+                state_for_mapper.set_checked(checked);
+                let msg = events_for_mapper
+                    .borrow()
+                    .on_toggle
+                    .as_ref()
+                    .and_then(|f| f(checked));
+                if let Some(msg) = msg {
+                    sink.emit(msg);
+                }
+                true
             }
-            let checked = sys::button::is_checked(hwnd);
-            let msg = events_for_mapper
-                .borrow()
-                .on_toggle
-                .as_ref()
-                .and_then(|f| f(checked));
-            if let Some(msg) = msg {
-                sink.emit(msg);
+            Message::DrawItem {
+                control,
+                dc,
+                state,
+                area,
+                ..
+            } if *control == hwnd => {
+                state_for_mapper.draw(*dc, *area, *state);
+                true
             }
-            true
+            _ => false,
         });
         registry::register_app_events(hwnd, mapper);
 
-        let check = CheckBox {
-            control: Control::own(hwnd, bounds),
-            events,
-        };
-        check.set_text(text);
+        let state_for_theme = Rc::clone(&state);
         crate::theme::register_themed(
             parent,
             hwnd,
             Rc::new(move |applied| {
-                sys::apply_native_theme(hwnd, sys::NativeControlKind::Button, applied.is_dark);
+                state_for_theme.theme.set(*applied);
                 sys::window::invalidate(hwnd);
             }),
         );
-        Ok(check)
+        Ok(CheckBox {
+            control: Control::own(hwnd, bounds),
+            events,
+            state,
+        })
     }
 
     /// Sets the initial state, returning the box for chaining.
@@ -103,12 +186,12 @@ impl<M: 'static> CheckBox<M> {
 
     /// Whether the box is currently checked.
     pub fn is_checked(&self) -> bool {
-        sys::button::is_checked(self.control.hwnd())
+        self.state.checked.get()
     }
 
     /// Checks or unchecks the box.
     pub fn set_checked(&self, checked: bool) {
-        sys::button::set_checked(self.control.hwnd(), checked);
+        self.state.set_checked(checked);
     }
 
     /// Simulates a user click, toggling the box synchronously.
@@ -125,11 +208,7 @@ impl<M> AsControl for CheckBox<M> {
 
 impl<M> Themed for CheckBox<M> {
     fn apply_theme(&self, theme: &Theme) {
-        sys::apply_native_theme(
-            self.control.hwnd(),
-            sys::NativeControlKind::Button,
-            theme.is_dark,
-        );
+        self.state.theme.set(*theme);
         sys::window::invalidate(self.control.hwnd());
     }
 }
@@ -143,10 +222,12 @@ impl<M> Drop for CheckBox<M> {
 
 impl<M> HasText for CheckBox<M> {
     fn text(&self) -> String {
-        sys::window::get_title(self.control.hwnd())
+        self.state.label.borrow().clone()
     }
 
     fn set_text(&self, text: &str) {
+        self.state.label.replace(text.to_string());
         let _ = sys::window::set_title(self.control.hwnd(), text);
+        sys::window::invalidate(self.control.hwnd());
     }
 }
