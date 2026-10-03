@@ -57,10 +57,15 @@ fn recorder(answer: u32) -> Rc<Recorder> {
 
 /// A target with no window: `ScreenToClient` on a null handle leaves the
 /// point unchanged, so screen and client coordinates coincide.
+///
+/// It has no shell drag-image helper. The helper's drag image is shared by
+/// the whole process, and these tests run on parallel threads with no window
+/// behind the target; driving it that way crashed the test binary
+/// intermittently with an access violation. The sink is what is under test.
 fn target_for(sink: &Rc<Recorder>) -> IDropTarget {
     ole::ensure().expect("OLE initialises on the test thread");
     let sink: Rc<dyn TargetSink> = sink.clone();
-    make_target(HWND(std::ptr::null_mut()), sink)
+    make_target(HWND(std::ptr::null_mut()), sink, None)
 }
 
 #[test]

@@ -203,14 +203,24 @@ impl Drop for Registration {
     }
 }
 
-/// Builds the COM drop target for `hwnd` without registering it.
-fn make_target(hwnd: HWND, sink: Rc<dyn TargetSink>) -> IDropTarget {
-    // SAFETY: creates the in-process shell drop-target helper; released with
-    // the target. Without it drags still work, just without the image.
-    let helper = unsafe {
+/// Creates the in-process shell drop-target helper that paints the drag
+/// image. Without it drags still work, just without the image.
+fn drag_image_helper() -> Option<IDropTargetHelper> {
+    // SAFETY: creates an in-process COM object; the returned interface
+    // releases it when dropped.
+    unsafe {
         CoCreateInstance::<_, IDropTargetHelper>(&CLSID_DragDropHelper, None, CLSCTX_INPROC_SERVER)
     }
-    .ok();
+    .ok()
+}
+
+/// Builds the COM drop target for `hwnd` without registering it, painting
+/// the drag image through `helper` when there is one.
+fn make_target(
+    hwnd: HWND,
+    sink: Rc<dyn TargetSink>,
+    helper: Option<IDropTargetHelper>,
+) -> IDropTarget {
     DropTarget {
         hwnd,
         sink,
@@ -223,7 +233,7 @@ fn make_target(hwnd: HWND, sink: Rc<dyn TargetSink>) -> IDropTarget {
 /// Registers `sink` as the drop target of `hwnd`.
 pub(crate) fn register_target(hwnd: Hwnd, sink: Rc<dyn TargetSink>) -> Result<Registration> {
     ole::ensure()?;
-    let target = make_target(raw_hwnd(hwnd), sink);
+    let target = make_target(raw_hwnd(hwnd), sink, drag_image_helper());
     // SAFETY: `hwnd` is a live window of this thread; OLE takes its own
     // reference to `target`, released by `RevokeDragDrop`.
     unsafe { RegisterDragDrop(raw_hwnd(hwnd), &target) }.map_err(win32_error)?;
