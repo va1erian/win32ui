@@ -89,7 +89,7 @@ fn text_format(flags: &[DRAW_TEXT_FORMAT]) -> DRAW_TEXT_FORMAT {
 }
 
 /// `rect` as a raw `RECT`.
-fn rect_of(rect: Rect) -> RECT {
+pub(super) fn rect_of(rect: Rect) -> RECT {
     RECT {
         left: rect.left,
         top: rect.top,
@@ -100,7 +100,7 @@ fn rect_of(rect: Rect) -> RECT {
 
 /// The control's client rectangle for binding a DC render target, whose origin
 /// is the control's top-left. `bounds.right`/`bottom` are the client extent.
-fn full_rect(bounds: Rect) -> Rect {
+pub(super) fn full_rect(bounds: Rect) -> Rect {
     Rect::new(0, 0, bounds.right.max(1), bounds.bottom.max(1))
 }
 
@@ -207,19 +207,26 @@ pub(crate) fn draw_radio(
         }
     }
 
-    // SAFETY: `dc` is live for the call; the font is restored afterwards.
+    let text_color = if disabled {
+        paint.text_disabled
+    } else {
+        paint.text
+    };
+    draw_label(dc, font, label, left + diameter + 6, bounds, text_color);
+}
+
+/// Draws a check box or radio label left-aligned from `left`, vertically
+/// centred in `bounds` and end-ellipsised.
+pub(super) fn draw_label(dc: HDC, font: HFONT, label: &str, left: i32, bounds: Rect, color: Color) {
+    // SAFETY: `dc` is the `WM_DRAWITEM` device context, live for the call; the
+    // font is restored afterwards.
     unsafe {
-        let text_color = if disabled {
-            paint.text_disabled
-        } else {
-            paint.text
-        };
         SetBkMode(dc, TRANSPARENT);
-        SetTextColor(dc, COLORREF(text_color.to_colorref()));
+        SetTextColor(dc, COLORREF(color.to_colorref()));
         let old_font = windows::Win32::Graphics::Gdi::SelectObject(dc, font.into());
         let mut wide: Vec<u16> = label.encode_utf16().collect();
         let mut cell = RECT {
-            left: left + diameter + 6,
+            left,
             top: bounds.top,
             right: bounds.right,
             bottom: bounds.bottom,
