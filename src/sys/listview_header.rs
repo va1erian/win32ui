@@ -276,6 +276,12 @@ unsafe extern "system" fn size_proc(
         let data = unsafe { &*(refdata as *const SizeRefdata) };
         data.pending.set(false);
         let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| data.handler.on_size()));
+        // Unlike the old in-`WM_SIZE` restretch, this one can run after the
+        // rows were painted, and `LVM_SETCOLUMNWIDTH` only repaints the strip
+        // a widened column exposes. The rows are owner-drawn with the text
+        // ellipsized to the column, so the widened column's text (left of
+        // that strip) must be repainted too.
+        super::window::invalidate(hwnd_from(hwnd));
         return LRESULT(0);
     } else if msg == WM_DPICHANGED_AFTERPARENT {
         // SAFETY: `refdata` is the live `SizeRefdata` installed by `install`;
