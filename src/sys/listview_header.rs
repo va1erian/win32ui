@@ -1,13 +1,17 @@
 //! The list view's header subclass (owner-drawn header, column-resize veto)
 //! and the size subclass that keeps `Fill` columns stretched.
 
+use std::cell::Cell;
+use std::sync::OnceLock;
+
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::Graphics::Gdi::HDC;
 use windows::Win32::UI::Controls::{
     HDN_BEGINTRACK, HDN_ENDTRACK, NM_CUSTOMDRAW, NMCUSTOMDRAW, NMHDR, NMHEADERW,
 };
 use windows::Win32::UI::Shell::DefSubclassProc;
-use windows::Win32::UI::WindowsAndMessaging::{WM_NOTIFY, WM_SIZE};
+use windows::Win32::UI::WindowsAndMessaging::{RegisterWindowMessageW, WM_NOTIFY, WM_SIZE};
+use windows::core::{PCWSTR, w};
 
 use crate::geometry::Rect;
 use crate::hwnd::Hwnd;
@@ -174,6 +178,22 @@ pub(crate) trait SizeHandler {
 
 struct SizeRefdata {
     handler: Box<dyn SizeHandler>,
+    /// Whether a restretch message is already queued, so a burst of
+    /// `WM_SIZE`s (a live window drag) restretches once.
+    pending: Cell<bool>,
+}
+
+/// Name of the private message a list view posts itself to restretch its
+/// `Fill` columns once the `WM_SIZE` that asked for it has returned.
+const RESTRETCH_MESSAGE_NAME: PCWSTR = w!("emusic.win32ui.listview-restretch");
+
+/// The process-wide id of the registered restretch message (0 if unavailable).
+fn restretch_message() -> u32 {
+    static ID: OnceLock<u32> = OnceLock::new();
+    *ID.get_or_init(|| {
+        // SAFETY: the string is a static, nul-terminated wide literal.
+        unsafe { RegisterWindowMessageW(RESTRETCH_MESSAGE_NAME) }
+    })
 }
 
 /// Owns a size handler and the subclass that feeds it `WM_SIZE`.
@@ -186,7 +206,10 @@ impl SizeSubclass {
     /// Subclasses `view` so `handler` runs on every `WM_SIZE`. Returns `None`
     /// if subclassing fails.
     pub(crate) fn install(view: Hwnd, handler: Box<dyn SizeHandler>) -> Option<SizeSubclass> {
-        let raw = Box::into_raw(Box::new(SizeRefdata { handler }));
+        let raw = Box::into_raw(Box::new(SizeRefdata {
+            handler,
+            pending: Cell::new(false),
+        }));
         if !super::window::set_subclass(view, Some(size_proc), SIZE_SUBCLASS_ID, raw as usize) {
             // SAFETY: install failed before the subclass could adopt it.
             unsafe { drop(Box::from_raw(raw)) };
@@ -219,17 +242,41 @@ unsafe extern "system" fn size_proc(
     _id: usize,
     refdata: usize,
 ) -> LRESULT {
+    let restretch = restretch_message();
     if msg == WM_SIZE {
+        // The restretch is posted rather than run here: `WM_SIZE` also arrives
+        // from inside the list view's own scroll-bar update (an item-count
+        // change that adds or drops the vertical scroll bar resizes the client
+        // area), and a column-width change nested in that update makes the
+        // control apply its scroll correction twice, leaving the top row
+        // above row 0 (`LVM_GETTOPINDEX` negative, the rows painted off
+        // screen). The default handling still runs below.
+        //
         // SAFETY: `refdata` is the live `SizeRefdata` installed by `install`.
-        // The default handling still runs below; a column-width change never
-        // resizes the control, so this cannot loop back into `WM_SIZE`.
-        unsafe {
-            let data = &*(refdata as *const SizeRefdata);
-            // A panic unwinding across this `extern "system"` boundary is
-            // undefined behaviour; isolate it instead.
-            let _ =
-                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| data.handler.on_size()));
+        let data = unsafe { &*(refdata as *const SizeRefdata) };
+        if !data.pending.get() {
+            let queued = restretch != 0
+                && super::window::post_message(hwnd_from(hwnd), restretch, 0, 0).is_ok();
+            if queued {
+                data.pending.set(true);
+            } else {
+                // No queue to defer through: restretch now rather than never.
+                // A panic unwinding across this `extern "system"` boundary is
+                // undefined behaviour; isolate it instead.
+                let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    data.handler.on_size()
+                }));
+            }
         }
+    } else if restretch != 0 && msg == restretch {
+        // SAFETY: `refdata` is the live `SizeRefdata` installed by `install`;
+        // the message was posted by this subclass, so the list view behind it
+        // never sees it. A column-width change never resizes the control, so
+        // this cannot loop back into `WM_SIZE`.
+        let data = unsafe { &*(refdata as *const SizeRefdata) };
+        data.pending.set(false);
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| data.handler.on_size()));
+        return LRESULT(0);
     } else if msg == WM_DPICHANGED_AFTERPARENT {
         // SAFETY: `refdata` is the live `SizeRefdata` installed by `install`;
         // `hwnd` is this same subclassed list view, so reading its own DPI
