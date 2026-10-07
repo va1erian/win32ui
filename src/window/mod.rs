@@ -14,6 +14,7 @@ mod ops;
 mod placement;
 mod size;
 mod theme;
+mod timer;
 mod title_bar;
 
 pub use backdrop::Backdrop;
@@ -32,7 +33,7 @@ use crate::error::Result;
 use crate::gdi::Brush;
 use crate::geometry::{Rect, Size};
 use crate::hwnd::Hwnd;
-use crate::message::{LResult, Message, MinMaxInfo, TimerId};
+use crate::message::{LResult, Message, MinMaxInfo};
 use crate::sys;
 
 /// Receives a window's messages. Return `Some(value)` to mark a message
@@ -332,16 +333,6 @@ impl Window {
     /// no-op on the Win32 side).
     pub fn destroy(&self) {
         sys::window::destroy(self.hwnd);
-    }
-
-    /// Starts a repeating timer.
-    pub fn set_timer(&self, millis: u32) -> Result<TimerId> {
-        sys::window::set_timer(self.hwnd, millis).map(TimerId)
-    }
-
-    /// Stops a timer started by [`Window::set_timer`].
-    pub fn kill_timer(&self, id: TimerId) {
-        sys::window::kill_timer(self.hwnd, id.0);
     }
 
     /// Posts this process's registered "wake" message to the window, nudging

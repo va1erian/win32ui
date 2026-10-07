@@ -50,6 +50,7 @@ pub(crate) mod tabs;
 pub(crate) mod taskdialog;
 pub(crate) mod theme;
 pub(crate) mod theme_system;
+pub(crate) mod timer;
 pub(crate) mod tooltip;
 pub(crate) mod treeview;
 pub(crate) mod uia;

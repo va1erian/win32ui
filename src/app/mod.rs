@@ -13,6 +13,7 @@ mod proxy;
 mod run;
 mod spec;
 mod status_bar;
+mod timer;
 mod title_menu;
 mod top_bar;
 mod ui;

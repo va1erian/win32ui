@@ -1,6 +1,5 @@
 //! Window classes, creation, and per-window operations.
 
-use core::cell::Cell;
 use core::ffi::c_void;
 
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, RECT, WPARAM};
@@ -13,11 +12,10 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{TME_LEAVE, TRACKMOUSEEVENT, Tr
 use windows::Win32::UI::Shell::SUBCLASSPROC;
 use windows::Win32::UI::WindowsAndMessaging::{
     CS_DBLCLKS, CreateWindowExW, DestroyWindow, GA_ROOT, GWL_STYLE, GetAncestor, GetClientRect,
-    GetWindowLongPtrW, GetWindowRect, HCURSOR, HMENU, HWND_BOTTOM, IDC_ARROW, KillTimer,
-    LoadCursorW, MoveWindow, RegisterClassExW, SW_HIDE, SW_SHOW, SW_SHOWMAXIMIZED,
-    SW_SHOWMINNOACTIVE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetTimer, SetWindowLongPtrW,
-    SetWindowPos, SetWindowTextW, ShowWindow, UnregisterClassW, WINDOW_EX_STYLE, WINDOW_STYLE,
-    WNDCLASSEXW, WS_TABSTOP,
+    GetWindowLongPtrW, GetWindowRect, HCURSOR, HMENU, HWND_BOTTOM, IDC_ARROW, LoadCursorW,
+    MoveWindow, RegisterClassExW, SW_HIDE, SW_SHOW, SW_SHOWMAXIMIZED, SW_SHOWMINNOACTIVE,
+    SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetWindowLongPtrW, SetWindowPos, SetWindowTextW,
+    ShowWindow, UnregisterClassW, WINDOW_EX_STYLE, WINDOW_STYLE, WNDCLASSEXW, WS_TABSTOP,
 };
 use windows::core::{HSTRING, PCWSTR};
 
@@ -175,11 +173,6 @@ pub(crate) fn create_control(
         )
     }
     .map_err(win32_error)
-}
-
-thread_local! {
-    /// Source of unique, non-zero `SetTimer` ids for this thread.
-    static NEXT_TIMER_ID: Cell<usize> = const { Cell::new(0) };
 }
 
 /// Destroys a window. Errors (e.g. an already-destroyed handle) are ignored.
@@ -527,35 +520,6 @@ pub(crate) fn show(hwnd: Hwnd, kind: ShowKind) {
     unsafe {
         let _ = ShowWindow(raw_hwnd(hwnd), cmd);
         let _ = UpdateWindow(raw_hwnd(hwnd));
-    }
-}
-
-/// Starts a timer and returns the id it was given.
-///
-/// With a non-null window handle, `SetTimer` uses `nIDEvent` itself as the
-/// timer id; its return value is only documented as nonzero on success, so it
-/// is not the id. This passes a fresh nonzero id and returns that id, which is
-/// what `WM_TIMER` reports back in `wparam`.
-pub(crate) fn set_timer(hwnd: Hwnd, millis: u32) -> Result<usize> {
-    let id = NEXT_TIMER_ID.with(|next| {
-        let id = next.get().wrapping_add(1).max(1);
-        next.set(id);
-        id
-    });
-    // SAFETY: `None` installs a WM_TIMER message rather than a callback.
-    let created = unsafe { SetTimer(Some(raw_hwnd(hwnd)), id, millis, None) };
-    if created == 0 {
-        Err(win32_error(windows::core::Error::from_thread()))
-    } else {
-        Ok(id)
-    }
-}
-
-/// Stops a timer started by [`set_timer`].
-pub(crate) fn kill_timer(hwnd: Hwnd, id: usize) {
-    // SAFETY: killing an unknown id is a documented no-op.
-    unsafe {
-        let _ = KillTimer(Some(raw_hwnd(hwnd)), id);
     }
 }
 
