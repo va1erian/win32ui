@@ -17,6 +17,7 @@ mod timer;
 mod title_menu;
 mod top_bar;
 mod ui;
+mod window_role;
 
 pub use child::WindowHandle;
 pub use layout::split::Split;

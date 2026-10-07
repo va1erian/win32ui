@@ -3,6 +3,9 @@
 //!
 //! The window's original style, placement and extended-title-bar flag are saved
 //! on entry and restored on leave, so the window comes back exactly as it was.
+//! Only `GWL_STYLE` is rewritten, so extended styles such as a tool window or a
+//! no-activate window (`sys::window_role`) are kept throughout; a no-activate
+//! window is also never activated by entering or leaving.
 
 use core::cell::RefCell;
 use core::mem::size_of;
@@ -11,9 +14,9 @@ use std::collections::HashMap;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::UI::WindowsAndMessaging::{
     GetWindowLongPtrW, GetWindowPlacement, HWND_NOTOPMOST, HWND_TOPMOST, SET_WINDOW_POS_FLAGS,
-    SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE, SWP_SHOWWINDOW,
-    SetWindowLongPtrW, SetWindowPlacement, SetWindowPos, WINDOWPLACEMENT, WS_CLIPCHILDREN,
-    WS_CLIPSIBLINGS, WS_POPUP, WS_VISIBLE,
+    SW_SHOWNOACTIVATE, SW_SHOWNORMAL, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE,
+    SWP_NOOWNERZORDER, SWP_NOSIZE, SWP_SHOWWINDOW, SetWindowLongPtrW, SetWindowPlacement,
+    SetWindowPos, WINDOWPLACEMENT, WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_POPUP, WS_VISIBLE,
 };
 
 use crate::error::Result;
@@ -80,7 +83,7 @@ pub(crate) fn enter(hwnd: Hwnd, rect: Rect) -> Result<()> {
             windows::Win32::UI::WindowsAndMessaging::GWL_STYLE,
             popup,
         );
-        set_pos(hwnd, HWND_TOPMOST, rect, SWP_FRAMECHANGED | SWP_SHOWWINDOW)?;
+        set_pos(hwnd, HWND_TOPMOST, rect, show_flags(hwnd))?;
     }
     // The extended title strip would draw a caption the popup no longer has.
     crate::window::nc::set_extended(hwnd, false);
@@ -106,7 +109,7 @@ pub(crate) fn leave(hwnd: Hwnd) -> Result<()> {
             saved.style,
         );
         let _ = SetWindowPos(raw_hwnd(hwnd), Some(HWND_NOTOPMOST), 0, 0, 0, 0, restore);
-        let _ = SetWindowPlacement(raw_hwnd(hwnd), &saved.placement);
+        let _ = SetWindowPlacement(raw_hwnd(hwnd), &placement_for(hwnd, saved.placement));
     }
     crate::window::nc::set_extended(hwnd, saved.extended);
     Ok(())
@@ -117,6 +120,27 @@ pub(crate) fn forget(hwnd: Hwnd) {
     FULLSCREEN.with(|map| {
         map.borrow_mut().remove(&(hwnd.raw() as isize));
     });
+}
+
+/// The `SetWindowPos` flags that show the fullscreen frame. A no-activate
+/// window (`WS_EX_NOACTIVATE`) must not be activated by entering fullscreen.
+fn show_flags(hwnd: Hwnd) -> SET_WINDOW_POS_FLAGS {
+    let flags = SWP_FRAMECHANGED | SWP_SHOWWINDOW;
+    if super::window_role::is_no_activate(hwnd) {
+        flags | SWP_NOACTIVATE
+    } else {
+        flags
+    }
+}
+
+/// The saved placement, with an activating `SW_SHOWNORMAL` turned into
+/// `SW_SHOWNOACTIVATE` for a no-activate window so leaving fullscreen does
+/// not take the focus.
+fn placement_for(hwnd: Hwnd, mut placement: WINDOWPLACEMENT) -> WINDOWPLACEMENT {
+    if super::window_role::is_no_activate(hwnd) && placement.showCmd == SW_SHOWNORMAL.0 as u32 {
+        placement.showCmd = SW_SHOWNOACTIVATE.0 as u32;
+    }
+    placement
 }
 
 fn set_pos(hwnd: Hwnd, insert_after: HWND, rect: Rect, flags: SET_WINDOW_POS_FLAGS) -> Result<()> {

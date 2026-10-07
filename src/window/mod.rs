@@ -162,6 +162,12 @@ impl WindowExStyle {
         WindowExStyle(self.0 | wam::WS_EX_TOOLWINDOW.0)
     }
 
+    /// A window that clicking never activates (`WS_EX_NOACTIVATE`): it takes
+    /// input without taking the focus from the foreground window.
+    pub const fn no_activate(self) -> WindowExStyle {
+        WindowExStyle(self.0 | wam::WS_EX_NOACTIVATE.0)
+    }
+
     /// A container for dialog navigation (`WS_EX_CONTROLPARENT`), so
     /// `IsDialogMessageW` moves the focus among its children with Tab.
     pub const fn control_parent(self) -> WindowExStyle {

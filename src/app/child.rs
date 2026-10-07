@@ -155,11 +155,18 @@ where
     // while `make` runs, before the window is shown.
     let size = Size::new(width.to_px(dpi).value(), height.to_px(dpi).value());
     let bounds = centered_in_work_area(size, owner_anchor(owner));
+    let mut ex_style = WindowExStyle::new().control_parent();
+    if spec.tool_window_kind() {
+        ex_style = ex_style.tool_window();
+    }
+    if spec.no_activate_kind() {
+        ex_style = ex_style.no_activate();
+    }
     let window = Window::create(
         class,
         owner,
         WindowStyle::overlapped().min_max().clip_children(),
-        WindowExStyle::new().control_parent(),
+        ex_style,
         bounds,
         title,
         handler,

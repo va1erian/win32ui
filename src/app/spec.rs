@@ -58,6 +58,8 @@ pub struct WindowSpec {
     title_bar: TitleBar,
     menu_in_strip: bool,
     menu_strip_placement: MenuStripPlacement,
+    tool_window: bool,
+    no_activate: bool,
 }
 
 impl WindowSpec {
@@ -75,6 +77,8 @@ impl WindowSpec {
             title_bar: TitleBar::Standard,
             menu_in_strip: false,
             menu_strip_placement: MenuStripPlacement::default(),
+            tool_window: false,
+            no_activate: false,
         }
     }
 
@@ -151,6 +155,34 @@ impl WindowSpec {
     pub fn menu_strip_placement(mut self, placement: MenuStripPlacement) -> WindowSpec {
         self.menu_strip_placement = placement;
         self
+    }
+
+    /// Makes the window a tool window (`WS_EX_TOOLWINDOW`): it gets no taskbar
+    /// button and does not appear in Alt+Tab, as suits a dashboard, overlay
+    /// or palette. Change it live with [`Ui::set_tool_window`].
+    pub fn tool_window(mut self, on: bool) -> WindowSpec {
+        self.tool_window = on;
+        self
+    }
+
+    /// Makes the window never take the focus (`WS_EX_NOACTIVATE`): clicking
+    /// it delivers the mouse input without activating it, and showing it or
+    /// entering and leaving fullscreen does not activate it either. Keyboard
+    /// input keeps going to the previously active window. Change it live with
+    /// [`Ui::set_no_activate`].
+    pub fn no_activate(mut self, on: bool) -> WindowSpec {
+        self.no_activate = on;
+        self
+    }
+
+    /// Whether the window is a tool window.
+    pub(crate) fn tool_window_kind(&self) -> bool {
+        self.tool_window
+    }
+
+    /// Whether the window never takes the focus.
+    pub(crate) fn no_activate_kind(&self) -> bool {
+        self.no_activate
     }
 
     /// Whether the menu should be drawn in the title strip.
