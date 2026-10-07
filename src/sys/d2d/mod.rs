@@ -12,6 +12,7 @@ pub(crate) mod bitmap;
 pub(crate) mod brush;
 pub(crate) mod dc;
 pub(crate) mod geometry;
+pub(crate) mod offscreen;
 
 use std::cell::OnceCell;
 use std::mem::ManuallyDrop;

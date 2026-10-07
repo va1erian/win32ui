@@ -545,14 +545,22 @@ impl<M: 'static> Ui<M> {
     }
 
     /// Renders the window into an image, for screenshots.
+    ///
+    /// Every visible [`Custom`](crate::Custom) widget painting with
+    /// [`Renderer::Direct2D`](crate::Renderer::Direct2D) is re-rendered
+    /// offscreen over the `PrintWindow` result (see
+    /// [`Custom::render_image`](crate::Custom::render_image)), so its pixels are
+    /// present even where `PrintWindow` cannot read a Direct2D window target.
     pub fn capture(&self) -> Result<RgbaImage> {
         let size = self.window_rect().size();
         let captured = sys::capture::capture(self.core.hwnd(), size.width, size.height)?;
-        Ok(RgbaImage {
+        let mut image = RgbaImage {
             width: captured.width as u32,
             height: captured.height as u32,
             pixels: captured.pixels,
-        })
+        };
+        crate::controls::custom::compose_capture(self.core.hwnd(), &mut image);
+        Ok(image)
     }
 
     /// Renders the window's screen rectangle into an image, including the

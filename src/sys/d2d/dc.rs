@@ -35,7 +35,7 @@ pub(crate) fn begin(hdc: isize, rect: Rect) -> Result<()> {
     DC_TARGET.with(|cell| {
         let mut slot = cell.borrow_mut();
         if slot.is_none() {
-            *slot = Some(Target::new_dc()?);
+            *slot = Some(Target::new_dc(false)?);
         }
         let target = slot.as_mut().expect("just created");
         // SAFETY: `hdc` is a device context valid for the caller's paint; the

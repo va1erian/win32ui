@@ -15,8 +15,8 @@ use windows::Win32::Foundation::RECT;
 use windows::Win32::Graphics::Direct2D::Common::{D2D_RECT_F, D2D_SIZE_U, D2D1_COLOR_F};
 use windows::Win32::Graphics::Direct2D::{
     D2D1_ELLIPSE, D2D1_HWND_RENDER_TARGET_PROPERTIES, D2D1_RENDER_TARGET_PROPERTIES,
-    D2D1_ROUNDED_RECT, ID2D1DCRenderTarget, ID2D1HwndRenderTarget, ID2D1RenderTarget,
-    ID2D1SolidColorBrush,
+    D2D1_RENDER_TARGET_TYPE_DEFAULT, D2D1_RENDER_TARGET_TYPE_SOFTWARE, D2D1_ROUNDED_RECT,
+    ID2D1DCRenderTarget, ID2D1HwndRenderTarget, ID2D1RenderTarget, ID2D1SolidColorBrush,
 };
 use windows::Win32::Graphics::Gdi::HDC;
 use windows::core::Interface;
@@ -134,8 +134,10 @@ impl Target {
     }
 
     /// Creates an unbound target for a device context. [`Target::bind_dc`]
-    /// attaches it to an `HDC` for one draw.
-    pub(crate) fn new_dc() -> Result<Target> {
+    /// attaches it to an `HDC` for one draw. `software` forces Direct2D's
+    /// software rasterizer, for an offscreen buffer that must render the same
+    /// with no GPU or desktop.
+    pub(crate) fn new_dc(software: bool) -> Result<Target> {
         // `D2D1_ALPHA_MODE_IGNORE` keeps the DC opaque: the anti-aliased edges
         // are blended into the pixels GDI already painted, and a later
         // `BitBlt`/`GetPixel` never sees the premultiplied black that would
@@ -147,6 +149,11 @@ impl Target {
             },
             dpiX: BASE_DPI,
             dpiY: BASE_DPI,
+            r#type: if software {
+                D2D1_RENDER_TARGET_TYPE_SOFTWARE
+            } else {
+                D2D1_RENDER_TARGET_TYPE_DEFAULT
+            },
             ..Default::default()
         };
         // SAFETY: the property struct is valid for the call.

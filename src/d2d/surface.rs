@@ -46,6 +46,10 @@ pub struct D2dSurface {
     /// Set when the render target was resized, which blanks it: the next frame
     /// must repaint the whole client, not just the newly exposed rectangle.
     needs_full_repaint: Cell<bool>,
+    /// The pixel buffer of an [`offscreen`](D2dSurface::offscreen) surface,
+    /// which has no window. Declared after `target` so the target bound to it
+    /// is released first.
+    offscreen: Option<sys::d2d::offscreen::Offscreen>,
 }
 
 impl D2dSurface {
@@ -83,7 +87,61 @@ impl D2dSurface {
             translation: Cell::new((0.0, 0.0)),
             // A fresh surface is blank, so its first frame repaints everything.
             needs_full_repaint: Cell::new(true),
+            offscreen: None,
         })
+    }
+
+    /// Creates a windowless surface drawing into a `width`×`height` pixel
+    /// buffer at `dpi` with Direct2D's software rasterizer, so a frame renders
+    /// without a GPU, a visible window or a readable desktop. Read the pixels
+    /// back with [`read_pixels`](D2dSurface::read_pixels) once the frame ended.
+    ///
+    /// `images` seeds the surface with another surface's uploaded images, so
+    /// an [`ImageId`](crate::d2d::ImageId) a widget kept from its window
+    /// surface draws here too.
+    pub(crate) fn offscreen(
+        width: u32,
+        height: u32,
+        dpi: u32,
+        images: Option<&D2dSurface>,
+    ) -> Result<D2dSurface> {
+        let (buffer, target) = sys::d2d::offscreen::Offscreen::new(width, height, dpi as f32)?;
+        let images = images.map_or_else(ImageCache::new, |surface| surface.images.borrow().clone());
+        Ok(D2dSurface {
+            hwnd: Hwnd::NULL,
+            target: RefCell::new(Some(target)),
+            pixels: Cell::new((width, height)),
+            dpi: Cell::new(dpi),
+            transparent: false,
+            drawing: Cell::new(false),
+            images: RefCell::new(images),
+            frame: Cell::new(None),
+            translation: Cell::new((0.0, 0.0)),
+            needs_full_repaint: Cell::new(false),
+            offscreen: Some(buffer),
+        })
+    }
+
+    /// The pixels of an [`offscreen`](D2dSurface::offscreen) surface, or
+    /// `None` for a window surface.
+    pub(crate) fn read_pixels(&self) -> Option<crate::capture::RgbaImage> {
+        self.offscreen
+            .as_ref()
+            .map(sys::d2d::offscreen::Offscreen::read)
+    }
+
+    /// Replaces this surface's retained images with `other`'s — a superset
+    /// when `other` was seeded from this surface by
+    /// [`offscreen`](D2dSurface::offscreen) — so an image uploaded during the
+    /// offscreen frame keeps its [`ImageId`](crate::d2d::ImageId) here.
+    pub(crate) fn adopt_images(&self, other: &D2dSurface) {
+        let images = other.images.borrow().clone();
+        *self.images.borrow_mut() = images;
+    }
+
+    /// Whether the surface draws into an offscreen buffer rather than a window.
+    pub(super) fn is_offscreen(&self) -> bool {
+        self.offscreen.is_some()
     }
 
     /// The window this surface draws to.
@@ -162,7 +220,12 @@ impl D2dSurface {
                 // offset afterwards. `clear` is then a plain (clip-aware) fill
                 // rather than a transform-independent `Clear`.
                 canvas.set_translation(0.0, 0.0);
-                if let Some(rect) = clip {
+                if let Some(buffer) = &self.offscreen {
+                    // No window to clip to: the frame is the whole buffer.
+                    let (width, height) = buffer.size();
+                    self.frame
+                        .set(Some(Rect::new(0, 0, width as i32, height as i32)));
+                } else if let Some(rect) = clip {
                     // Clip to the visible client: a scrolled child taller than
                     // its viewport would otherwise paint (and a virtualized
                     // widget would request the data for) the whole document,
@@ -217,6 +280,14 @@ impl D2dSurface {
     }
 
     fn prepare_target(&self) -> Result<()> {
+        if self.is_offscreen() {
+            // Software targets are not lost, and there is no window DPI to
+            // follow; a target dropped after an error is not rebuilt.
+            return match self.target.borrow().is_some() {
+                true => Ok(()),
+                false => Err(Error::Direct2d("offscreen target was discarded")),
+            };
+        }
         let dpi = sys::dpi::window_dpi(self.hwnd);
         if dpi != self.dpi.get() {
             self.set_dpi(dpi);
@@ -238,7 +309,9 @@ impl D2dSurface {
     /// Discards the render target after a device loss and asks for a repaint.
     pub(super) fn recreate_later(&self) {
         self.discard_target();
-        sys::window::invalidate(self.hwnd);
+        if !self.is_offscreen() {
+            sys::window::invalidate(self.hwnd);
+        }
     }
 
     /// Drops the render target so the next frame rebuilds it at the current
