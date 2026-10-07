@@ -58,6 +58,7 @@ pub(crate) mod window;
 pub(crate) mod window_ext;
 pub(crate) mod window_icon;
 pub(crate) mod window_input;
+pub(crate) mod window_role;
 
 pub(crate) use dwm::{apply_backdrop, apply_caption_colors, apply_extended_colors};
 pub(crate) use theme::{

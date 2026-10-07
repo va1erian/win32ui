@@ -14,8 +14,9 @@ use windows::Win32::UI::WindowsAndMessaging::{
     CS_DBLCLKS, CreateWindowExW, DestroyWindow, GA_ROOT, GWL_STYLE, GetAncestor, GetClientRect,
     GetWindowLongPtrW, GetWindowRect, HCURSOR, HMENU, HWND_BOTTOM, IDC_ARROW, LoadCursorW,
     MoveWindow, RegisterClassExW, SW_HIDE, SW_SHOW, SW_SHOWMAXIMIZED, SW_SHOWMINNOACTIVE,
-    SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetWindowLongPtrW, SetWindowPos, SetWindowTextW,
-    ShowWindow, UnregisterClassW, WINDOW_EX_STYLE, WINDOW_STYLE, WNDCLASSEXW, WS_TABSTOP,
+    SW_SHOWNA, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SetWindowLongPtrW, SetWindowPos,
+    SetWindowTextW, ShowWindow, UnregisterClassW, WINDOW_EX_STYLE, WINDOW_STYLE, WNDCLASSEXW,
+    WS_TABSTOP,
 };
 use windows::core::{HSTRING, PCWSTR};
 
@@ -508,9 +509,11 @@ pub(crate) fn validate_rect(hwnd: Hwnd, rect: Rect) {
 /// Shows, hides or minimizes a window.
 ///
 /// Minimising uses `SW_SHOWMINNOACTIVE`: a programmatic minimise must not
-/// activate the window or move focus to it.
+/// activate the window or move focus to it. A `WS_EX_NOACTIVATE` window is
+/// shown with `SW_SHOWNA`, so showing it never takes the focus either.
 pub(crate) fn show(hwnd: Hwnd, kind: ShowKind) {
     let cmd = match kind {
+        ShowKind::Normal if super::window_role::is_no_activate(hwnd) => SW_SHOWNA,
         ShowKind::Normal => SW_SHOW,
         ShowKind::Minimized => SW_SHOWMINNOACTIVE,
         ShowKind::Maximized => SW_SHOWMAXIMIZED,
