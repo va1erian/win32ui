@@ -8,7 +8,7 @@
 
 mod common;
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use win32ui::prelude::*;
@@ -247,6 +247,134 @@ fn idle_hiding_suppresses_then_restores_the_cursor() {
         after_move.get(),
         2,
         "WM_SETCURSOR was not suppressed while idle and restored on the move"
+    );
+}
+
+/// Quits on the first paint and, like the widget layer, applies the rectangle
+/// a `WM_DPICHANGED` suggests.
+struct FollowsDpi;
+
+impl WindowHandler for FollowsDpi {
+    fn message(&self, window: &Window, message: Message) -> Option<LResult> {
+        match message {
+            Message::Paint => {
+                win32ui::quit(0);
+                None
+            }
+            Message::DpiChanged { suggested, .. } if !suggested.is_empty() => {
+                window.set_bounds(suggested);
+                Some(0)
+            }
+            _ => None,
+        }
+    }
+}
+
+/// A tool window moved into fullscreen on a monitor with another DPI covers
+/// it exactly even when its handler applies the suggested DPI rectangle, and
+/// leaving restores the original bounds. Skips without such a monitor.
+#[test]
+fn tool_window_fullscreen_across_dpi_covers_the_monitor() {
+    let Some(run) = common::run_with_watchdog_ex(
+        "win32ui.fullscreen.dpi_tool",
+        WindowExStyle::new().tool_window(),
+        || FollowsDpi,
+    ) else {
+        return;
+    };
+    assert!(!run.timed_out, "the watchdog fired before the app quit");
+
+    let Some(current) = run.window.monitor() else {
+        return;
+    };
+    let Some(other) = monitors()
+        .into_iter()
+        .find(|monitor| monitor.dpi != current.dpi)
+    else {
+        return;
+    };
+    let before = run.window.window_rect();
+    run.window
+        .enter_fullscreen(&other)
+        .expect("enter fullscreen");
+    assert_eq!(
+        run.window.window_rect(),
+        other.rect,
+        "the fullscreen tool window does not cover the other-DPI monitor"
+    );
+    run.window.leave_fullscreen().expect("leave fullscreen");
+    assert_eq!(
+        run.window.window_rect(),
+        before,
+        "the window bounds were not restored"
+    );
+    run.window.destroy();
+}
+
+/// What the cross-DPI probe measured: the target monitor, the window rectangle
+/// while fullscreen on it, and the rectangles before entering and after leaving.
+#[derive(Default)]
+struct CrossDpi {
+    target: Option<Rect>,
+    fullscreen: Option<Rect>,
+    before: Option<Rect>,
+    after: Option<Rect>,
+}
+
+struct CrossDpiApp {
+    seen: Rc<RefCell<CrossDpi>>,
+}
+
+impl App for CrossDpiApp {
+    type Msg = ();
+
+    fn update(&mut self, _msg: (), ui: &mut Ui<()>) {
+        let current = monitor_of(ui.hwnd());
+        let other = current.as_ref().and_then(|current| {
+            monitors()
+                .into_iter()
+                .find(|monitor| monitor.dpi != current.dpi)
+        });
+        if let Some(other) = other {
+            let mut seen = self.seen.borrow_mut();
+            seen.before = Some(ui.window_rect());
+            seen.target = Some(other.rect);
+            ui.enter_fullscreen(&other).expect("enter fullscreen");
+            seen.fullscreen = Some(ui.window_rect());
+            ui.leave_fullscreen().expect("leave fullscreen");
+            seen.after = Some(ui.window_rect());
+        }
+        ui.quit();
+    }
+}
+
+/// Entering fullscreen on a monitor with another DPI covers that monitor
+/// exactly (the `WM_DPICHANGED` the move sends must not rescale the window),
+/// and leaving restores the original bounds. Skips without such a monitor.
+#[test]
+fn fullscreen_on_a_monitor_with_another_dpi_covers_it() {
+    let seen = Rc::new(RefCell::new(CrossDpi::default()));
+    let app_seen = Rc::clone(&seen);
+    let Some(run) = common::run_app_with_watchdog("win32ui.fullscreen.dpi", move |ui| {
+        ui.emit(());
+        CrossDpiApp { seen: app_seen }
+    }) else {
+        return;
+    };
+    assert!(!run.timed_out, "the watchdog fired before the app quit");
+
+    let seen = seen.borrow();
+    let Some(target) = seen.target else {
+        return;
+    };
+    assert_eq!(
+        seen.fullscreen,
+        Some(target),
+        "the fullscreen window does not cover the other-DPI monitor"
+    );
+    assert_eq!(
+        seen.after, seen.before,
+        "the window bounds were not restored"
     );
 }
 

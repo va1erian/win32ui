@@ -31,6 +31,9 @@ struct Saved {
     placement: WINDOWPLACEMENT,
     /// Whether the extended title bar was active, so it can be restored.
     extended: bool,
+    /// The monitor rectangle the window currently covers, which a
+    /// `WM_DPICHANGED` suggests instead of its own rescaled rectangle.
+    rect: Rect,
 }
 
 thread_local! {
@@ -45,11 +48,30 @@ pub(crate) fn is_fullscreen(hwnd: Hwnd) -> bool {
     FULLSCREEN.with(|map| map.borrow().contains_key(&(hwnd.raw() as isize)))
 }
 
+/// The monitor rectangle a fullscreen `hwnd` covers, or `None` when it is not
+/// in fullscreen.
+///
+/// Moving onto a monitor with a different DPI sends `WM_DPICHANGED` with a
+/// rectangle rescaled from the window's old size, which would shrink or grow a
+/// fullscreen window off its monitor; the message decoder reports this one
+/// instead, so a handler that applies the suggestion keeps it fullscreen.
+pub(crate) fn rect(hwnd: Hwnd) -> Option<Rect> {
+    FULLSCREEN.with(|map| map.borrow().get(&(hwnd.raw() as isize)).map(|s| s.rect))
+}
+
 /// Enters fullscreen on `rect` (a monitor's full rectangle, in screen
 /// coordinates). Idempotent: a second call just moves the window.
 pub(crate) fn enter(hwnd: Hwnd, rect: Rect) -> Result<()> {
     let key = hwnd.raw() as isize;
-    let already = FULLSCREEN.with(|map| map.borrow().contains_key(&key));
+    // Record the target first: the move below can cross a DPI boundary, and
+    // the `WM_DPICHANGED` it sends synchronously must already see it.
+    let already = FULLSCREEN.with(|map| match map.borrow_mut().get_mut(&key) {
+        Some(saved) => {
+            saved.rect = rect;
+            true
+        }
+        None => false,
+    });
     if !already {
         let mut placement = WINDOWPLACEMENT {
             length: size_of::<WINDOWPLACEMENT>() as u32,
@@ -68,6 +90,7 @@ pub(crate) fn enter(hwnd: Hwnd, rect: Rect) -> Result<()> {
             },
             placement,
             extended: crate::window::nc::is_extended(hwnd),
+            rect,
         };
         FULLSCREEN.with(|map| map.borrow_mut().insert(key, saved));
     }
@@ -84,6 +107,11 @@ pub(crate) fn enter(hwnd: Hwnd, rect: Rect) -> Result<()> {
             popup,
         );
         set_pos(hwnd, HWND_TOPMOST, rect, show_flags(hwnd))?;
+    }
+    // A DPI handler that ignored the suggested rectangle (or moved the window
+    // itself) may have left it off the monitor; put it back.
+    if super::window::window_rect(hwnd) != rect {
+        set_pos(hwnd, HWND_TOPMOST, rect, SWP_NOACTIVATE)?;
     }
     // The extended title strip would draw a caption the popup no longer has.
     crate::window::nc::set_extended(hwnd, false);
@@ -110,12 +138,17 @@ pub(crate) fn leave(hwnd: Hwnd) -> Result<()> {
         );
         let _ = SetWindowPos(raw_hwnd(hwnd), Some(HWND_NOTOPMOST), 0, 0, 0, 0, restore);
     }
-    if super::window_role::is_no_activate(hwnd) {
-        super::no_activate::set_placement(hwnd, saved.placement);
-    } else {
-        // SAFETY: `saved.placement` was filled by `GetWindowPlacement`.
-        unsafe {
-            let _ = SetWindowPlacement(raw_hwnd(hwnd), &saved.placement);
+    // Returning to a monitor with another DPI sends `WM_DPICHANGED`, whose
+    // handler rescales the restored rectangle from the fullscreen size. Now on
+    // the original DPI, a second placement lands exactly.
+    for _ in 0..2 {
+        if super::window_role::is_no_activate(hwnd) {
+            super::no_activate::set_placement(hwnd, saved.placement);
+        } else {
+            // SAFETY: `saved.placement` was filled by `GetWindowPlacement`.
+            unsafe {
+                let _ = SetWindowPlacement(raw_hwnd(hwnd), &saved.placement);
+            }
         }
     }
     crate::window::nc::set_extended(hwnd, saved.extended);

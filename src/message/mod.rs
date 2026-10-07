@@ -61,7 +61,10 @@ pub enum Message {
     DpiChanged {
         /// The new dots per inch.
         dpi: u32,
-        /// The rectangle Windows suggests the window occupy.
+        /// The rectangle Windows suggests the window occupy. For a window in
+        /// fullscreen ([`Window::enter_fullscreen`](crate::Window::enter_fullscreen))
+        /// this is the fullscreen monitor's rectangle, so applying it keeps the
+        /// window covering that monitor.
         suggested: Rect,
     },
     /// `WM_DISPLAYCHANGE`: the desktop resolution or monitor layout changed

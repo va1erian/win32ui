@@ -40,6 +40,16 @@ where
     H: WindowHandler + 'static,
     F: FnOnce() -> H,
 {
+    run_with_watchdog_ex(name, WindowExStyle::new(), make)
+}
+
+/// Like [`run_with_watchdog`], with the window's extended style, so a test
+/// can exercise a tool window or another ex-style dependent behaviour.
+pub fn run_with_watchdog_ex<H, F>(name: &str, ex_style: WindowExStyle, make: F) -> Option<Run>
+where
+    H: WindowHandler + 'static,
+    F: FnOnce() -> H,
+{
     win32ui::init();
 
     let theme = Theme::light();
@@ -57,7 +67,7 @@ where
         class,
         None,
         WindowStyle::overlapped(),
-        WindowExStyle::new(),
+        ex_style,
         Rect::new(0, 0, 320, 240),
         name,
         handler,
