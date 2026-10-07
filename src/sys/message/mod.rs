@@ -183,7 +183,11 @@ pub(crate) fn decode(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> Op
     } else if msg == WM_DPICHANGED {
         Some(Message::DpiChanged {
             dpi: (wparam.0 & 0xffff) as u32,
-            suggested: if lparam.0 == 0 {
+            // A fullscreen window must keep covering its monitor rather than
+            // take the rectangle rescaled from its pre-move size.
+            suggested: if let Some(rect) = super::fullscreen::rect(hwnd_from(hwnd)) {
+                rect
+            } else if lparam.0 == 0 {
                 crate::geometry::Rect::default()
             } else {
                 let rect = read::<windows::Win32::Foundation::RECT>(lparam);
