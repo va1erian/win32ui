@@ -30,7 +30,7 @@ use super::proxy::Proxy;
 /// menus. It is cheap to clone (an `Rc`), so a widget can keep one to enqueue
 /// messages from its own event handlers.
 pub struct Ui<M> {
-    core: Rc<Core<M>>,
+    pub(super) core: Rc<Core<M>>,
     /// A container this handle was scoped to, so widgets it creates parent to
     /// the container instead of the top-level window. `None` for the window
     /// itself.
@@ -487,16 +487,6 @@ impl<M: 'static> Ui<M> {
     /// [`Ui::popup`].
     pub fn cursor_position(&self) -> Point {
         sys::menu::cursor_position()
-    }
-
-    /// Starts a repeating timer and returns its id.
-    pub fn set_timer(&self, millis: u32) -> Result<TimerId> {
-        sys::window::set_timer(self.core.hwnd(), millis).map(TimerId)
-    }
-
-    /// Stops a timer started by [`Ui::set_timer`].
-    pub fn kill_timer(&self, id: TimerId) {
-        sys::window::kill_timer(self.core.hwnd(), id.0);
     }
 
     /// Shows the window if it was hidden (for example a secondary window the

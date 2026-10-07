@@ -39,7 +39,7 @@ pub(crate) fn arm(hwnd: Hwnd, millis: u32) -> Result<()> {
     if millis == 0 {
         return Ok(());
     }
-    let timer = super::window::set_timer(hwnd, millis)?;
+    let timer = super::timer::set_timer(hwnd, millis)?;
     IDLE.with(|map| {
         map.borrow_mut().insert(
             hwnd.raw() as isize,
@@ -57,7 +57,7 @@ pub(crate) fn arm(hwnd: Hwnd, millis: u32) -> Result<()> {
 pub(crate) fn disarm(hwnd: Hwnd) {
     let old = IDLE.with(|map| map.borrow_mut().remove(&(hwnd.raw() as isize)));
     if let Some(old) = old {
-        super::window::kill_timer(hwnd, old.timer);
+        super::timer::kill_timer(hwnd, old.timer);
         show_cursor();
     }
 }
@@ -90,8 +90,8 @@ pub(crate) fn handled(hwnd: Hwnd, msg: u32, wparam: usize) -> Option<isize> {
                 });
                 show_cursor();
             }
-            super::window::kill_timer(hwnd, timer);
-            if let Ok(next) = super::window::set_timer(hwnd, millis) {
+            super::timer::kill_timer(hwnd, timer);
+            if let Ok(next) = super::timer::set_timer(hwnd, millis) {
                 IDLE.with(|map| {
                     if let Some(state) = map.borrow_mut().get_mut(&key) {
                         state.timer = next;
