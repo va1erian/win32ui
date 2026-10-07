@@ -130,13 +130,14 @@ impl D2dSurface {
             .map(sys::d2d::offscreen::Offscreen::read)
     }
 
-    /// Replaces this surface's retained images with `other`'s — a superset
-    /// when `other` was seeded from this surface by
-    /// [`offscreen`](D2dSurface::offscreen) — so an image uploaded during the
-    /// offscreen frame keeps its [`ImageId`](crate::d2d::ImageId) here.
+    /// Adds the images `other` uploaded — `other` being an
+    /// [`offscreen`](D2dSurface::offscreen) surface seeded from this one — so
+    /// an image uploaded during the offscreen frame keeps its
+    /// [`ImageId`](crate::d2d::ImageId) here. Images the offscreen frame forgot
+    /// or evicted stay on this surface: a capture must not change what the
+    /// window draws.
     pub(crate) fn adopt_images(&self, other: &D2dSurface) {
-        let images = other.images.borrow().clone();
-        *self.images.borrow_mut() = images;
+        self.images.borrow_mut().merge_new(&other.images.borrow());
     }
 
     /// Whether the surface draws into an offscreen buffer rather than a window.
