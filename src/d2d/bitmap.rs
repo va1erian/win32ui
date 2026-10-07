@@ -112,6 +112,29 @@ impl ImageCache {
         self.bytes = 0;
     }
 
+    /// Adds the images `other` holds that this cache doesn't, and moves the id
+    /// counter past `other`'s. Nothing is removed: an image `other` forgot or
+    /// evicted stays here, so merging a cache cloned from this one (an
+    /// offscreen frame's) only carries over what that frame uploaded.
+    pub(super) fn merge_new(&mut self, other: &ImageCache) {
+        for (id, entry) in &other.images {
+            if self.images.contains_key(id) {
+                continue;
+            }
+            let last_used = self.tick();
+            self.bytes += entry.bytes;
+            self.images.insert(
+                *id,
+                Entry {
+                    last_used,
+                    ..entry.clone()
+                },
+            );
+        }
+        self.next_id = self.next_id.max(other.next_id);
+        self.evict();
+    }
+
     fn tick(&mut self) -> u64 {
         self.clock += 1;
         self.clock
@@ -240,5 +263,29 @@ mod tests {
         let third = cache.insert(&solid(1, 1, 0x33));
         assert_ne!(third, first);
         assert_ne!(third, second);
+    }
+
+    #[test]
+    fn merge_new_adds_uploads_and_keeps_what_the_other_cache_dropped() {
+        let mut window = ImageCache::new();
+        let kept = window.insert(&solid(2, 2, 0x11));
+        let forgotten = window.insert(&solid(2, 2, 0x22));
+
+        let mut offscreen = window.clone();
+        offscreen.forget(forgotten);
+        let uploaded = offscreen.insert(&solid(3, 3, 0x33));
+
+        window.merge_new(&offscreen);
+
+        assert!(window.touch(kept).is_some());
+        assert!(window.touch(forgotten).is_some(), "a forget leaked back");
+        assert!(
+            window.touch(uploaded).is_some(),
+            "the new upload is missing"
+        );
+        assert_eq!(window.bytes, (2 * 2 + 2 * 2 + 3 * 3) * 4);
+        // The counter moved past the offscreen upload, so ids stay unique.
+        let next = window.insert(&solid(1, 1, 0x44));
+        assert!(![kept, forgotten, uploaded].contains(&next));
     }
 }
