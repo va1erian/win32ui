@@ -44,6 +44,7 @@ pub(crate) mod menu_seam;
 pub(crate) mod message;
 pub(crate) mod monitor;
 pub(crate) mod nc;
+pub(crate) mod no_activate;
 pub(crate) mod proxy;
 pub(crate) mod scroll;
 pub(crate) mod tabs;
