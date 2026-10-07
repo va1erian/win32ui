@@ -38,6 +38,7 @@ pub enum Interpolation {
 const DEFAULT_BUDGET_BYTES: usize = 64 * 1024 * 1024;
 
 /// The uploaded image's retained data.
+#[derive(Clone)]
 struct Entry {
     data: Arc<RgbaImage>,
     bytes: usize,
@@ -45,7 +46,10 @@ struct Entry {
 }
 
 /// The per-surface image cache: uploads are retained so a lost device can be
-/// re-uploaded from memory, bounded by an LRU eviction over bytes.
+/// re-uploaded from memory, bounded by an LRU eviction over bytes. A clone
+/// shares the retained data and keeps every [`ImageId`]; the device bitmaps are
+/// re-uploaded lazily by whichever target draws them.
+#[derive(Clone)]
 pub(super) struct ImageCache {
     images: HashMap<ImageId, Entry>,
     next_id: usize,

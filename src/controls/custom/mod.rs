@@ -10,12 +10,15 @@
 //! to the app's `Msg` through the same per-window queue as every other widget,
 //! so [`App::update`](crate::App::update) is never re-entered.
 
+mod capture;
 mod drag;
 mod renderer;
 mod scroll;
+mod surface;
 mod widget;
 
-pub(crate) use renderer::RendererState;
+pub(crate) use capture::compose as compose_capture;
+pub(crate) use renderer::{RendererState, draw_d2d};
 pub(crate) use scroll::{CustomScroll, WHEEL_NOTCH_DIP, is_scroll_key};
 pub use widget::{Input, KeyResult, Renderer, WidgetCx};
 
@@ -271,6 +274,7 @@ impl<W: CustomWidget, M: 'static> Custom<W, M> {
         }
 
         drop_sink.hwnd.set(window.hwnd());
+        capture::register(window.hwnd(), &shared, &renderer);
 
         Ok(Custom {
             window,
@@ -400,32 +404,6 @@ impl<W: CustomWidget, M: 'static> Custom<W, M> {
         self.window.invalidate();
     }
 
-    /// Drops the widget's renderer surface — the Direct2D target and its
-    /// uploaded-image caches (or the OpenGL context) — so a heavy view does not
-    /// hold them while it is hidden. The next paint recreates it, so a caller
-    /// that also cached image handles from the surface must drop them too.
-    pub fn release_renderer(&self) {
-        {
-            let widget = self.shared.widget.borrow();
-            self.renderer
-                .borrow_mut()
-                .teardown_gl(|gl| widget.gl_teardown(gl));
-        }
-        *self.renderer.borrow_mut() = RendererState::Untried;
-    }
-
-    /// Releases the widget's uploaded Direct2D images — the retained RGBA cache
-    /// and the device bitmaps — while keeping the render target. Use it instead
-    /// of [`release_renderer`](Custom::release_renderer) when hiding a heavy
-    /// Direct2D view: the covers' memory is freed, but the surface is not
-    /// dropped, so the next show does not recreate the target (a fresh target
-    /// paints nothing until its first frame, so the window can flash stale
-    /// pixels). A caller that cached image handles from the surface must drop
-    /// them too. A no-op for the OpenGL and GDI renderers.
-    pub fn release_images(&self) {
-        self.renderer.borrow().release_images();
-    }
-
     /// Schedules a repaint of `rect` only — the widget's client coordinates, in
     /// device pixels. Unlike [`invalidate`](Custom::invalidate) the paint is
     /// clipped to this rectangle (both the GDI and Direct2D paths honour the
@@ -439,24 +417,6 @@ impl<W: CustomWidget, M: 'static> Custom<W, M> {
     /// The widget's rectangle in screen coordinates.
     pub fn window_rect(&self) -> Rect {
         self.window.window_rect()
-    }
-
-    /// Runs `f` with the widget's OpenGL context made current, outside a paint,
-    /// and returns its result. `None` when the widget has no live
-    /// [`GlSurface`](crate::gl::GlSurface) — it uses another renderer, its first
-    /// frame has not run yet, or the context could not be created.
-    ///
-    /// Unlike [`CustomWidget::paint_gl`](crate::CustomWidget::paint_gl) neither
-    /// the viewport nor the framebuffer is touched, and nothing is presented:
-    /// issue GL calls directly. Use it to free GPU resources without waiting
-    /// for a paint (hiding a view, say), or to upload assets up front. A widget
-    /// that only frees on teardown can implement
-    /// [`CustomWidget::gl_teardown`](crate::CustomWidget::gl_teardown) instead.
-    pub fn with_gl<R>(&self, f: impl FnOnce(&glow::Context) -> R) -> Option<R> {
-        match &*self.renderer.borrow() {
-            RendererState::Gl(surface) => Some(surface.with_gl(f)),
-            _ => None,
-        }
     }
 }
 
@@ -492,5 +452,6 @@ impl<W: CustomWidget, M> Drop for Custom<W, M> {
                 .teardown_gl(|gl| widget.gl_teardown(gl));
         }
         crate::theme::unregister_themed(self.control.hwnd());
+        capture::forget(self.control.hwnd());
     }
 }

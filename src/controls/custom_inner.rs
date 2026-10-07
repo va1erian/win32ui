@@ -15,7 +15,8 @@ use std::rc::Rc;
 
 use crate::app::Ui;
 use crate::controls::custom::{
-    CustomScroll, CustomWidget, Input, KeyResult, Renderer, RendererState, WidgetCx, is_scroll_key,
+    CustomScroll, CustomWidget, Input, KeyResult, Renderer, RendererState, WidgetCx, draw_d2d,
+    is_scroll_key,
 };
 use crate::d2d::{D2dSurface, pixels_to_dips};
 use crate::gdi::{Canvas, Paint};
@@ -123,13 +124,7 @@ impl<W: CustomWidget, M: 'static> CustomHandler<W, M> {
         let dirty = crate::sys::window::update_rect(hwnd);
         let mut renderer = self.renderer.borrow_mut();
         let painted = renderer.paint(hwnd, dirty, |canvas| {
-            canvas.clear(theme.background);
-            let viewport = canvas.bounds();
-            // Always reset the translation: the render target keeps its
-            // transform between frames, so skipping it at offset zero would
-            // leave the previous scroll transform applied.
-            canvas.set_translation(0.0, -viewport_offset);
-            widget.paint_d2d(canvas, viewport, &theme);
+            draw_d2d(canvas, &*widget, &theme, viewport_offset);
         });
         drop(renderer);
 

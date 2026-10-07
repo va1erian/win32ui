@@ -190,7 +190,9 @@ impl<'a> D2dCanvas<'a> {
         // leaves the rest permanently invalid, and Windows asks for the same
         // paint forever — a repaint storm that starves timers. The frame clip
         // still limits what was actually drawn.
-        sys::d2d::validate(self.surface.hwnd(), None);
+        if !self.surface.is_offscreen() {
+            sys::d2d::validate(self.surface.hwnd(), None);
+        }
         if outcome? == EndDraw::TargetLost {
             self.surface.recreate_later();
         }

@@ -12,11 +12,34 @@
 //! framebuffer cleared at the start of every frame).
 
 use crate::color::Color;
-use crate::d2d::D2dSurface;
+use crate::d2d::{D2dCanvas, D2dSurface};
 use crate::geometry::Rect;
 use crate::gl::GlSurface;
 use crate::hwnd::Hwnd;
 use crate::sys;
+use crate::theme::Theme;
+
+use super::CustomWidget;
+
+/// Draws one Direct2D frame of `widget`: the theme background, then
+/// [`CustomWidget::paint_d2d`] with the canvas translated by `scroll_offset`
+/// (device-independent pixels). The window paint and
+/// [`Custom::render_image`](super::Custom::render_image) share it so both
+/// produce the same pixels.
+pub(crate) fn draw_d2d<W: CustomWidget>(
+    canvas: &mut D2dCanvas<'_>,
+    widget: &W,
+    theme: &Theme,
+    scroll_offset: f32,
+) {
+    canvas.clear(theme.background);
+    let viewport = canvas.bounds();
+    // Always reset the translation: the render target keeps its transform
+    // between frames, so skipping it at offset zero would leave the previous
+    // scroll transform applied.
+    canvas.set_translation(0.0, -scroll_offset);
+    widget.paint_d2d(canvas, viewport, theme);
+}
 
 /// Which renderer is currently drawing a custom widget.
 pub(crate) enum RendererState {
@@ -45,7 +68,7 @@ impl RendererState {
         &mut self,
         hwnd: Hwnd,
         dirty: Rect,
-        draw: impl FnOnce(&mut crate::d2d::D2dCanvas),
+        draw: impl FnOnce(&mut D2dCanvas),
     ) -> bool {
         if matches!(*self, RendererState::Untried) {
             *self = D2dSurface::new(hwnd).map_or(RendererState::Gdi, |surface| {
