@@ -510,8 +510,17 @@ pub(crate) fn validate_rect(hwnd: Hwnd, rect: Rect) {
 ///
 /// Minimising uses `SW_SHOWMINNOACTIVE`: a programmatic minimise must not
 /// activate the window or move focus to it. A `WS_EX_NOACTIVATE` window is
-/// shown with `SW_SHOWNA`, so showing it never takes the focus either.
+/// shown with `SW_SHOWNA`, and maximized by hand (`sys::no_activate`), so
+/// showing it never takes the focus either.
 pub(crate) fn show(hwnd: Hwnd, kind: ShowKind) {
+    if kind == ShowKind::Maximized && super::window_role::is_no_activate(hwnd) {
+        super::no_activate::maximize(hwnd);
+        // SAFETY: a stale handle is a documented no-op.
+        unsafe {
+            let _ = UpdateWindow(raw_hwnd(hwnd));
+        }
+        return;
+    }
     let cmd = match kind {
         ShowKind::Normal if super::window_role::is_no_activate(hwnd) => SW_SHOWNA,
         ShowKind::Normal => SW_SHOW,

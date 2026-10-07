@@ -14,9 +14,9 @@ use std::collections::HashMap;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::UI::WindowsAndMessaging::{
     GetWindowLongPtrW, GetWindowPlacement, HWND_NOTOPMOST, HWND_TOPMOST, SET_WINDOW_POS_FLAGS,
-    SW_SHOWNOACTIVATE, SW_SHOWNORMAL, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE,
-    SWP_NOOWNERZORDER, SWP_NOSIZE, SWP_SHOWWINDOW, SetWindowLongPtrW, SetWindowPlacement,
-    SetWindowPos, WINDOWPLACEMENT, WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_POPUP, WS_VISIBLE,
+    SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE, SWP_SHOWWINDOW,
+    SetWindowLongPtrW, SetWindowPlacement, SetWindowPos, WINDOWPLACEMENT, WS_CLIPCHILDREN,
+    WS_CLIPSIBLINGS, WS_POPUP, WS_VISIBLE,
 };
 
 use crate::error::Result;
@@ -109,7 +109,14 @@ pub(crate) fn leave(hwnd: Hwnd) -> Result<()> {
             saved.style,
         );
         let _ = SetWindowPos(raw_hwnd(hwnd), Some(HWND_NOTOPMOST), 0, 0, 0, 0, restore);
-        let _ = SetWindowPlacement(raw_hwnd(hwnd), &placement_for(hwnd, saved.placement));
+    }
+    if super::window_role::is_no_activate(hwnd) {
+        super::no_activate::set_placement(hwnd, saved.placement);
+    } else {
+        // SAFETY: `saved.placement` was filled by `GetWindowPlacement`.
+        unsafe {
+            let _ = SetWindowPlacement(raw_hwnd(hwnd), &saved.placement);
+        }
     }
     crate::window::nc::set_extended(hwnd, saved.extended);
     Ok(())
@@ -131,16 +138,6 @@ fn show_flags(hwnd: Hwnd) -> SET_WINDOW_POS_FLAGS {
     } else {
         flags
     }
-}
-
-/// The saved placement, with an activating `SW_SHOWNORMAL` turned into
-/// `SW_SHOWNOACTIVATE` for a no-activate window so leaving fullscreen does
-/// not take the focus.
-fn placement_for(hwnd: Hwnd, mut placement: WINDOWPLACEMENT) -> WINDOWPLACEMENT {
-    if super::window_role::is_no_activate(hwnd) && placement.showCmd == SW_SHOWNORMAL.0 as u32 {
-        placement.showCmd = SW_SHOWNOACTIVATE.0 as u32;
-    }
-    placement
 }
 
 fn set_pos(hwnd: Hwnd, insert_after: HWND, rect: Rect, flags: SET_WINDOW_POS_FLAGS) -> Result<()> {
