@@ -116,7 +116,9 @@ impl<T: 'static> GridWidget<T> {
         layout::columns_for_width(viewport_width, self.tile_px.get(), self.spacing_px.get())
     }
 
-    /// The tile index at `(x, y)`, content-relative device pixels.
+    /// The tile index at `(x, y)`, content-relative device pixels. Mouse
+    /// input arrives in client coordinates, so the scroll host's offset
+    /// (see [`WidgetCx::scroll_offset_px`]) must be added by the caller.
     fn index_at(&self, x: i32, y: i32, viewport_width: i32) -> Option<usize> {
         layout::index_at_point(
             x,
@@ -287,8 +289,12 @@ impl<T: 'static> CustomWidget for GridWidget<T> {
 
     fn input(&self, input: Input, cx: &mut WidgetCx<GridEvent>) {
         let width = cx.bounds().width();
+        // Painting happens in content coordinates (the canvas is pre-translated
+        // by the scroll offset), so mouse points must be mapped up by the same
+        // offset before the hit-test.
+        let y = input.mouse_y() + cx.scroll_offset_px();
         match input {
-            Input::MouseMove { x, y, .. } => {
+            Input::MouseMove { x, .. } => {
                 let next = self.index_at(x, y, width);
                 if self.hovered.replace(next) != next {
                     cx.invalidate();
@@ -301,7 +307,6 @@ impl<T: 'static> CustomWidget for GridWidget<T> {
             }
             Input::MouseDown {
                 x,
-                y,
                 button: MouseButton::Left,
                 ..
             } => {
@@ -314,7 +319,6 @@ impl<T: 'static> CustomWidget for GridWidget<T> {
             }
             Input::MouseDoubleClick {
                 x,
-                y,
                 button: MouseButton::Left,
                 ..
             } => {

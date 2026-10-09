@@ -140,6 +140,20 @@ pub enum Input {
 }
 
 impl Input {
+    /// The mouse pointer's client-space `y` the event carries (zero without
+    /// one). A widget over a scroll host adds [`WidgetCx::scroll_offset_px`] to
+    /// hit-test the point against what it drew.
+    pub fn mouse_y(&self) -> i32 {
+        match self {
+            Input::MouseDown { y, .. }
+            | Input::MouseUp { y, .. }
+            | Input::MouseMove { y, .. }
+            | Input::MouseDoubleClick { y, .. }
+            | Input::MouseWheel { y, .. } => *y,
+            _ => 0,
+        }
+    }
+
     /// The subset of [`Message`] that maps to an [`Input`], or `None`.
     pub(crate) fn from_message(message: Message) -> Option<Input> {
         Some(match message {
@@ -242,6 +256,8 @@ pub struct WidgetCx<E> {
     emit: Rc<dyn Fn(E)>,
     dpi: u32,
     animate: Rc<Cell<bool>>,
+    /// The scroll host's current offset, in device pixels; zero without one.
+    scroll_offset_px: i32,
 }
 
 impl<E> WidgetCx<E> {
@@ -258,13 +274,32 @@ impl<E> WidgetCx<E> {
             emit,
             dpi,
             animate,
+            scroll_offset_px: 0,
         }
+    }
+
+    /// Sets the scroll host offset the context reports; picks up where
+    /// builders stop.
+    pub(crate) fn with_scroll_offset(mut self, scroll_offset_px: i32) -> Self {
+        self.scroll_offset_px = scroll_offset_px;
+        self
     }
 
     /// The widget's dots-per-inch, to convert input coordinates (device
     /// pixels) to device-independent pixels.
     pub fn dpi(&self) -> u32 {
         self.dpi
+    }
+
+    /// The vertical scroll host's current offset, in device pixels (zero
+    /// without [`Custom::with_vscroll`](super::Custom::with_vscroll)).
+    ///
+    /// Mouse input arrives in client coordinates, while a widget painted
+    /// through the pre-translated canvas draws its document in content
+    /// coordinates; adding this offset to an input's `y` maps the point back
+    /// onto what was drawn.
+    pub fn scroll_offset_px(&self) -> i32 {
+        self.scroll_offset_px
     }
 
     /// Starts (`true`) or stops (`false`) a repeating animation timer that
