@@ -169,8 +169,17 @@ impl<W: CustomWidget, M: 'static> CustomHandler<W, M> {
         result == KeyResult::Handled || scroll.key(key)
     }
 
-    /// A fresh context for one `paint`/`input`/`key` call.
+    /// A fresh context for one `paint`/`input`/`key` call. It carries the
+    /// scroll host's offset (zero without one), so a widget that drew its
+    /// document pre-translated can map mouse input back onto content
+    /// coordinates (see [`WidgetCx::scroll_offset_px`]).
     fn make_cx(&self, window: &Window) -> WidgetCx<W::Event> {
+        let offset = self
+            .shared
+            .scroll
+            .borrow()
+            .as_ref()
+            .map_or(0, |scroll| scroll.offset());
         WidgetCx::new(
             window.hwnd(),
             Rc::clone(&self.bounds),
@@ -178,6 +187,7 @@ impl<W: CustomWidget, M: 'static> CustomHandler<W, M> {
             self.shared.ui.dpi(),
             Rc::clone(&self.animate),
         )
+        .with_scroll_offset(offset)
     }
 
     fn sync_timer(&self, window: &Window) {
