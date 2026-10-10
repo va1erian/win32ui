@@ -114,7 +114,9 @@ fn scrolled_click_hits_the_tile_under_the_cursor() {
             })
             .on_select(|index| Some(Msg::Selected(index)));
         grid.set_model((0..ROWS).map(|n| Tile(n as u32)).collect::<Vec<_>>());
-        grid.set_bounds(Rect::new(0, 0, 200, 300));
+        // One column: narrower than one tile+spacing stride, so the row under
+        // the click is exactly one index regardless of the host's DPI.
+        grid.set_bounds(Rect::new(0, 0, 100, 300));
         ui.emit(Msg::ScrollAndClick);
         Harness {
             grid,
